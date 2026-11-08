@@ -115,23 +115,38 @@ const seriesSubjects = (subjects?: string[]): string[] =>
     return name ? [name] : [];
   });
 
+// Open Library may return series as objects or scalar values, despite search typings.
+// Ignore malformed values instead of aborting discovery for the entire series.
+const safeSeriesValues = (input: unknown): string[] => {
+  const items = Array.isArray(input) ? input : [input];
+  return items.flatMap((item) => {
+    if (typeof item === 'string') return item.trim() ? [item.trim()] : [];
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const record = item as Record<string, unknown>;
+      const name = record.name ?? record.title;
+      return typeof name === 'string' && name.trim() ? [name.trim()] : [];
+    }
+    return [];
+  });
+};
+
 const chooseSeriesValues = (
   editionSeries?: string[],
   workSeries?: string[],
   subjectSeries?: string[],
 ): string[] | undefined => {
-  const editionValues = editionSeries?.filter((value) => value?.trim()) ?? [];
+  const editionValues = safeSeriesValues(editionSeries);
   if (editionValues.length > 0) return editionValues;
-  const workValues = workSeries?.filter((value) => value?.trim()) ?? [];
+  const workValues = safeSeriesValues(workSeries);
   if (workValues.length > 0) return workValues;
-  const subjectValues = subjectSeries?.filter((value) => value?.trim()) ?? [];
+  const subjectValues = safeSeriesValues(subjectSeries);
   return subjectValues.length > 0 ? subjectValues : undefined;
 };
 
 export const parseDetectiveOpenLibrarySeries = (
   values?: string[],
 ): { name: string; position: number | null } | null => {
-  const raw = values?.find((value) => value?.trim())?.trim();
+  const raw = safeSeriesValues(values)[0];
   if (!raw) return null;
   const primary = raw.split(';').map((value) => value.trim()).find(Boolean) ?? raw;
   const positionWords = [
@@ -287,8 +302,8 @@ const hydrateWorksFromEditionDetails = async (
   if (index >= limit || !work.key) return work;
   const existing = work.editions?.docs ?? [];
   const hasSeries = Boolean(
-    work.series?.some((value) => value?.trim())
-    || existing.some((edition) => edition.series?.some((value) => value?.trim()))
+    safeSeriesValues(work.series).length > 0
+    || existing.some((edition) => safeSeriesValues(edition.series).length > 0)
     || seriesSubjects(work.subject).length > 0,
   );
   if (hasSeries && existing.length > 0) return work;
