@@ -477,6 +477,40 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     }
   }
 
+  // Multiple OCR treatments can scatter a decorative two-word title into
+  // separate, damaged one-word lines (KNVE / MOGN / MOBN). Recover only
+  // when BOTH author names are independently readable and both distinctive
+  // title words have standalone, non-promotional evidence. Require repeated
+  // evidence for at least one title word: a single coincidental fuzzy word
+  // from cover copy must never verify a different book.
+  if (significantTitleWords.length === 2 && catalogTitleWords.length >= 2
+    && significantTitleWords.every((word) => word.length >= 4)) {
+    const authorFullySeen = authors.some((author) => {
+      const parts = words(author);
+      if (parts.length < 2) return false;
+      const seen = (part: string): boolean => {
+        const allowance = part.length >= 5 ? 1 : 0;
+        return authorCandidates.some((candidate) =>
+          Math.abs(candidate.length - part.length) <= allowance
+          && editDistance(candidate, part) <= allowance);
+      };
+      return seen(parts[0]) && seen(parts[parts.length - 1]);
+    });
+    if (authorFullySeen) {
+      const titleFragments = lines.flatMap((line, index) => {
+        if (titleLineDemoted(line, index)) return [];
+        const tokens = words(line);
+        return tokens.length === 1 ? tokens : [];
+      });
+      const hitCounts = significantTitleWords.map((word) =>
+        titleFragments.filter((fragment) =>
+          Math.abs(fragment.length - word.length) <= 1
+          && editDistance(fragment, word) <= 1).length);
+      if (hitCounts.every((count) => count >= 1)
+        && hitCounts.some((count) => count >= 2)) return true;
+    }
+  }
+
   if (significantTitleWords.length < 3) {
     // A two-word title split across OCR lines can still be strong identity
     // evidence when native OCR independently captures every title word more
