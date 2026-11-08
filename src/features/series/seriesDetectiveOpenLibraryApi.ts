@@ -55,7 +55,7 @@ export interface DetectiveOpenLibraryCandidate {
   seriesName: string;
   position: number | null;
   recordId: string;
-  /** Parsed directly from Open Library work/edition series fields, not inferred from title. */
+  /** Parsed from explicit Open Library series fields or Series: subject tags, never inferred from title. */
   seriesStructured: true;
 }
 
@@ -106,14 +106,26 @@ const coverUrl = (work: OpenLibraryWork, edition: OpenLibraryEdition): string | 
 };
 
 
+/** Open Library sometimes indexes explicit series membership only as a work subject. */
+const seriesSubjects = (subjects?: string[]): string[] =>
+  (subjects ?? []).flatMap((subject) => {
+    const match = subject.match(/^Series:\s*(.+)$/i);
+    if (!match) return [];
+    const name = match[1].trim().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ');
+    return name ? [name] : [];
+  });
+
 const chooseSeriesValues = (
   editionSeries?: string[],
   workSeries?: string[],
+  subjectSeries?: string[],
 ): string[] | undefined => {
   const editionValues = editionSeries?.filter((value) => value?.trim()) ?? [];
   if (editionValues.length > 0) return editionValues;
   const workValues = workSeries?.filter((value) => value?.trim()) ?? [];
-  return workValues.length > 0 ? workValues : undefined;
+  if (workValues.length > 0) return workValues;
+  const subjectValues = subjectSeries?.filter((value) => value?.trim()) ?? [];
+  return subjectValues.length > 0 ? subjectValues : undefined;
 };
 
 export const parseDetectiveOpenLibrarySeries = (
@@ -148,7 +160,7 @@ const mapCandidate = (
 ): DetectiveOpenLibraryCandidate | null => {
   const title = (edition.title ?? work.title)?.trim();
   if (!title) return null;
-  const metadata = parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series));
+  const metadata = parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series, seriesSubjects(work.subject)));
   if (!metadata) return null;
   if (wantedSeriesName && !detectiveSeriesNamesCompatible(metadata.name, wantedSeriesName)) return null;
 
@@ -276,7 +288,8 @@ const hydrateWorksFromEditionDetails = async (
   const existing = work.editions?.docs ?? [];
   const hasSeries = Boolean(
     work.series?.some((value) => value?.trim())
-    || existing.some((edition) => edition.series?.some((value) => value?.trim())),
+    || existing.some((edition) => edition.series?.some((value) => value?.trim()))
+    || seriesSubjects(work.subject).length > 0,
   );
   if (hasSeries && existing.length > 0) return work;
 
@@ -330,7 +343,7 @@ export async function searchDetectiveOpenLibraryContext(
       const title = (preferred.title ?? work.title)?.trim();
       if (!title) return [];
 
-      const metadata = parseDetectiveOpenLibrarySeries(chooseSeriesValues(preferred.series, work.series));
+      const metadata = parseDetectiveOpenLibrarySeries(chooseSeriesValues(preferred.series, work.series, seriesSubjects(work.subject)));
       const isbn13 = preferred.isbn_13?.[0]
         ?? preferred.isbn?.find((value) => compactIsbn(value).length === 13);
       const isbn10 = preferred.isbn_10?.[0]
