@@ -529,7 +529,7 @@ assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover,
 assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover.filter((line) => line !== 'KN'),
   'The Knave and the Moon', ['Rachel Gillig']), false,
   'Without first-word prefix the author bibliography must not verify the title.');
-assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover.filter((line) => !/^aND THe$/i.test(line)),
+assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover.filter((line) => !/^andth/i.test(line.replace(/[^a-z]/gi, ''))),
   'The Knave and the Moon', ['Rachel Gillig']), false,
   'One damaged connector cannot manufacture a missing first title word.');
 assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover,
