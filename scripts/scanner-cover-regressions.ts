@@ -498,4 +498,18 @@ assert.equal(coverApproximatelyMatchesWork(
   'Shield of Sparrows', ['Devney Perry']), false,
   'Title fragments without independent author evidence must not verify.');
 
+
+// Nov 7 OCR: the full author is visibly fragmented even though the title
+// is too damaged for safe automatic verification. Improve retrieval only.
+const knaveLatestAuthors = coverAuthorQueries([
+  'Prepare te', 'meet your next', 'obsession', 'aND T He',
+  'R ACH EL', 'GI LL I G', 'MO', 'MON', 'KN',
+]);
+assert.ok(knaveLatestAuthors.includes('rachel gillig'),
+  'Adjacent four-fragment surnames must yield a full author retrieval hint.');
+assert.equal(coverApproximatelyMatchesWork([
+  'R ACH EL', 'GI LL I G', 'MO', 'MON', 'KN',
+], 'The Knave and the Moon', ['Rachel Gillig']), false,
+  'An author plus tiny title fragments cannot safely verify the work.');
+
 console.log('Inkbound scanner cover regressions passed.');
