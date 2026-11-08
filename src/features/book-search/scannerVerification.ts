@@ -113,6 +113,25 @@ function competingCoverTitle(lines: string[], title: string, authors: string[]):
     || (tokens.length === 1 && (titleEvidence[index + 1]?.length ?? 0) === 1));
 }
 
+// A single title word can also be a catalog author's surname (MOON).
+// Never treat that repeated word as independent proof of a different author.
+function singleWordTitleAuthorIsIndependent(lines: string[], title: string, authors: string[]): boolean {
+  const titleWords = words(scannerCoverTitle(title));
+  if (titleWords.length !== 1) return true;
+  const titleWord = titleWords[0];
+  const tokens = words(lines.join(' '));
+  const joined = tokens.join('');
+  return authors.some((author) => {
+    const parts = words(author);
+    if (parts.length < 2) return false;
+    const surname = parts[parts.length - 1];
+    if (surname === titleWord) return false;
+    const given = parts.slice(0, -1).filter((part) => part.length >= 3);
+    return given.length > 0 && given.some((part) =>
+      tokens.includes(part) || (part.length >= 5 && joined.includes(part)));
+  });
+}
+
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const text = words(lines.join(' '));
   const tokens = new Set(text);
@@ -120,6 +139,7 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   const titleWords = words(scannerCoverTitle(title));
   if (isAuthorBiographyTitle(title, authors)) return false;
   if (!titleWords.length) return false;
+  if (!singleWordTitleAuthorIsIndependent(lines, title, authors)) return false;
   if (competingCoverTitle(lines, title, authors)) return false;
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
@@ -254,6 +274,7 @@ function isBookNumberLine(line: string): boolean {
 }
 
 export function coverApproximatelyMatchesWork(lines: string[], title: string, authors: string[]): boolean {
+  if (!singleWordTitleAuthorIsIndependent(lines, title, authors)) return false;
   const promoContext = coverPromoContextIndexes(lines);
   const titleLineDemoted = (line: string, index: number): boolean =>
     promoContext.has(index) || isDemotedCoverTitleLine(line);
