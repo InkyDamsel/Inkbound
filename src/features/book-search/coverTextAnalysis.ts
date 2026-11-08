@@ -215,6 +215,23 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 12): strin
     }
   }
 
+  // Some display-font surnames split into FOUR tiny fragments (GI LL I G).
+  // Pair only with a directly adjacent fragmented given-name line, and
+  // require at least two letters in each reconstructed name component.
+  // Retrieval hints only: this does not bypass title/author verification.
+  for (let index = 0; index < cleanLines.length - 1; index += 1) {
+    const first = wordsOf(cleanLines[index]);
+    const second = wordsOf(cleanLines[index + 1]);
+    if (first.length < 2 || first.length > 3 || second.length !== 4) continue;
+    if (!first.every((token) => token.length >= 1 && token.length <= 4)
+      || !second.every((token) => token.length >= 1 && token.length <= 3)) continue;
+    const given = first.join('');
+    const surname = second.join('');
+    if (given.length < 5 || given.length > 10 || surname.length < 5 || surname.length > 10) continue;
+    if (isDemotedCoverTitleLine(cleanLines[index]) || isDemotedCoverTitleLine(cleanLines[index + 1])) continue;
+    structuralQueries.push(`${given} ${surname}`);
+  }
+
   // Native OCR also splits ordinary two-word names across adjacent one-word
   // lines ("SUZANNE" / "COLLINS"). Preserve those pairs before heuristic
   // cross-pass combinations can consume the bounded author-query budget.
