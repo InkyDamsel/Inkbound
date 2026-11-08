@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { SeriesRosterEntry } from '../../features/series/seriesDetectiveRoster';
 import { summarizeSeriesRoster } from '../../features/series/seriesDetectiveRoster';
 import { getCanonicalProgressPercentage } from '../../features/reading/bookReadingState';
@@ -32,7 +32,6 @@ const Facts: React.FC<{ entry: SeriesRosterEntry }> = ({ entry }) => {
 };
 
 const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpenBook'] }> = ({ entry, onOpenBook }) => {
-  const [expanded, setExpanded] = useState(false);
   const missing = entry.kind === 'missing';
   const book = entry.book;
 
@@ -61,16 +60,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
           {entry.kind === 'library-only' && (
             <p className="mt-1 text-[11px] text-stone-400">In your library; no catalog listed this book, which does not mean it is wrong.</p>
           )}
-          {entry.summary && (
-            <div className="mt-2">
-              <p className={`text-xs leading-relaxed text-stone-300 ${expanded ? '' : 'line-clamp-3'}`}>{entry.summary}</p>
-              {entry.summary.length > 180 && (
-                <button type="button" onClick={() => setExpanded((value) => !value)} className="mt-1 text-[11px] font-semibold text-[#e5c158] underline underline-offset-2">
-                  {expanded ? 'Show less' : 'Read more'}
-                </button>
-              )}
-            </div>
-          )}
+
         </div>
         <div className="flex shrink-0 flex-col gap-2">
           {missing && (
