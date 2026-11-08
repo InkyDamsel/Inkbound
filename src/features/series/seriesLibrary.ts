@@ -54,7 +54,11 @@ export const canonicalSeriesIdentity = (value?: string): string => {
   return tokens.filter((token) => !SERIES_CONNECTOR_TOKENS.has(token)).join(' ');
 };
 
-const seriesId = (name: string, author: string) => `${name}::${author}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const seriesId = (name: string, discriminator = '') =>
+  `${canonicalSeriesIdentity(name)}::${discriminator}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 const GENERIC_SERIES_NAMES = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition']);
 
 export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
@@ -80,7 +84,7 @@ function recoverSeriesPosition(book: UserBookRecord, seriesName: string, positio
   if (position !== 0) return position;
   const inferred = inferSeriesHintFromTitle(book.work.title);
   if (!inferred || inferred.position === null) return position;
-  if (normalizeSeriesName(inferred.name).toLowerCase() !== normalizeSeriesName(seriesName).toLowerCase()) return position;
+  if (!seriesNamesAreCompatible(inferred.name, seriesName)) return position;
   return inferred.position;
 }
 
@@ -119,7 +123,7 @@ export function seriesBookDisplayTitle(book: UserBookRecord, seriesName?: string
   const title = book.work.title.trim();
   if (/^untitled\b/i.test(title)) return 'Untitled / Upcoming';
   const inferred = inferSeriesHintFromTitle(title);
-  const sameSeries = inferred && (!seriesName || normalizeSeriesName(inferred.name).toLowerCase() === normalizeSeriesName(seriesName).toLowerCase());
+  const sameSeries = inferred && (!seriesName || seriesNamesAreCompatible(inferred.name, seriesName));
   if (!sameSeries) return title;
   const withoutSuffix = title.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
   return withoutSuffix || title;
@@ -180,6 +184,10 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
   });
 
+  // Start conservatively with series + author. Some publisher/shared-world
+  // series legitimately span authors, but unrelated authors can also reuse the
+  // same series name. Cross-author groups merge only when explicit numbered
+  // positions exist on both sides and those positions do not conflict.
   const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[] }>();
   books.forEach((book) => {
     if (manuallyAssignedBookIds.has(book.id)) return;
@@ -187,12 +195,57 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     if (!resolved) return;
     const name = resolved.name;
     const author = book.work.author.trim() || 'Unknown author';
-    const key = `${name.toLowerCase()}::${author.toLowerCase()}`;
+    const key = `${canonicalSeriesIdentity(name)}::${author.toLowerCase()}`;
     const current = metadataGroups.get(key) ?? { name, author, entries: [] };
     current.entries.push({ book, position: resolved.position, displayPosition: seriesPositionLabel(book, resolved.position) });
     metadataGroups.set(key, current);
   });
 
-  metadataGroups.forEach(({ name, author, entries }) => summaries.push(summarize(seriesId(name, author), name, author, entries, false)));
+  type MetadataCluster = { name: string; authors: Set<string>; entries: SeriesBookEntry[] };
+  const clustersBySeries = new Map<string, MetadataCluster[]>();
+
+  const numberedPositions = (entries: SeriesBookEntry[]) =>
+    new Set(entries
+      .map((entry) => entry.position)
+      .filter((position): position is number => typeof position === 'number' && Number.isFinite(position)));
+
+  const canMergeCrossAuthor = (
+    seriesIdentity: string,
+    left: MetadataCluster,
+    rightEntries: SeriesBookEntry[],
+  ) => {
+    // A one-word series name is too collision-prone to join across authors
+    // automatically. Multi-author publisher/shared-world series such as
+    // "A Twisted Tale" retain at least two canonical identity tokens.
+    if (seriesIdentity.split(' ').filter(Boolean).length < 2) return false;
+    const leftPositions = numberedPositions(left.entries);
+    const rightPositions = numberedPositions(rightEntries);
+    if (leftPositions.size === 0 || rightPositions.size === 0) return false;
+    return [...rightPositions].every((position) => !leftPositions.has(position));
+  };
+
+  metadataGroups.forEach(({ name, author, entries }) => {
+    const identity = canonicalSeriesIdentity(name);
+    const clusters = clustersBySeries.get(identity) ?? [];
+    const compatible = clusters.find((cluster) =>
+      cluster.authors.has(author) || canMergeCrossAuthor(identity, cluster, entries),
+    );
+
+    if (compatible) {
+      compatible.authors.add(author);
+      compatible.entries.push(...entries);
+    } else {
+      clusters.push({ name, authors: new Set([author]), entries: [...entries] });
+    }
+    clustersBySeries.set(identity, clusters);
+  });
+
+  clustersBySeries.forEach((clusters) => {
+    clusters.forEach(({ name, authors, entries }) => {
+      const authorList = [...authors].sort();
+      const author = authorList.length === 1 ? authorList[0] : 'Various authors';
+      summaries.push(summarize(seriesId(name, authorList.join('|')), name, author, entries, false));
+    });
+  });
   return summaries.sort((a, b) => a.name.localeCompare(b.name));
 }
