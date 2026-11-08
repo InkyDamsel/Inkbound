@@ -15,12 +15,12 @@ const detectiveFiles = [
 ];
 for (const file of detectiveFiles) {
   assert.ok(fs.existsSync(file), `Missing Series Detective module: ${file}`);
-  assert.doesNotMatch(read(file), /(?:features\\/book-search|\\.\\.\\/book-search|book-search\\/)/,
+  assert.doesNotMatch(read(file), /(?:features\/book-search|\.\.\/book-search|book-search\/)/,
     `Series Detective must not depend on protected Search internals: ${file}`);
 }
 const index = read('functions/src/index.ts');
 for (const name of ['searchSeriesDetectiveHardcover', 'searchSeriesDetectiveGoogleBooks', 'searchSeriesDetectivePenguinRandomHouse']) {
-  assert.match(index, new RegExp('\\\\b' + name + '\\\\b'), `Missing Series Detective callable export: ${name}`);
+  assert.match(index, new RegExp('\\b' + name + '\\b'), `Missing Series Detective callable export: ${name}`);
 }
 const protectedPaths = [
   'src/components/AddBookModal.tsx',
