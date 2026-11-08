@@ -512,4 +512,28 @@ assert.equal(coverApproximatelyMatchesWork([
 ], 'The Knave and the Moon', ['Rachel Gillig']), false,
   'An author plus tiny title fragments cannot safely verify the work.');
 
+
+// Nov 8 Android trace: correct work returned by catalog, but OCR retained
+// only KN from the first title word. Require repeated connector and MOON
+// evidence plus the complete independently printed author.
+const knaveNov8Cover = [
+  'Preparre te', 'meet your Rext', 'bsession', 'aND THe',
+  'MOBN', 'R ACH EL', 'GI LL IG', 'Prepare te',
+  'meet yeur next', 'aNDT He', 'MON', 'GILL I Gs',
+  'aND T He', 'MON', 'R ACH E L', 'Gi LL IGs',
+  'KN', 'aNDTHC', 'M OlON',
+];
+assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover,
+  'The Knave and the Moon', ['Rachel Gillig']), true,
+  'Repeated connector and damaged MOON with KN prefix and full author should verify.');
+assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover.filter((line) => line !== 'KN'),
+  'The Knave and the Moon', ['Rachel Gillig']), false,
+  'Without first-word prefix the author bibliography must not verify the title.');
+assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover.filter((line) => !/^aND THe$/i.test(line)),
+  'The Knave and the Moon', ['Rachel Gillig']), false,
+  'One damaged connector cannot manufacture a missing first title word.');
+assert.equal(coverApproximatelyMatchesWork(knaveNov8Cover,
+  'The Knave and the Moon', ['Rachel Smith']), false,
+  'Author mismatch must still reject damaged title recovery.');
+
 console.log('Inkbound scanner cover regressions passed.');
