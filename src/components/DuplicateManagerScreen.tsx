@@ -32,7 +32,7 @@ interface DuplicateManagerScreenProps {
 
 interface DuplicateGroup {
   id: string;
-  reason: 'isbn' | 'title-author';
+  reason: 'isbn' | 'title-author' | 'edition-variant';
   books: UserBookRecord[];
 }
 
@@ -48,6 +48,21 @@ const normalizeText = (value?: string) =>
   value?.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
 const compactIsbn = (value?: string) => value?.toUpperCase().replace(/[^0-9X]/g, '') ?? '';
+
+// Candidate discovery only: never merge automatically. Strip only recognizable
+// series/edition decorations; retain the author's identity as a hard boundary.
+const comparableWorkTitle = (value?: string): string => {
+  let title = normalizeText(value);
+  title = title.replace(/\s+(?:the\s+)?[a-z0-9 ]+\s+series$/, '').trim();
+  title = title.replace(/\s+(?:the\s+)?[a-z0-9 ]+\s+(?:book|volume|vol)\s+\d+$/, '').trim();
+  return title;
+};
+const editionVariantKey = (book: UserBookRecord): string => {
+  const title = comparableWorkTitle(book.work.title);
+  const author = normalizeText(book.work.author);
+  if (!title || !author || author === 'unknown author') return '';
+  return `${title}::${author}`;
+};
 
 const activeEdition = (book: UserBookRecord) =>
   book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
@@ -167,36 +182,19 @@ const buildDuplicateCandidates = (books: UserBookRecord[]): DuplicateCandidate[]
     });
   });
 
+  // Different ISBNs and formats are often editions of the same work.
+  // Offer a manual review rather than suppressing these matches.
   const titleAuthorMap = new Map<string, Set<string>>();
   books.forEach((book) => {
-    const title = normalizeText(book.work.title);
-    const author = normalizeText(book.work.author);
-    if (!title || !author) return;
-    const key = `${title}::${author}`;
+    const key = editionVariantKey(book);
+    if (!key) return;
     const ids = titleAuthorMap.get(key) ?? new Set<string>();
     ids.add(book.id);
     titleAuthorMap.set(key, ids);
   });
   titleAuthorMap.forEach((ids, key) => {
     if (ids.size < 2) return;
-    const byFormat = new Map<string, UserBookRecord[]>();
-    [...ids].forEach((id) => {
-      const book = books.find((item) => item.id === id);
-      if (!book) return;
-      const format = activeEdition(book)?.format ?? 'unknown';
-      byFormat.set(format, [...(byFormat.get(format) ?? []), book]);
-    });
-    byFormat.forEach((sameFormat, format) => {
-      const compatible = sameFormat.filter((book) => {
-        const ownIsbns = allBookIsbns(book);
-        return sameFormat.some((other) => other.id !== book.id &&
-          (ownIsbns.length === 0 || allBookIsbns(other).length === 0 ||
-            ownIsbns.some((isbn) => allBookIsbns(other).includes(isbn))));
-      });
-      if (compatible.length > 1) candidateSets.push({
-        reason: 'title-author', key: `${key}::${format}`, ids: compatible.map((book) => book.id),
-      });
-    });
+    candidateSets.push({ reason: 'edition-variant', key, ids: [...ids] });
   });
   return candidateSets;
 };
@@ -292,6 +290,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
     const keepBookId = keeperByGroup[group.id] ?? group.books.find((book) => getBookReadingState(book).status === 'finished')?.id ?? group.books[0].id;
     const keeper = group.books.find((book) => book.id === keepBookId) ?? group.books[0];
     const removeBookIds = group.books.filter((book) => book.id !== keeper.id).map((book) => book.id);
+    if (!window.confirm(`Merge ${group.books.length} records into "${keeper.work.title}"? All editions will remain available in Book Details. Reading sessions and other saved data will be preserved through the existing merge workflow.`)) return;
     onMergeGroup({ keepBookId: keeper.id, removeBookIds, mergedBook: mergeDuplicateBooks(keeper, group.books) });
   };
 
@@ -346,7 +345,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
     </section>
 
     <section className="space-y-3">
-      {sectionToggle('duplicates', 'Duplicate cleanup', 'Duplicate Management', 'Inkbound scans exact ISBNs first, then normalized title + author. Nothing is merged automatically—you choose what stays.', `${groups.length} groups`)}
+      {sectionToggle('duplicates', 'Duplicate cleanup', 'Duplicate Management', 'Inkbound finds matching ISBNs and possible editions of the same work, even across formats or title decorations. Review every match; nothing merges automatically.', `${groups.length} groups`)}
       {!collapsedSections.duplicates && <div className="space-y-4">
         <section className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div className="min-w-0"><p className="font-semibold text-[var(--ink-ivory)]">Merge safely</p><p className="mt-1 text-sm text-[var(--ink-muted)]">The copy you choose to keep remains the source of current progress and status. Reading sessions from the removed copies are moved to it, while tags, collections, editions, notes, reviews, quotes, dates, and verified metadata are preserved where appropriate.</p></div></div></section>
 
@@ -355,7 +354,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
         {visibleGroups.length === 0 ? <section className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No duplicate groups to review</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">Your current library scan is clean, or the remaining groups were marked as separate books.</p></section> : <div className="space-y-5">{paginatedGroups.map((group) => {
           const selectedKeeper = keeperByGroup[group.id] ?? group.books.find((book) => getBookReadingState(book).status === 'finished')?.id ?? group.books[0].id;
           return <article key={group.id} className="inkbound-panel rounded-3xl p-5 sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><Copy className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><h2 className="min-w-0 truncate font-serif text-xl font-bold text-[var(--ink-ivory)]">{group.books[0].work.title}</h2></div><p className="mt-1 text-xs text-[var(--ink-muted)]">{group.reason === 'isbn' ? 'Exact ISBN match' : 'Exact normalized title + author'} · {group.books.length} copies</p></div><div className="flex flex-col gap-2 min-[430px]:flex-row"><button type="button" onClick={() => ignoreGroup(group.id)} className="quiet-shelf-secondary-action justify-center">Not Duplicates</button><button type="button" onClick={() => mergeGroup(group)} className="quiet-shelf-primary-action justify-center"><Merge className="h-4 w-4" /> Merge Group</button></div></div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><Copy className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><h2 className="min-w-0 truncate font-serif text-xl font-bold text-[var(--ink-ivory)]">{group.books[0].work.title}</h2></div><p className="mt-1 text-xs text-[var(--ink-muted)]">{group.reason === 'isbn' ? 'Exact ISBN match' : group.reason === 'edition-variant' ? 'Possible editions — review before merging' : 'Exact normalized title + author'} · {group.books.length} copies</p></div><div className="flex flex-col gap-2 min-[430px]:flex-row"><button type="button" onClick={() => ignoreGroup(group.id)} className="quiet-shelf-secondary-action justify-center">Not Duplicates</button><button type="button" onClick={() => mergeGroup(group)} className="quiet-shelf-primary-action justify-center"><Merge className="h-4 w-4" /> Merge Group</button></div></div>
             <div className="mt-5 grid gap-3 lg:grid-cols-2">{group.books.map((book) => {
               const readingState = getBookReadingState(book);
               const edition = readingState.activeEdition ?? activeEdition(book);
