@@ -477,4 +477,25 @@ assert.equal(coverApproximatelyMatchesWork(
   "The Dungeon Anarchist's Cookbook", ['Matt Dinniman'],
 ), false, 'Truncated title recovery must reject a conflicting surname.');
 
+
+// Nov 7 Android trace: OCR retained SHIELD OF, SPARROWS and the complete
+// DEVNEY PERRY credit, but merged passes separated the title lines.
+const shieldAndroidCover = [
+  'Feat th monsters', 'we tiake', 'NEW', 'BONUS', 'CONTENH',
+  'INCUDEDI', 'SHIE D OF', 'SP RROWS', 'EVNEY PERRY',
+  'CONTENT', 'INCUDEDY', 'SPARROWS', 'DEVNEY PERRY',
+  'SHIELD OF',
+];
+assert.equal(coverApproximatelyMatchesWork(shieldAndroidCover,
+  'Shield of Sparrows', ['Devney Perry']), true,
+  'A connector-bearing title split across OCR passes must verify with the complete printed author.');
+assert.equal(coverApproximatelyMatchesWork(
+  ['BONUS', 'CONTENT', 'SPARROWS', 'DEVNEY PERRY'],
+  'Shield of Sparrows', ['Devney Perry']), false,
+  'An author and a single title word must not manufacture the photographed title.');
+assert.equal(coverApproximatelyMatchesWork(
+  ['SHIELD OF', 'SPARROWS', 'OTHER AUTHOR'],
+  'Shield of Sparrows', ['Devney Perry']), false,
+  'Title fragments without independent author evidence must not verify.');
+
 console.log('Inkbound scanner cover regressions passed.');
