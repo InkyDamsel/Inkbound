@@ -56,9 +56,14 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
       {attempted && !loading && !error && !match && !savedSeries && <div className="mt-3 space-y-1"><p className="font-semibold">No verified series match returned</p><p className="text-xs text-stone-400">This does not mean the book is standalone. The catalog data may be missing, unavailable, or insufficient to verify a match. No book metadata was changed.</p></div>}
       {attempted && !loading && !error && !match && savedSeries && <p className="mt-2 text-xs text-stone-400">External catalogs did not independently verify the series. Your saved series information remains available.</p>}
       {match && <div className="mt-3"><p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p></div>}
-      {result && <div className="mt-3 space-y-2"><p>{result.missing.length} verified candidate(s) not in your library.</p>
-        {result.missing.map((candidate, index) => <p key={`${candidate.work.key ?? candidate.work.title}-${index}`}>{candidate.work.title} — {candidate.work.authors.join(', ')} ({candidate.position === null ? 'order unverified' : `book ${candidate.position}`})</p>)}
-        {result.missing.map((candidate, index) => <div key={`add-${candidate.work.key ?? candidate.work.title}-${index}`}>{""}{""}<button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-add', { detail: { title: candidate.work.title, author: candidate.work.authors[0] ?? '' } }))} className="mt-2 rounded-lg border border-[#c5a059]/50 px-3 py-2 text-xs font-semibold text-[#e5c158] hover:bg-[#c5a059]/10">Find edition &amp; add</button></div>)}
+      {result && <div className="mt-3 space-y-2"><div className="flex flex-wrap items-center justify-between gap-3"><p>{result.missing.length} verified candidate(s) not in your library.</p>{result.missing.length > 1 && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: result.missing } }))} className="rounded-xl bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#211128] hover:bg-[#e4c47c]">Add All Missing</button>}</div>
+        {result.missing.map((candidate, index) => <div key={`${candidate.work.key ?? candidate.work.title}-${index}`} className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#c5a059]/20 bg-[#150d1b] p-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {candidate.edition.coverUrl && <img src={candidate.edition.coverUrl} alt="" className="h-20 w-14 rounded-md object-cover shadow-lg" />}
+            <div><p className="font-serif text-base text-[#f3dbad]">{candidate.work.title}</p><p className="text-xs text-stone-400">{candidate.work.authors.join(', ')} · {candidate.position === null ? 'Order unverified' : `Book ${candidate.position}`}</p></div>
+          </div>
+          <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: [candidate] } }))} className="shrink-0 rounded-xl bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#211128] transition hover:bg-[#e4c47c]">Add Book</button>
+        </div>)}
       </div>}
       </section>
     </div>}
