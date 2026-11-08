@@ -67,6 +67,13 @@ export const planSeriesDiscoveryQueries = (input: SeriesQueryPlanInput): SeriesQ
     author ? `${seriesName} ${author}` : '',
     seriesName,
     author ? `inauthor:"${author}" "${seriesName}"` : '',
+    // Announced books may lack an ISBN, cover or publication date. These
+    // bounded discovery probes ask catalogs for upcoming/untitled listings;
+    // the normal identity and series verification gates still decide whether
+    // any returned work is eligible for the roster.
+    author ? `"${seriesName}" ${author} upcoming` : `"${seriesName}" upcoming`,
+    author ? `"${seriesName}" ${author} untitled` : `"${seriesName}" untitled`,
+    author ? `"${seriesName}" ${author} preorder` : '',
   ].filter(Boolean);
 
   return {
