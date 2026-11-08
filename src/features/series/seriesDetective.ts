@@ -392,13 +392,18 @@ const evidenceForVolume = (
   const exactAuthor = !wantedAuthor || (volume.volumeInfo?.authors ?? [])
     .some((author) => detectiveAuthorsCompatible(book.work.author, author));
   const explicitDescriptionSeries = inferDetectiveSeriesFromDescription(volume.volumeInfo?.description);
+  // An explicit numbered series in the catalog title is bibliographic evidence,
+  // not a free-form subtitle guess. It still requires an exact work/author match.
+  const explicitTitleSeries = inferDetectiveSeriesFromTitle(volume.volumeInfo?.title)
+    ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
   const structured = Boolean(
     (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
       const id = membership.seriesId?.trim();
       return Boolean(id && catalog.seriesTitlesById[id]);
     })
     || volume.inkboundBibliographicSeries?.name?.trim()
-    || explicitDescriptionSeries,
+    || explicitDescriptionSeries
+    || (explicitTitleSeries && detectiveSeriesNamesCompatible(explicitTitleSeries.name, metadata.name)),
   );
 
   return scoreDetectiveEvidence({
@@ -608,7 +613,12 @@ export async function detectSeriesForBook(
       recordId: `merged:${normalizeDetectiveText(candidate.work.title)}:${canonicalDetectiveAuthor(candidate.work.authors[0])}`,
       providerId: candidate.seriesProvider ?? candidate.provider,
       providerCount: candidate.providerSources?.length ?? 1,
-      structured: candidate.seriesStructured === true,
+      structured: candidate.seriesStructured === true
+        || [candidate.work.title, candidate.edition.title, candidate.work.subtitle, candidate.edition.subtitle]
+          .some((value) => {
+            const explicit = inferDetectiveSeriesFromTitle(value);
+            return Boolean(explicit && detectiveSeriesNamesCompatible(explicit.name, candidate.seriesName));
+          }),
       exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
         .map(compactDetectiveIsbn)
         .filter(Boolean)
