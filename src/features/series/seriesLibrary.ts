@@ -54,6 +54,13 @@ export const canonicalSeriesIdentity = (value?: string): string => {
   return tokens.filter((token) => !SERIES_CONNECTOR_TOKENS.has(token)).join(' ');
 };
 
+/** Compare normalized series labels without merging unrelated names by substring. */
+export const seriesNamesAreCompatible = (left: string, right: string): boolean => {
+  const a = canonicalSeriesIdentity(left);
+  const b = canonicalSeriesIdentity(right);
+  return Boolean(a && b && a === b);
+};
+
 const seriesId = (name: string, discriminator = '') =>
   `${canonicalSeriesIdentity(name)}::${discriminator}`
     .toLowerCase()
