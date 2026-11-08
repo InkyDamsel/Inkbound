@@ -55,6 +55,8 @@ export interface DetectiveOpenLibraryCandidate {
   seriesName: string;
   position: number | null;
   recordId: string;
+  /** Parsed directly from Open Library work/edition series fields, not inferred from title. */
+  seriesStructured: true;
 }
 
 export interface DetectiveOpenLibraryContextCandidate {
@@ -199,6 +201,7 @@ const mapCandidate = (
     seriesName: metadata.name,
     position: metadata.position,
     recordId: mappedEdition.externalEditionId,
+    seriesStructured: true,
   };
 };
 
