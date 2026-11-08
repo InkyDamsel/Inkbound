@@ -50,6 +50,7 @@ const SCANNER_DEBUG_ENABLED = import.meta.env.MODE === 'scanner-debug';
 
 interface AddBookModalProps {
   currentBookCount: number;
+  initialSearchQuery?: string;
   onClose: () => void;
   onAddBook: (newBook: UserBookRecord) => void;
   onAddMultipleBooks?: (newBooks: UserBookRecord[]) => boolean;
@@ -196,9 +197,9 @@ const today = () => {
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const isCustomOwnershipSelection = (selection: OwnershipSelection): selection is CustomOwnershipSelection => selection.startsWith('custom:');
 
-export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook }) => {
+export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook, initialSearchQuery = '' }) => {
   const [activeTab, setActiveTab] = useState<AddBookTab>('search');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialSearchQuery);
   const [results, setResults] = useState<BookSearchWorkGroup[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
