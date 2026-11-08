@@ -474,6 +474,40 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     }
   }
 
+  // A decorative two-word title may leave only the first two letters of
+  // its first word, while repeatedly printing the second word and the
+  // connecting phrase. This is deliberately stricter than generic fuzzy
+  // matching: require the complete printed author, a repeated connector,
+  // repeated independently readable second title word, and an isolated
+  // prefix of the missing first word. A bare author bibliography result
+  // or a single moon-like fragment must never suffice.
+  if (significantTitleWords.length === 2 && catalogTitleWords.length >= 4
+    && catalogTitleWords[0] === 'the'
+    && catalogTitleWords[2] === 'and'
+    && catalogTitleWords[3] === 'the'
+    && !strongerPhotographedTitleExists) {
+    const completeAuthorPrinted = authors.some((author) => {
+      const parts = words(author);
+      if (parts.length < 2) return false;
+      return parts.every((part) => rawLineWords.some((tokens) =>
+        tokens.join('') === part));
+    });
+    const primary = rawLineWords.filter((tokens, index) =>
+      !titleLineDemoted(lines[index], index));
+    const connectors = primary.filter((tokens) =>
+      tokens.join('') === 'andthe').length;
+    const firstWord = significantTitleWords[0];
+    const secondWord = significantTitleWords[1];
+    const firstPrefix = primary.some((tokens) => tokens.length === 1
+      && tokens[0].length >= 2 && tokens[0].length <= 3
+      && firstWord.startsWith(tokens[0]));
+    const secondHits = primary.filter((tokens) => tokens.length === 1
+      && Math.abs(tokens[0].length - secondWord.length) <= 1
+      && editDistance(tokens[0], secondWord) <= 1).length;
+    if (completeAuthorPrinted && connectors >= 2 && firstPrefix
+      && secondHits >= 2) return true;
+  }
+
   // If the candidate itself has fewer than three distinctive words while the
   // same photograph contains a different, stronger 3+ word title line, treat
   // the short candidate line as secondary cover copy (series/sibling/promo)
