@@ -21,13 +21,13 @@ export interface SeriesDetectionEvidence {
 const GENERIC_SERIES_WORDS = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition', 'novel']);
 
 export const normalizeDetectiveText = (value?: string): string =>
-  value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+  typeof value === 'string' ? value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() : '';
 
 export const compactDetectiveIsbn = (value?: string): string =>
-  value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
+  typeof value === 'string' ? value.replace(/[^0-9X]/gi, '').toUpperCase() : '';
 
 export const comparableDetectiveTitle = (value?: string): string => {
-  const title = value?.trim() ?? '';
+  const title = typeof value === 'string' ? value.trim() : '';
   if (!title) return '';
   const withoutSeriesSuffix = inferDetectiveSeriesFromTitle(title)
     ? title.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim()
@@ -36,7 +36,7 @@ export const comparableDetectiveTitle = (value?: string): string => {
 };
 
 export const canonicalDetectiveAuthor = (value?: string): string => {
-  const raw = value?.trim() ?? '';
+  const raw = typeof value === 'string' ? value.trim() : '';
   if (!raw) return '';
 
   const commaIndex = raw.indexOf(',');
@@ -62,7 +62,7 @@ export const canonicalDetectiveAuthor = (value?: string): string => {
 };
 
 export const detectiveAuthorCandidates = (value?: string): string[] => {
-  const raw = value?.trim() ?? '';
+  const raw = typeof value === 'string' ? value.trim() : '';
   if (!raw) return [];
 
   const whole = canonicalDetectiveAuthor(raw);
@@ -121,7 +121,7 @@ const CARDINAL_POSITIONS: Record<string, number> = {
 const POSITION_WORDS = { ...ORDINAL_POSITIONS, ...CARDINAL_POSITIONS };
 
 export const parseDetectivePositionToken = (value?: string): number | null => {
-  const token = value?.trim().toLowerCase() ?? '';
+  const token = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (!token) return null;
   const numeric = Number(token);
   if (Number.isFinite(numeric) && numeric >= 0) return numeric;
@@ -138,7 +138,7 @@ const GENERIC_SUBTITLE_WORDS = new Set([
 ]);
 
 export const plausibleDetectiveSeriesSubtitle = (value?: string): string | null => {
-  const candidate = value?.trim().replace(/\s+/g, ' ') ?? '';
+  const candidate = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
   if (!candidate) return null;
   const identity = canonicalDetectiveSeries(candidate);
   const words = identity.split(' ').filter(Boolean);
@@ -151,7 +151,7 @@ export const inferKnownDetectiveSeriesFromText = (
   value: string | undefined,
   wantedSeriesName: string,
 ): { name: string; position: number | null } | null => {
-  const text = value?.trim();
+  const text = typeof value === 'string' ? value.trim() : '';
   if (!text) return null;
   const parts = text.split(':');
   const candidate = (parts.length > 1 ? parts[parts.length - 1] : text).trim();
@@ -168,7 +168,7 @@ export const inferKnownDetectiveSeriesFromText = (
 export const inferDetectiveSeriesFromDescription = (
   value?: string,
 ): { name: string; position: number | null } | null => {
-  const raw = value?.replace(/\s+/g, ' ').trim();
+  const raw = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
   if (!raw) return null;
 
   const position = detectivePositionPattern();
@@ -248,7 +248,7 @@ export const inferKnownDetectiveSeriesFromDescription = (
 export const inferDetectiveSeriesFromTitle = (
   value?: string,
 ): { name: string; position: number | null } | null => {
-  const text = value?.trim();
+  const text = typeof value === 'string' ? value.trim() : '';
   if (!text) return null;
   const suffix = text.match(/[\[(]([^\])]+)[\])]\s*$/)?.[1]?.trim();
   const candidate = suffix ?? text.split(':').slice(-1)[0]?.trim();
@@ -269,7 +269,7 @@ export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: 
   const identifiers = [...new Set(
     book.editions
       .flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn])
-      .map((value) => value?.trim())
+      .map((value) => typeof value === 'string' ? value.trim() : '')
       .filter((value): value is string => Boolean(value)),
   )];
   return {
