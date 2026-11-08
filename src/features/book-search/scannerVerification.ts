@@ -126,9 +126,14 @@ function singleWordTitleAuthorIsIndependent(lines: string[], title: string, auth
     if (parts.length < 2) return false;
     const surname = parts[parts.length - 1];
     if (surname === titleWord) return false;
-    const given = parts.slice(0, -1).filter((part) => part.length >= 3);
-    return given.length > 0 && given.some((part) =>
-      tokens.includes(part) || (part.length >= 5 && joined.includes(part)));
+    const given = parts.slice(0, -1);
+    if (!given.length) return false;
+    // Initialed authors are common on covers (J.T. GEISSINGER).
+    // Require each initial to be explicitly present in the OCR; do not
+    // manufacture it from unrelated words.
+    return given.every((part) => part.length <= 2
+      ? tokens.includes(part)
+      : tokens.includes(part) || (part.length >= 5 && joined.includes(part)));
   });
 }
 
