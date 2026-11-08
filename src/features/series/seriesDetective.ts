@@ -87,6 +87,8 @@ const knownSeriesMetadataFromCatalogWork = (
 
 
 
+const safeDetectiveTrim = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+
 const hardcoverContextCandidates = (
   groups: SeriesDetectiveWorkGroup[],
   wantedSeriesName: string,
@@ -100,9 +102,9 @@ const hardcoverContextCandidates = (
       const seriesAware = edition as DetectiveSeriesAwareEdition;
       const metadata = wantedSeriesName
         ? knownSeriesMetadataFromCatalogWork(work, edition, wantedSeriesName)
-        : seriesAware.seriesName?.trim()
+        : safeDetectiveTrim(seriesAware.seriesName)
           ? {
-              name: seriesAware.seriesName.trim(),
+              name: safeDetectiveTrim(seriesAware.seriesName),
               position: typeof seriesAware.seriesOrder === 'number' && Number.isFinite(seriesAware.seriesOrder)
                 ? seriesAware.seriesOrder
                 : null,
@@ -138,7 +140,7 @@ const prhContextCandidates = (
   work.editions.flatMap((edition) => {
     const exactAuthor = !canonicalDetectiveAuthor(wantedAuthor)
       || work.authors.some((author) => detectiveAuthorsCompatible(wantedAuthor, author));
-    const seriesName = edition.seriesName?.trim();
+    const seriesName = safeDetectiveTrim(edition.seriesName);
     const structuredSeriesMatch = Boolean(
       wantedSeriesName
       && seriesName
@@ -316,7 +318,7 @@ export const findLibraryBookForCandidate = (
     // the same work again because one catalog says "Keira Cass" and another
     // says "Kiera Cass".
     if (candidateTitle && comparableDetectiveTitle(book.work.title) === candidateTitle) return true;
-    if (candidate.work.key && book.work.externalWorkId?.trim() === candidate.work.key) return true;
+    if (candidate.work.key && safeDetectiveTrim(book.work.externalWorkId) === candidate.work.key) return true;
     if (!candidateIsbns.length) return false;
     return book.editions.some((edition) =>
       [edition.isbn13, edition.isbn10, edition.isbn]
@@ -384,11 +386,11 @@ const seriesMetadata = (
   const info = volume.volumeInfo?.seriesInfo;
   const memberships = info?.volumeSeries ?? [];
   const named = memberships.find((membership) => {
-    const id = membership.seriesId?.trim();
+    const id = safeDetectiveTrim(membership.seriesId);
     return Boolean(id && catalog.seriesTitlesById[id]);
   });
   const membership = named ?? memberships[0];
-  const seriesId = named?.seriesId?.trim();
+  const seriesId = safeDetectiveTrim(named?.seriesId);
   const name = seriesId ? catalog.seriesTitlesById[seriesId] : undefined;
   const positionCandidate = membership?.orderNumber
     ?? membership?.issue?.find((issue) => typeof issue.issueOrderNumber === 'number')?.issueOrderNumber;
@@ -400,9 +402,9 @@ const seriesMetadata = (
   if (name) return { name, position };
 
   const bibliographic = volume.inkboundBibliographicSeries;
-  if (bibliographic?.name?.trim()) {
+  if (safeDetectiveTrim(bibliographic?.name)) {
     return {
-      name: bibliographic.name.trim(),
+      name: safeDetectiveTrim(bibliographic.name),
       position: typeof bibliographic.position === 'number' && Number.isFinite(bibliographic.position)
         ? bibliographic.position
         : position,
@@ -427,7 +429,7 @@ const structuredSeriesPosition = (
 ): number | null => {
   const info = volume.volumeInfo?.seriesInfo;
   const membership = (info?.volumeSeries ?? []).find((candidate) => {
-    const id = candidate.seriesId?.trim();
+    const id = safeDetectiveTrim(candidate.seriesId);
     return Boolean(id && confirmedSeriesIds.has(id));
   });
   if (!membership) return null;
@@ -444,7 +446,7 @@ const volumeUsesConfirmedSeriesId = (
   volume: DetectiveGoogleVolume,
   confirmedSeriesIds: Set<string>,
 ): boolean => (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
-  const id = membership.seriesId?.trim();
+  const id = safeDetectiveTrim(membership.seriesId);
   return Boolean(id && confirmedSeriesIds.has(id));
 });
 
@@ -504,10 +506,10 @@ const evidenceForVolume = (
     ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
   const structured = Boolean(
     (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
-      const id = membership.seriesId?.trim();
+      const id = safeDetectiveTrim(membership.seriesId);
       return Boolean(id && catalog.seriesTitlesById[id]);
     })
-    || volume.inkboundBibliographicSeries?.name?.trim()
+    || safeDetectiveTrim(volume.inkboundBibliographicSeries?.name)
     || explicitDescriptionSeries
     || (explicitTitleSeries && detectiveSeriesNamesCompatible(explicitTitleSeries.name, metadata.name)),
   );
@@ -742,7 +744,7 @@ export async function detectSeriesForBook(
     return {
       name: match.seriesName,
       position: match.position,
-      discoveryAuthor: match.authors.find((author) => author?.trim())?.trim(),
+      discoveryAuthor: match.authors.find((author) => safeDetectiveTrim(author)) && safeDetectiveTrim(match.authors.find((author) => safeDetectiveTrim(author))),
     };
   }
 
@@ -752,11 +754,11 @@ export async function detectSeriesForBook(
 const detectiveCoverUrl = (volume: DetectiveGoogleVolume): string | undefined => {
   const links = volume.volumeInfo?.imageLinks;
   const source = links?.extraLarge ?? links?.large ?? links?.medium ?? links?.small ?? links?.thumbnail ?? links?.smallThumbnail;
-  return source?.replace(/^http:/, 'https:').replace('&edge=curl', '').replace('zoom=1', 'zoom=2');
+  return (typeof source === 'string' ? source : undefined)?.replace(/^http:/, 'https:').replace('&edge=curl', '').replace('zoom=1', 'zoom=2');
 };
 
 const detectivePublicationYear = (value?: string): number => {
-  const match = value?.match(/\b(1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b/);
+  const match = (typeof value === 'string' ? value : '') .match(/\b(1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b/);
   return match ? Number(match[0]) : 0;
 };
 
@@ -770,7 +772,7 @@ const mergeCandidateFromGoogleVolume = (
     ? knownSeriesMetadata(volume, catalog, wantedSeriesName)
     : seriesMetadata(volume, catalog);
   const info = volume.volumeInfo;
-  const title = info?.title?.trim();
+  const title = safeDetectiveTrim(info?.title);
   if (!title) return null;
 
   const format: Format = volume.saleInfo?.isEbook ? 'ebook' : 'hardcover';
@@ -780,7 +782,7 @@ const mergeCandidateFromGoogleVolume = (
   const exactAuthor = !authorIsUsable || authors.some((name) => detectiveAuthorsCompatible(wantedAuthor, name));
   const hasStructuredSeries = Boolean(
     (info?.seriesInfo?.volumeSeries ?? []).some((membership) => {
-      const id = membership.seriesId?.trim();
+      const id = safeDetectiveTrim(membership.seriesId);
       return Boolean(id && catalog.seriesTitlesById[id]);
     }),
   );
@@ -861,7 +863,7 @@ const mergeCandidateFromGoogleVolume = (
     seriesStructured: metadata
       ? Boolean(
           hasStructuredSeries
-          || (volume.inkboundBibliographicSeries?.name?.trim()
+          || (safeDetectiveTrim(volume.inkboundBibliographicSeries?.name)
             && volume.inkboundBibliographicSeries.explicit === true)
           || inferDetectiveSeriesFromDescription(info?.description)
         )
@@ -965,7 +967,7 @@ export async function findMissingSeriesBooks(
         ) return;
 
         (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
-          const id = membership.seriesId?.trim();
+          const id = safeDetectiveTrim(membership.seriesId);
           if (id) confirmedGoogleSeriesIds.add(id);
         });
       });
