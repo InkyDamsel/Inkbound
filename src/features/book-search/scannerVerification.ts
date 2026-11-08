@@ -337,6 +337,12 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   ];
   const authorVerified = authors.some((author) => {
     const authorWords = words(author);
+    // OCR can print a complete author credit without a word boundary
+    // (AYANAGRAY). A full given-name + surname match is independent
+    // author evidence; do not require the surname as a separate token.
+    const fullAuthor = authorWords.join('');
+    if (authorWords.length >= 2 && fullAuthor.length >= 8
+      && authorCandidates.includes(fullAuthor)) return true;
     const surname = authorWords[authorWords.length - 1] ?? '';
     if (surname.length < 3) return false;
     // REID/KING/LAKE must be allowed, but short surnames must match exactly.
