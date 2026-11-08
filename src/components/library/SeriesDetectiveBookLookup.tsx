@@ -58,6 +58,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
       {match && <div className="mt-3"><p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p></div>}
       {result && <div className="mt-3 space-y-2"><p>{result.missing.length} verified candidate(s) not in your library.</p>
         {result.missing.map((candidate, index) => <p key={`${candidate.work.key ?? candidate.work.title}-${index}`}>{candidate.work.title} — {candidate.work.authors.join(', ')} ({candidate.position === null ? 'order unverified' : `book ${candidate.position}`})</p>)}
+        {result.missing.map((candidate, index) => <div key={`add-${candidate.work.key ?? candidate.work.title}-${index}`}>{""}{""}<button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-add', { detail: { title: candidate.work.title, author: candidate.work.authors[0] ?? '' } }))} className="mt-2 rounded-lg border border-[#c5a059]/50 px-3 py-2 text-xs font-semibold text-[#e5c158] hover:bg-[#c5a059]/10">Find edition &amp; add</button></div>)}
       </div>}
       </section>
     </div>}
