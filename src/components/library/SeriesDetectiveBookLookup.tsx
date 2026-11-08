@@ -24,6 +24,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
   const [result, setResult] = useState<SeriesDetectiveResult | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [run, setRun] = useState(0);
+  const [applied, setApplied] = useState(false);
 
   // Canonical resolver: manual corrections first, explicit metadata second.
   const overrides = useMemo(() => readSeriesOverrides(), [book.id, open]);
@@ -42,7 +43,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
   overridesRef.current = overrides;
 
   useEffect(() => {
-    setOpen(false); setMatch(null); setResult(null); setAttempted(false); setError(''); setRun(0);
+    setOpen(false); setMatch(null); setResult(null); setAttempted(false); setError(''); setRun(0); setApplied(false);
   }, [book.id]);
 
   useEffect(() => {
@@ -101,7 +102,17 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
       {savedSeries && <p className="mt-3 text-sm">Saved series: <strong className="text-[#e5c158]">{savedSeries.name}</strong> · {savedSeries.position === null ? 'Order not recorded' : `Book ${savedSeries.position}`} <span className="text-xs text-stone-400">(from your library)</span></p>}
       {attempted && !loading && !error && !match && !savedSeries && <div className="mt-3 space-y-1"><p className="font-semibold">No verified series match returned</p><p className="text-xs text-stone-400">This does not mean the book is standalone. The catalog data may be missing, unavailable, or insufficient to verify a match. No book metadata was changed.</p></div>}
       {attempted && !loading && !error && !match && savedSeries && <p className="mt-2 text-xs text-stone-400">External catalogs did not independently verify the series. Your saved series information remains available.</p>}
-      {match && <div className="mt-3"><p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p></div>}
+      {match && <div className="mt-3 space-y-2">
+        <p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p>
+        {(!savedSeries || (savedSeries.name === match.name && savedSeries.position === null && match.position !== null)) && !applied && <button type="button"
+          className="rounded-lg border border-[#c5a059] bg-[#c5a059]/15 px-3 py-2 text-sm font-semibold text-[#f3dbad]"
+          onClick={() => {
+            if (!window.confirm(`Save “${match.name}”${match.position === null ? '' : ` (Book ${match.position})`} to this book? Existing series information will be preserved.`)) return;
+            window.dispatchEvent(new CustomEvent('inkbound:series-detective-apply', { detail: { bookId: book.id, seriesName: match.name, position: match.position } }));
+            setApplied(true);
+          }}>Use this series</button>}
+        {applied && <p role="status" className="text-xs text-[#e5c158]">Series update requested. Check Book Details for the saved metadata.</p>}
+      </div>}
       {roster && <SeriesDetectiveRoster entries={roster} />}
       </section>
     </div>}
