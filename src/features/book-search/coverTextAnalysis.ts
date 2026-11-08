@@ -805,6 +805,12 @@ export function rankAuthorHints(
     if (words.some((word) => titleSet.has(word))) score -= 8;
     score += words.filter((word) => word.length >= 3 && capsWords.has(word)).length * 2;
     if (capsTokens.some((tokens) => tokens.join(' ') === key)) score += 4;
+    // A complete, directly printed three-word credited name is stronger
+    // evidence than a two-word endorsement or OCR-fragmented blurb author.
+    // This is ranking only; the verifier still requires title + author proof.
+    if (words.length === 3 && words.every((word) => word.length >= 4)
+      && capsTokens.some((tokens) => tokens.join(' ') === key)
+      && !words.some(isCoverCopyWord) && !words.some(promoLike)) score += 12;
     if (words.length >= 3 && words.slice(0, -1).every((word) => word.length <= 2)
       && words.at(-1)!.length >= 4) score += 3;
     // A whole name is rarely shorter than ~7 letters; a lone surname fragment
