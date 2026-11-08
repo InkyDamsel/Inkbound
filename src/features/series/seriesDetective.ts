@@ -33,6 +33,7 @@ import {
   searchDetectiveOpenLibraryContext,
   searchDetectiveOpenLibrarySeries,
   type DetectiveOpenLibraryCandidate,
+  type DetectiveOpenLibraryContextCandidate,
 } from './seriesDetectiveOpenLibraryApi';
 import {
   mergeDetectiveCandidates,
@@ -203,7 +204,7 @@ const hasMergedKnownSeriesContext = (
 };
 
 const openLibrarySeriesHasBibliographicContext = (
-  candidate: DetectiveOpenLibraryCandidate,
+  candidate: DetectiveOpenLibraryCandidate | DetectiveOpenLibraryContextCandidate,
 ): boolean => {
   const seriesName = candidate.seriesName?.trim();
   if (!seriesName) return false;
