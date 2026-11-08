@@ -57,9 +57,6 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
               {readingStatusLabelForBook(book)} · {ownershipLabel(book.ownership)} · {getCanonicalProgressPercentage(book)}% read
             </p>
           )}
-          {entry.kind === 'library-only' && (
-            <p className="mt-1 text-[11px] text-stone-400">In your library; no catalog listed this book, which does not mean it is wrong.</p>
-          )}
 
         </div>
         <div className="flex shrink-0 flex-col gap-2">
