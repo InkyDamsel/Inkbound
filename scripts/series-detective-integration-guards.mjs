@@ -33,7 +33,7 @@ const protectedPaths = [
 try {
   const base = 'origin/fix/scanner-debug-visibility-2026-11-05';
   execFileSync('git', ['rev-parse', '--verify', base], { stdio: 'pipe' });
-  const changed = execFileSync('git', ['diff', '--name-only', base + '...HEAD'], { encoding: 'utf8' }).trim().split('\\n');
+  const changed = execFileSync('git', ['diff', '--name-only', base + '...HEAD'], { encoding: 'utf8' }).trim().split('\n');
   const touched = changed.filter((name) => protectedPaths.some((path) => name === path || (path.endsWith('/') && name.startsWith(path))));
   assert.deepEqual(touched, [], `Protected Search/scanner paths changed: ${touched.join(', ')}`);
 } catch (error) {
