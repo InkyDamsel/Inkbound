@@ -230,15 +230,29 @@ export default function App() {
           && normalize(book.work.author).includes(normalize(candidate.work.authors[0])));
       });
       if (!eligible.length) { showToast('These books are already in your library.'); return; }
-      const additions = eligible.map((candidate) => createBookFromSearchEdition({
-        work: candidate.work,
-        edition: {
-          ...candidate.edition,
-          seriesName: candidate.seriesName,
-          ...(candidate.position !== null ? { seriesOrder: candidate.position } : {}),
-        },
-        status: 'tbr',
-      }));
+      const additions = eligible.map((candidate) => {
+        const created = createBookFromSearchEdition({
+          work: candidate.work,
+          edition: {
+            ...candidate.edition,
+            seriesName: candidate.seriesName,
+            ...(candidate.position !== null ? { seriesOrder: candidate.position } : {}),
+          },
+          status: 'tbr',
+        });
+        // Catalog hardening may discard edition-level series fields. The
+        // Detective's verified series belongs on the canonical work record.
+        return {
+          ...created,
+          work: {
+            ...created.work,
+            ...(candidate.seriesName?.trim() ? { seriesName: candidate.seriesName.trim() } : {}),
+            ...(typeof candidate.position === 'number' && Number.isFinite(candidate.position)
+              ? { seriesOrder: candidate.position }
+              : { seriesOrder: undefined }),
+          },
+        };
+      });
       const next = [...additions, ...current];
       if (commitCanonicalBooks(next) !== next) { showToast('Could not save books. Your library was not changed.'); return; }
       showToast(`Added ${additions.length} ${additions.length === 1 ? 'book' : 'books'} to Inkbound.`);
