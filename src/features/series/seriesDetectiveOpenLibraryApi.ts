@@ -338,7 +338,7 @@ export async function searchDetectiveOpenLibraryContext(
       ) return [];
 
       const docs = work.editions?.docs?.length ? work.editions.docs : [{}];
-      const preferred = docs.find((edition) => parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series)))
+      const preferred = docs.find((edition) => parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series, seriesSubjects(work.subject))))
         ?? docs[0];
       const title = (preferred.title ?? work.title)?.trim();
       if (!title) return [];
