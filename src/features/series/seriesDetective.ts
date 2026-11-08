@@ -1057,9 +1057,15 @@ export async function findMissingSeriesBooks(
     };
 
     mergedProviderCandidates.forEach((candidate) => {
+      // Fail closed at the final actionable-roster boundary. A matching series
+      // phrase in a title, subtitle, or description is not proof of membership.
+      // The catalog must supply structured membership or independent provider
+      // corroboration. This applies equally to single- and multi-author series.
       const contextual = !candidate.seriesName && hasMergedKnownSeriesContext(candidate, seriesName);
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
       if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) return;
+      const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
+      if (!candidate.seriesStructured && !independentlyCorroborated) return;
 
       addCandidate({
         work: candidate.work,
