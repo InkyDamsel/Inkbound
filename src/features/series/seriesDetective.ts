@@ -644,7 +644,7 @@ export async function detectSeriesForBook(
     sourceId: 'open-library',
     recordId: `open-library:${candidate.recordId}`,
     providerId: 'open-library',
-    structured: openLibrarySeriesHasBibliographicContext(candidate),
+    structured: candidate.seriesStructured === true,
     exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
       .map(compactDetectiveIsbn)
       .filter(Boolean)
@@ -680,7 +680,7 @@ export async function detectSeriesForBook(
       position: candidate.position,
       provider: 'open-library',
       seriesProvider: 'open-library',
-      seriesStructured: openLibrarySeriesHasBibliographicContext(candidate),
+      seriesStructured: candidate.seriesStructured === true,
     });
   });
 
