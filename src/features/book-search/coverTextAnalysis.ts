@@ -789,6 +789,19 @@ export function rankAuthorHints(
     if (new Set(words).size < words.length) score -= 20;
     if (words.some(isCoverCopyWord)) score -= 12;
     if (COVER_COPY_COMPACT_END.test(words.join(''))) score -= 12;
+    // Native OCR splits marketing banners ("THE INSTANT #1 BESTSELLER")
+    // into plausible two-word author hints such as "THH INSTAN".
+    // Demote those hints even when their words are misspelled. This only
+    // changes query order; it never manufactures an author or accepts a work.
+    const promoRoots = ['instant', 'bestsell', 'copies', 'million', 'york', 'times'];
+    const promoLike = (word: string): boolean => promoRoots.some((root) =>
+      word.length >= 4 && (root.startsWith(word) || word.startsWith(root)
+        || (word.length >= 5 && lightEditDistance(word, root) <= 2)));
+    if (words.some(promoLike)) score -= 24;
+    // Broken first/last names can still be the best available OCR evidence.
+    // Prefer a compact, non-promotional name pair over banner fragments.
+    if (words.length === 2 && words.every((word) => word.length >= 4)
+      && !words.some(promoLike) && !words.some(isCoverCopyWord)) score += 3;
     if (words.some((word) => titleSet.has(word))) score -= 8;
     score += words.filter((word) => word.length >= 3 && capsWords.has(word)).length * 2;
     if (capsTokens.some((tokens) => tokens.join(' ') === key)) score += 4;
