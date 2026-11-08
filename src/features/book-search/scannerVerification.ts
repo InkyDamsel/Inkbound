@@ -525,6 +525,24 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     });
   }
 
+  // A two-word title with a printed connector can be split across OCR
+  // treatments: SHIELD OF / SPARROWS. The verifier must not require the
+  // fragments to remain adjacent after OCR passes are merged. Require the
+  // entire credited author to be printed on one line, the first title word
+  // plus connector on a primary line, and the second distinctive word on a
+  // separate primary line. This does not accept author-only bibliography hits.
+  if (significantTitleWords.length === 2 && catalogTitleWords.length === 3
+    && weakTitleWords.has(catalogTitleWords[1])) {
+    const completeAuthorLine = authors.some((author) => {
+      const credit = words(author).join('');
+      return credit.length >= 8 && rawLineWords.some((tokens) => tokens.join('') === credit);
+    });
+    const firstWithConnector = catalogTitleWords.slice(0, 2).join('');
+    const firstSeen = rawCompactLines.some((line) => line === firstWithConnector);
+    const secondSeen = rawCompactLines.some((line) => line === catalogTitleWords[2]);
+    if (completeAuthorLine && firstSeen && secondSeen) return true;
+  }
+
   if (significantTitleWords.length === 2) {
     // A photographed multi-line title can contain a short connector (e.g.
     // KING / OF / GLUTTONY). Require the ENTIRE catalog title, including
