@@ -411,7 +411,14 @@ const seriesMetadata = (
 
   return inferDetectiveSeriesFromDescription(volume.volumeInfo?.description)
     ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.title)
-    ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
+    ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle)
+    // A plausible bare subtitle is only candidate evidence. evidenceForVolume
+    // deliberately does not classify it as structured, so verification still
+    // requires independent corroboration rather than accepting one guess.
+    ?? (() => {
+      const subtitle = plausibleDetectiveSeriesSubtitle(volume.volumeInfo?.subtitle);
+      return subtitle ? { name: subtitle, position: null } : null;
+    })();
 };
 
 const structuredSeriesPosition = (
