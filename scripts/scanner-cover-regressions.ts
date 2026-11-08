@@ -14,6 +14,18 @@ assert.equal(coverMatchesWork(['MOON', 'THE KNAVE AND THE MOON', 'R ACH EL', 'GI
   'Exact verifier also rejects title/author identity collisions.');
 assert.equal(coverApproximatelyMatchesWork(['CARRIE', 'STEPHEN KING'], 'Carrie', ['Stephen King']), true,
   'Single-word titles with independent full author evidence still pass.');
+// Nov 7 device trace: marketing banner fragments displaced the damaged
+// credited name before the bounded catalog search could use it.
+const bannerRankedAuthors = rankAuthorHints(
+  ['THH INSTAN', 'EX BESTSEU', 'R ACH E', 'GLLIG', 'MOON', 'KNA KE'],
+  ['THH INSTAN', 'EX BESTSEU', 'rache gllig', 'andth rache'],
+  ['moon', 'knake'],
+);
+assert.ok(bannerRankedAuthors.indexOf('rache gllig') >= 0
+  && bannerRankedAuthors.indexOf('rache gllig') < bannerRankedAuthors.indexOf('THH INSTAN')
+  && bannerRankedAuthors.indexOf('rache gllig') < bannerRankedAuthors.indexOf('EX BESTSEU'),
+  'Damaged marketing-banner text must not outrank a non-promotional author-shaped hint.');
+
 // Real physical-cover OCR: catalog retrieval already found this work, but
 // decorative letters split the author and damaged both title words.
 const knaveMoonCover = [
