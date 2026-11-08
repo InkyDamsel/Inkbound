@@ -744,7 +744,7 @@ export async function detectSeriesForBook(
     return {
       name: match.seriesName,
       position: match.position,
-      discoveryAuthor: match.authors.find((author) => safeDetectiveTrim(author)) && safeDetectiveTrim(match.authors.find((author) => safeDetectiveTrim(author))),
+      discoveryAuthor: safeDetectiveTrim(match.authors.find((author) => safeDetectiveTrim(author))) || undefined,
     };
   }
 
@@ -758,7 +758,7 @@ const detectiveCoverUrl = (volume: DetectiveGoogleVolume): string | undefined =>
 };
 
 const detectivePublicationYear = (value?: string): number => {
-  const match = (typeof value === 'string' ? value : '') .match(/\b(1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b/);
+  const match = (typeof value === 'string' ? value : '').match(/\b(1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b/);
   return match ? Number(match[0]) : 0;
 };
 
