@@ -58,6 +58,7 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
             <div key={`${candidate.work.key ?? candidate.work.title}-${index}`} className="rounded-xl border border-[var(--ink-border-subtle)] p-3">
               <div className="text-sm font-medium text-[var(--ink-ivory)]">{candidate.work.title}</div>
               <div className="text-xs text-[var(--ink-muted)]">{candidate.work.authors.join(', ') || 'Author unverified'} · {candidate.position === null ? 'Order unverified' : `Book ${candidate.position}`}</div>
+              <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-add', { detail: { title: candidate.work.title, author: candidate.work.authors[0] ?? '' } }))} className="mt-2 rounded-lg border border-[#c5a059]/50 px-3 py-2 text-xs font-semibold text-[#e5c158] hover:bg-[#c5a059]/10">Find edition &amp; add</button>
             </div>
           ))}
         </div>
