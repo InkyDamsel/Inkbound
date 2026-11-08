@@ -257,9 +257,35 @@ export default function App() {
       if (commitCanonicalBooks(next) !== next) { showToast('Could not save books. Your library was not changed.'); return; }
       showToast(`Added ${additions.length} ${additions.length === 1 ? 'book' : 'books'} to Inkbound.`);
     };
+    const applyDetectiveSeries = (event: Event) => {
+      const detail = (event as CustomEvent<{ bookId: string; seriesName: string; position: number | null }>).detail;
+      if (!detail?.bookId || !detail.seriesName?.trim()) return;
+      const current = booksRef.current;
+      const target = current.find((book) => book.id === detail.bookId);
+      if (!target) { showToast('Book not found. Series was not changed.'); return; }
+      // Explicit user confirmation is required by the Detective UI. Never
+      // overwrite a manually recorded series or series position.
+      if (target.work.seriesName?.trim() && target.work.seriesName.trim() !== detail.seriesName.trim()) {
+        showToast('This book already has a different series. No changes made.');
+        return;
+      }
+      const position = typeof detail.position === 'number' && Number.isFinite(detail.position)
+        ? detail.position : null;
+      const next = current.map((book) => book.id === detail.bookId ? {
+        ...book,
+        work: {
+          ...book.work,
+          seriesName: book.work.seriesName?.trim() || detail.seriesName.trim(),
+          ...(book.work.seriesOrder == null && position !== null ? { seriesOrder: position } : {}),
+        },
+      } : book);
+      if (commitCanonicalBooks(next) !== next) { showToast('Could not save series metadata.'); return; }
+      showToast('Series metadata saved to your library.');
+    };
+    window.addEventListener('inkbound:series-detective-apply', applyDetectiveSeries);
     window.addEventListener('inkbound:series-detective-save', addDetectiveBooks);
     window.addEventListener('inkbound:series-detective-add', openCandidate);
-    return () => { window.removeEventListener('inkbound:series-detective-add', openCandidate); window.removeEventListener('inkbound:series-detective-save', addDetectiveBooks); };
+    return () => { window.removeEventListener('inkbound:series-detective-add', openCandidate); window.removeEventListener('inkbound:series-detective-save', addDetectiveBooks); window.removeEventListener('inkbound:series-detective-apply', applyDetectiveSeries); };
   }, []);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sessionMilestone, setSessionMilestone] = useState<SessionMilestoneNotice | null>(null);
