@@ -842,6 +842,29 @@ assert.equal(multiAuthorSeries.length, 1);
 assert.equal(multiAuthorSeries[0].books.length, 2);
 assert.equal(multiAuthorSeries[0].author, 'Various authors');
 
+// Shared-world series may span many authors. Numbered, non-conflicting
+// metadata should group them without replacing each book's author.
+const sharedWorldBooks = [
+  ['Lethal', 'A.L. Maruga', 1],
+  ['Writhe', 'K.T. Maddan', 2],
+  ['Exposed', 'Audrey Rush', 3],
+  ['Lonely', 'Harleigh Beck', 4],
+  ['Atrocity', 'Nova Kane', 5],
+].map(([title, author, position], index) => ({
+  id: `shared-world-${index}`,
+  work: { title, author, seriesName: 'Wellard Asylum Series', seriesOrder: position, publicationYear: 2024 },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: `shared-world-edition-${index}`, format: 'ebook' }],
+  activeEditionId: `shared-world-edition-${index}`,
+} as unknown as UserBookRecord));
+const sharedWorldSeries = buildSeriesLibrary(sharedWorldBooks);
+assert.equal(sharedWorldSeries.length, 1, 'Verified numbered multi-author series should stay together.');
+assert.equal(sharedWorldSeries[0].books.length, 5);
+assert.equal(sharedWorldSeries[0].author, 'Various authors');
+assert.deepEqual(sharedWorldSeries[0].books.map(({ book }) => book.work.author),
+  ['A.L. Maruga', 'K.T. Maddan', 'Audrey Rush', 'Harleigh Beck', 'Nova Kane']);
+
 // Same-name series from different authors remain separate when their explicit
 // installment positions conflict. This prevents a generic reused series name
 // from becoming a cross-author identity by accident.
