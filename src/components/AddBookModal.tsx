@@ -311,66 +311,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [scannerPhotoCameraOpen, setScannerPhotoCameraOpen] = useState(false);
   const [scannerPhotoBusy, setScannerPhotoBusy] = useState(false);
   const coverFileInputRef = useRef<HTMLInputElement | null>(null);
-  const rearCoverVideoRef = useRef<HTMLVideoElement | null>(null);
-  const rearCoverStreamRef = useRef<MediaStream | null>(null);
-  const [rearCoverOpen, setRearCoverOpen] = useState(false);
-  const [rearCoverBusy, setRearCoverBusy] = useState(false);
-  const closeRearCoverCamera = () => {
-    rearCoverStreamRef.current?.getTracks().forEach((track) => track.stop());
-    rearCoverStreamRef.current = null;
-    setRearCoverOpen(false);
-  };
-  const openRearCoverCamera = async () => {
-    if (rearCoverBusy) return;
-    setActiveTab('scan');
-    setRearCoverBusy(true);
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera API unavailable');
-      // An exact rear-facing constraint fails safely rather than silently
-      // opening the selfie camera. The file picker remains an explicit fallback.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      });
-      rearCoverStreamRef.current = stream;
-      setRearCoverOpen(true);
-    } catch {
-      setScannerError('Rear camera unavailable. Use the photo picker instead; Inkbound will not switch to the front camera.');
-    } finally {
-      setRearCoverBusy(false);
-    }
-  };
-  const captureRearCover = async () => {
-    const video = rearCoverVideoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) {
-      setScannerError('Rear camera is still starting. Please try again.');
-      return;
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    context.drawImage(video, 0, 0);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.94));
-    if (!blob) { setScannerError('Could not capture cover photo. Please retry.'); return; }
-    closeRearCoverCamera();
-    await recoverBookFromCover(new File([blob], 'book-cover.jpg', { type: 'image/jpeg' }));
-  };
-  useEffect(() => {
-    if (!rearCoverOpen || !rearCoverVideoRef.current || !rearCoverStreamRef.current) return;
-    rearCoverVideoRef.current.srcObject = rearCoverStreamRef.current;
-    void rearCoverVideoRef.current.play().catch(() => {
-      setScannerError('Could not start rear camera preview.');
-      rearCoverStreamRef.current?.getTracks().forEach((track) => track.stop());
-      rearCoverStreamRef.current = null;
-      setRearCoverOpen(false);
-    });
-  }, [rearCoverOpen]);
-  useEffect(() => () => {
-    rearCoverStreamRef.current?.getTracks().forEach((track) => track.stop());
-  }, []);
-
   const [photoIsbnChoices, setPhotoIsbnChoices] = useState<string[]>([]);
 
   useEffect(() => {
@@ -2126,21 +2066,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         <div className="mt-6 grid min-w-0 grid-cols-4 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
           <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
           <button type="button" onClick={() => { primeScannerAudio(); setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
-          <button type="button" disabled={scannerPhotoBusy || scannerBusy || rearCoverBusy} onClick={() => { setAuthorPage(null); void openRearCoverCamera(); }} className="min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold text-[#ad9fac] disabled:opacity-50 sm:px-3 sm:text-sm">{scannerPhotoBusy ? 'Reading…' : rearCoverBusy ? 'Opening…' : 'Scan Cover'}</button>
+          <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => { setActiveTab('scan'); setAuthorPage(null); coverFileInputRef.current?.click(); }} className="min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold text-[#ad9fac] disabled:opacity-50 sm:px-3 sm:text-sm">{scannerPhotoBusy ? 'Reading…' : 'Scan Cover'}</button>
           <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
         </div>
 
-        {rearCoverOpen && (
-          <div className="mt-4 rounded-xl border border-[#c5a059]/50 bg-black p-3">
-            <p className="mb-2 text-sm text-[#f4efe6]">Rear camera — center the book cover</p>
-            <video ref={rearCoverVideoRef} autoPlay playsInline muted className="max-h-[55dvh] w-full rounded-lg object-contain" />
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={() => void captureRearCover()} className="quiet-shelf-primary-action">Capture cover</button>
-              <button type="button" onClick={closeRearCoverCamera} className="quiet-shelf-secondary-action">Cancel</button>
-            </div>
-          </div>
-        )}
-        {!rearCoverOpen && <button type="button" onClick={() => coverFileInputRef.current?.click()} className="mt-2 text-xs text-[#d8c28b] underline">Choose existing cover photo instead</button>}
         {activeTab === 'search' ? (
           <div className="mt-6 space-y-5">
             {unresolvedIsbn && <div className="rounded-xl border border-[#c5a059]/40 bg-[#c5a059]/10 p-3 text-sm text-[#f1d9a1]">Scanned ISBN {unresolvedIsbn} is preserved. Results below are possible other editions, not verified matches for that ISBN. Choose an edition deliberately, or return to Scan Books to complete the original edition manually.</div>}
