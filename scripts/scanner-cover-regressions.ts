@@ -8,6 +8,22 @@ assert.equal(coverMatchesWork(['IT','A NOVEL','STEPHEN','KING'], 'It', ['Stephen
 assert.equal(coverMatchesWork(['SHIT HAPPENS','STEPHEN','KING'], 'It', ['Stephen King']), false);
 assert.ok(shortTitleQueries(['IT','STEPHEN','KING']).includes('IT STEPHEN KING'));
 
+// Real physical-cover OCR: catalog retrieval already found this work, but
+// decorative letters split the author and damaged both title words.
+const knaveMoonCover = [
+  'Prepare to', 'meet your next', 'obsession',
+  'The Kt end The Moth', 'aND THE', 'MOGN',
+  'R ACH EL', 'GI LL I G', 'MOBN', 'KNVE',
+];
+assert.equal(coverApproximatelyMatchesWork(knaveMoonCover, 'The Knave and the Moon', ['Rachel Gillig']), true,
+  'Recover two damaged title words across OCR passes with fully reconstructed author.');
+assert.equal(coverApproximatelyMatchesWork(knaveMoonCover, 'The Knave and the Moon', ['Rachel Smith']), false,
+  'Never accept a damaged two-word title with an unrelated surname.');
+assert.equal(coverApproximatelyMatchesWork([
+  'KNVE', 'MOGN', 'R ACH EL', 'GI LL I G',
+], 'The Knave and the Moon', ['Rachel Gillig']), false,
+  'Require repeated independent title evidence before joining separated damaged fragments.');
+
 // Field capture: full author + THRESHING / DRY on adjacent title lines.
 // The actual title is Threshing Day; DRY is one OCR substitution from DAY.
 const threshingCover = [
