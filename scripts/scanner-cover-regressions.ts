@@ -458,4 +458,23 @@ assert.equal(coverMatchesWork(neroAudit, 'Nero', ['S.J. Tilly']), true);
 assert.equal(coverMatchesWork(['FOURTH WING', 'REBECCA YARROS', 'THE EMPYREAN SERIES'], 'The Empyrean', ['Rebecca Yarros']), false,
   'Series copy must not verify a work titled after the series.');
 
+
+// Nov 7 physical-cover trace: correct catalog work was retrieved but rejected
+// because COOKBOOK was read as BOOK and MATT as MAT.
+const dungeonAnarchistCover = [
+  'DUNGEON', 'NARCHISTS', 'BOOK', 'MAIL', 'DINNIMAN',
+  'ANARCHIST\'S', 'MAT',
+];
+assert.equal(coverApproximatelyMatchesWork(
+  dungeonAnarchistCover, "The Dungeon Anarchist's Cookbook", ['Matt Dinniman'],
+), true, 'Recover a truncated third title word with two strong title anchors and printed author.');
+assert.equal(coverApproximatelyMatchesWork(
+  ['DUNGEON', 'NARCHISTS', 'BOOK', 'DINNIMAN'],
+  "The Dungeon Anarchist's Cookbook", ['Matt Dinniman'],
+), false, 'Surname without independent given-name evidence cannot authorize truncated-title recovery.');
+assert.equal(coverApproximatelyMatchesWork(
+  ['DUNGEON', 'NARCHISTS', 'BOOK', 'MAT', 'OTHERSON'],
+  "The Dungeon Anarchist's Cookbook", ['Matt Dinniman'],
+), false, 'Truncated title recovery must reject a conflicting surname.');
+
 console.log('Inkbound scanner cover regressions passed.');
