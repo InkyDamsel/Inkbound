@@ -36,19 +36,22 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
     return () => controller.abort();
   }, [run, book, libraryBooks]);
 
-  return <section className="rounded-xl border border-[#c5a059]/35 bg-[#25132f] p-3">
-    <button type="button" className="quiet-shelf-secondary-action" onClick={() => { setOpen((value) => !value); if (!open && !attempted) setRun((value) => value + 1); }}>
-      Series Detective {open ? '−' : '— Find this book’s series'}
+  return <div className="mt-3">
+    <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#c5a059]/40 px-3 text-xs font-semibold text-[#e5c158] transition-colors hover:bg-[#c5a059]/10" aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open && !attempted) setRun((value) => value + 1); }}>
+      <span aria-hidden="true">⌕</span> Series Detective <span className="font-normal text-stone-400">{open ? 'Hide results' : 'Discover series'}</span>
     </button>
-    {open && <div className="mt-3 space-y-2 text-sm text-[#f4efe6]">
-      <p className="text-xs text-stone-400">Read-only discovery. No changes to your library.</p>
-      <button type="button" disabled={loading} onClick={() => setRun((value) => value + 1)} className="quiet-shelf-secondary-action">{loading ? 'Investigating…' : 'Investigate again'}</button>
-      {error && <p role="alert" className="text-rose-300">{error}</p>}
-      {attempted && !loading && !error && !match && <p>No series could be verified from the available catalog evidence.</p>}
-      {match && <p>Detected series: <strong>{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p>}
-      {result && <div className="space-y-2"><p>{result.missing.length} possible missing book(s) verified by catalog evidence.</p>
+    {open && <div className="mt-3 rounded-xl border border-[#c5a059]/20 bg-[#120817]/60 p-4 text-sm text-[#f4efe6]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-stone-400">Catalog discovery · Preview only · Your library stays unchanged</p>
+        <button type="button" disabled={loading} onClick={() => setRun((value) => value + 1)} className="text-xs font-semibold text-[#e5c158] underline underline-offset-4 disabled:opacity-50">{loading ? 'Investigating…' : 'Retry discovery'}</button>
+      </div>
+      {loading && <p role="status" className="mt-3">Checking available catalog evidence…</p>}
+      {error && <p role="alert" className="mt-3 text-rose-300">Discovery request failed: {error}</p>}
+      {attempted && !loading && !error && !match && <div className="mt-3 space-y-1"><p className="font-semibold">No verified series match returned</p><p className="text-xs text-stone-400">This does not mean the book is standalone. The catalog data may be missing, unavailable, or insufficient to verify a match. No book metadata was changed.</p></div>}
+      {match && <div className="mt-3"><p>Detected series: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p></div>}
+      {result && <div className="mt-3 space-y-2"><p>{result.missing.length} verified candidate(s) not in your library.</p>
         {result.missing.map((candidate, index) => <p key={`${candidate.work.key ?? candidate.work.title}-${index}`}>{candidate.work.title} — {candidate.work.authors.join(', ')} ({candidate.position === null ? 'order unverified' : `book ${candidate.position}`})</p>)}
       </div>}
     </div>}
-  </section>;
+  </div>;
 };
