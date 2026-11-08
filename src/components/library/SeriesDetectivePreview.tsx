@@ -1,16 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { UserBookRecord } from '../../types';
-import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
+import {
+  classifySeriesCandidates,
+  findMissingSeriesBooks,
+  type SeriesDetectiveResult,
+} from '../../features/series/seriesDetective';
+import { resolveEffectiveSeriesMetadata } from '../../features/series/seriesLibrary';
+import type { SeriesOverrides } from '../../features/series/seriesOverrides';
+import { buildSeriesRoster } from '../../features/series/seriesDetectiveRoster';
+import { SeriesDetectiveRoster } from './SeriesDetectiveRoster';
 
 interface Props {
   seriesName: string;
   author: string;
   books: UserBookRecord[];
   seriesBookIds: string[];
+  overrides?: SeriesOverrides;
+  onSelectBook?: (book: UserBookRecord) => void;
 }
 
 /** Read-only integration preview: never mutates the user's library. */
-export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, books, seriesBookIds }) => {
+export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, books, seriesBookIds, overrides, onSelectBook }) => {
   const [result, setResult] = useState<SeriesDetectiveResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,13 +31,28 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
     setError('');
   }, [seriesName, author, seriesBookIds.join('|')]);
 
+  // Read the latest library/overrides through refs so the lookup effect only
+  // depends on the explicit run counter.
+  const booksRef = React.useRef(books);
+  booksRef.current = books;
+  const overridesRef = React.useRef(overrides);
+  overridesRef.current = overrides;
+
   useEffect(() => {
     if (!run) return;
     const controller = new AbortController();
     setLoading(true);
     setError('');
     setResult(null);
-    void findMissingSeriesBooks(seriesName, author === 'Various authors' ? '' : author, books, controller.signal, seriesBookIds)
+    void findMissingSeriesBooks(
+      seriesName,
+      author === 'Various authors' ? '' : author,
+      booksRef.current,
+      controller.signal,
+      seriesBookIds,
+      // The first run may reuse a recent catalog lookup; an explicit re-run is a retry.
+      { forceRefresh: run > 1, overrides: overridesRef.current },
+    )
       .then((next) => { if (!controller.signal.aborted) setResult(next); })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Series lookup failed.');
@@ -38,6 +63,16 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run]);
 
+  // Re-classify against the live library so a book added from this list leaves
+  // "missing" immediately, with no new network call.
+  const roster = useMemo(() => {
+    if (!result) return null;
+    const live = classifySeriesCandidates(result.seriesName, result.candidates, books);
+    const scoped = new Set(seriesBookIds);
+    const seriesBooks = books.filter((book) => scoped.has(book.id));
+    return buildSeriesRoster(live, seriesBooks, (book) => resolveEffectiveSeriesMetadata(book, overrides ?? {}));
+  }, [result, books, seriesBookIds, overrides]);
+
   return (
     <section className="mb-4 rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-surface-soft)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -46,22 +81,15 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
           <p className="text-xs text-[var(--ink-muted)]">Read-only preview. Nothing will be added, deleted, or changed.</p>
         </div>
         <button type="button" disabled={loading} onClick={() => setRun((value) => value + 1)} className="quiet-shelf-secondary-action">
-          {loading ? 'Investigating…' : 'Find missing books'}
+          {loading ? 'Investigating…' : result ? 'Search again' : 'Find missing books'}
         </button>
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-rose-300">{error}</p>}
-      {result && (
-        <div className="mt-4 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-[var(--ink-muted)]">{result.candidates.length} verified catalog candidate(s); {result.missing.length} not found in your library.</p>{result.missing.length > 1 && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: result.missing } }))} className="rounded-xl bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#211128] hover:bg-[#e4c47c]">Add All Missing</button>}</div>
-          {result.missing.length === 0 && <p className="text-sm text-[var(--ink-muted)]">No missing books verified by available catalog evidence.</p>}
-          {result.missing.map((candidate, index) => (
-            <div key={`${candidate.work.key ?? candidate.work.title}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#c5a059]/20 bg-[#150d1b] p-4">
-              <div className="text-sm font-medium text-[var(--ink-ivory)]">{candidate.work.title}</div>
-              <div className="text-xs text-[var(--ink-muted)]">{candidate.work.authors.join(', ') || 'Author unverified'} · {candidate.position === null ? 'Order unverified' : `Book ${candidate.position}`}</div>
-              <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: [candidate] } }))} className="shrink-0 rounded-xl bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#211128] transition hover:bg-[#e4c47c]">Add Book</button>
-            </div>
-          ))}
-        </div>
+      {roster && (
+        <SeriesDetectiveRoster
+          entries={roster}
+          onOpenBook={onSelectBook ? (entry) => { if (entry.book) onSelectBook(entry.book); } : undefined}
+        />
       )}
     </section>
   );

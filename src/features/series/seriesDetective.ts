@@ -3,6 +3,7 @@ import type { SeriesDetectiveEdition, SeriesDetectiveWorkGroup } from './seriesD
 import { searchSeriesDetectiveHardcover } from './seriesDetectiveHardcoverApi';
 import { searchSeriesDetectivePenguinRandomHouse } from './seriesDetectivePenguinRandomHouseApi';
 import { resolveEffectiveSeriesMetadata } from './seriesLibrary';
+import type { SeriesOverrides } from './seriesOverrides';
 import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
@@ -39,6 +40,7 @@ import {
   mergeDetectiveCandidates,
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
+import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiveQueryPlan';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
   seriesName?: string;
@@ -269,11 +271,108 @@ export interface SeriesDetectiveCandidate {
   position: number | null;
 }
 
+export interface SeriesDetectiveOwnedEntry {
+  /** Catalog record that was recognised as already being in the library. */
+  candidate: SeriesDetectiveCandidate;
+  /** The library book it matched. Read-only reference; never mutated here. */
+  book: UserBookRecord;
+}
+
 export interface SeriesDetectiveResult {
   seriesName: string;
   candidates: SeriesDetectiveCandidate[];
   missing: SeriesDetectiveCandidate[];
+  /** Catalog candidates already in the library (additive; `missing` is unchanged). */
+  owned: SeriesDetectiveOwnedEntry[];
 }
+
+export interface FindMissingSeriesOptions {
+  /** Skip the short-lived in-memory catalog cache (used by explicit Retry). */
+  forceRefresh?: boolean;
+  /**
+   * The reader's manual series corrections. The canonical resolver applies
+   * these first, so gap/next-book planning must see them too.
+   */
+  overrides?: SeriesOverrides;
+}
+
+/**
+ * The single rule for "is this catalog candidate already in the library".
+ * Used for both `missing` and `owned` so the two can never disagree.
+ * Matching is by exact comparable title, stored external work key, or ISBN.
+ */
+export const findLibraryBookForCandidate = (
+  candidate: SeriesDetectiveCandidate,
+  libraryBooks: UserBookRecord[],
+): UserBookRecord | null => {
+  const candidateTitle = comparableDetectiveTitle(candidate.work.title);
+  const candidateIsbns = [candidate.edition.isbn13, candidate.edition.isbn10]
+    .map(compactDetectiveIsbn)
+    .filter(Boolean);
+
+  return libraryBooks.find((book) => {
+    // Once a candidate has passed the requested-series admission gate, exact
+    // title identity is enough to recognise it as owned. This avoids offering
+    // the same work again because one catalog says "Keira Cass" and another
+    // says "Kiera Cass".
+    if (candidateTitle && comparableDetectiveTitle(book.work.title) === candidateTitle) return true;
+    if (candidate.work.key && book.work.externalWorkId?.trim() === candidate.work.key) return true;
+    if (!candidateIsbns.length) return false;
+    return book.editions.some((edition) =>
+      [edition.isbn13, edition.isbn10, edition.isbn]
+        .map(compactDetectiveIsbn)
+        .filter(Boolean)
+        .some((isbn) => candidateIsbns.includes(isbn)),
+    );
+  }) ?? null;
+};
+
+/**
+ * Splits catalog candidates into owned / missing against the CURRENT library.
+ * UI calls this again whenever the library changes (for example right after
+ * "Add Book") so a just-added book moves out of Missing without a new network
+ * lookup.
+ */
+export const classifySeriesCandidates = (
+  seriesName: string,
+  candidates: SeriesDetectiveCandidate[],
+  libraryBooks: UserBookRecord[],
+): SeriesDetectiveResult => {
+  const owned: SeriesDetectiveOwnedEntry[] = [];
+  const missing: SeriesDetectiveCandidate[] = [];
+  candidates.forEach((candidate) => {
+    const book = findLibraryBookForCandidate(candidate, libraryBooks);
+    if (book) owned.push({ candidate, book });
+    else missing.push(candidate);
+  });
+  return { seriesName, candidates, missing, owned };
+};
+
+const SERIES_CANDIDATE_CACHE_TTL_MS = 15 * 60 * 1000;
+const SERIES_CANDIDATE_CACHE_MAX = 40;
+const seriesCandidateCache = new Map<string, { at: number; candidates: SeriesDetectiveCandidate[] }>();
+
+const readSeriesCandidateCache = (key: string): SeriesDetectiveCandidate[] | null => {
+  const entry = seriesCandidateCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.at > SERIES_CANDIDATE_CACHE_TTL_MS) {
+    seriesCandidateCache.delete(key);
+    return null;
+  }
+  return entry.candidates;
+};
+
+const writeSeriesCandidateCache = (key: string, candidates: SeriesDetectiveCandidate[]) => {
+  // An empty result can come from a transient provider outage (each provider
+  // call swallows its own errors), so only successful discoveries are cached.
+  if (!candidates.length) return;
+  seriesCandidateCache.set(key, { at: Date.now(), candidates });
+  while (seriesCandidateCache.size > SERIES_CANDIDATE_CACHE_MAX) {
+    const oldest = seriesCandidateCache.keys().next().value;
+    if (oldest === undefined) break;
+    seriesCandidateCache.delete(oldest);
+  }
+};
 
 const identifier = (volume: DetectiveGoogleVolume, type: 'ISBN_10' | 'ISBN_13'): string | undefined =>
   volume.volumeInfo?.industryIdentifiers?.find((item) => item.type === type)?.identifier;
@@ -443,6 +542,7 @@ const collectGoogleAuthorCatalogs = async (
   signal?: AbortSignal,
 ): Promise<DetectiveGoogleCatalog[]> => {
   const catalogs: DetectiveGoogleCatalog[] = [];
+  if (!author.trim()) return catalogs;
   let startIndex = 0;
 
   for (let page = 0; page < SERIES_DISCOVERY_MAX_PAGES; page += 1) {
@@ -768,245 +868,214 @@ export async function findMissingSeriesBooks(
   libraryBooks: UserBookRecord[],
   signal?: AbortSignal,
   seriesBookIds?: string[],
+  options: FindMissingSeriesOptions = {},
 ): Promise<SeriesDetectiveResult> {
+  const overrides = options.overrides ?? {};
   const scopedSeriesBookIds = new Set(seriesBookIds ?? []);
   const seriesBooks = scopedSeriesBookIds.size > 0
     ? libraryBooks.filter((book) => scopedSeriesBookIds.has(book.id))
     : libraryBooks.filter((book) => {
-        const resolved = resolveEffectiveSeriesMetadata(book);
+        const resolved = resolveEffectiveSeriesMetadata(book, overrides);
         return Boolean(resolved && detectiveSeriesNamesCompatible(resolved.name, seriesName));
       });
   const knownPositions = seriesBooks.flatMap((book) => {
-    const resolved = resolveEffectiveSeriesMetadata(book);
+    const resolved = resolveEffectiveSeriesMetadata(book, overrides);
     return typeof resolved?.position === 'number' && Number.isFinite(resolved.position)
       ? [resolved.position]
       : [];
   });
-  const wholePositions = knownPositions.filter((position) => Number.isInteger(position) && position > 0);
-  const highest = wholePositions.length ? Math.max(...wholePositions) : 0;
-  const knownPositionSet = new Set(wholePositions);
-  const internalGaps = highest > 0
-    ? Array.from({ length: highest }, (_, index) => index + 1)
-      .filter((position) => !knownPositionSet.has(position))
-    : [];
-  const forwardPositions = highest > 0
-    ? Array.from({ length: 5 }, (_, index) => highest + index + 1)
-    : [];
-  const targetPositions = [...internalGaps, ...forwardPositions];
-  const positionQueries = targetPositions.flatMap((position) => [
-    `"${seriesName}" book ${position}`,
-    `${seriesName} book ${position} ${author}`,
-  ]);
-  const queries = [...new Set([
-    `"${seriesName}"`,
-    `"${seriesName}" ${author}`,
-    `${seriesName} ${author}`,
-    seriesName,
-    `inauthor:"${author}" "${seriesName}"`,
-    ...positionQueries,
-  ])];
+  const { queries, targetPositions } = planSeriesDiscoveryQueries({ seriesName, author, knownPositions });
 
-  const [
-    queryCatalogs,
-    googleAuthorCatalogs,
-    openLibrarySeriesCandidates,
-    openLibraryAuthorCandidates,
-    openLibraryContextCandidates,
-    hardcoverSeriesAndAuthor,
-    hardcoverSeriesOnly,
-    hardcoverAuthor,
-    prhSeriesAndAuthor,
-    prhSeriesOnly,
-    prhAuthor,
-  ] = await Promise.all([
-    Promise.all(queries.map((query) => safeDetectiveSearch(query, signal))),
-    collectGoogleAuthorCatalogs(author, signal),
-    searchDetectiveOpenLibrarySeries(seriesName, author, signal),
-    searchDetectiveOpenLibraryAuthor(author, signal),
-    searchDetectiveOpenLibraryContext(seriesName, author, signal),
-    // Only the series + author query may expand Hardcover's structured
-    // series ID. A bare series name can collide across unrelated authors.
-    searchSeriesDetectiveHardcover(
-      `${seriesName} ${author}`,
-      true,
-      {
-        seriesName,
-        anchorTitles: seriesBooks.map((book) => book.work.title),
-      },
-    ),
-    searchSeriesDetectiveHardcover(seriesName),
-    searchSeriesDetectiveHardcover(author),
-    searchSeriesDetectivePenguinRandomHouse(
-      `${seriesName} ${author}`,
-      true,
-      {
-        seriesName,
-        anchorTitles: seriesBooks.map((book) => book.work.title),
-      },
-    ),
-    searchSeriesDetectivePenguinRandomHouse(seriesName),
-    searchSeriesDetectivePenguinRandomHouse(author),
-  ]);
-  const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
-  const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
-  const seen = new Map<string, SeriesDetectiveCandidate>();
+  const cacheKey = [
+    canonicalDetectiveSeries(seriesName),
+    canonicalDetectiveAuthor(author),
+    targetPositions.join(','),
+    seriesBooks.map((book) => comparableDetectiveTitle(book.work.title)).sort().join('|'),
+  ].join('::');
 
-  const providerCandidates: DetectiveMergeCandidate[] = [];
+  const discoverCandidates = async (): Promise<SeriesDetectiveCandidate[]> => {
+    const [
+      queryCatalogs,
+      googleAuthorCatalogs,
+      openLibrarySeriesCandidates,
+      openLibraryAuthorCandidates,
+      openLibraryContextCandidates,
+      hardcoverSeriesAndAuthor,
+      hardcoverSeriesOnly,
+      hardcoverAuthor,
+      prhSeriesAndAuthor,
+      prhSeriesOnly,
+      prhAuthor,
+    ] = await Promise.all([
+      // Bounded fan-out: the planner may emit ~25 queries, and firing them all
+      // at once alongside the other providers trips Google Books rate limits.
+      mapWithConcurrency(queries, 4, (query) => safeDetectiveSearch(query, signal)),
+      collectGoogleAuthorCatalogs(author, signal),
+      searchDetectiveOpenLibrarySeries(seriesName, author, signal),
+      searchDetectiveOpenLibraryAuthor(author, signal),
+      searchDetectiveOpenLibraryContext(seriesName, author, signal),
+      // Only the series + author query may expand Hardcover's structured
+      // series ID. A bare series name can collide across unrelated authors.
+      searchSeriesDetectiveHardcover(
+        `${seriesName} ${author}`,
+        true,
+        {
+          seriesName,
+          anchorTitles: seriesBooks.map((book) => book.work.title),
+        },
+      ),
+      searchSeriesDetectiveHardcover(seriesName),
+      searchSeriesDetectiveHardcover(author),
+      searchSeriesDetectivePenguinRandomHouse(
+        `${seriesName} ${author}`,
+        true,
+        {
+          seriesName,
+          anchorTitles: seriesBooks.map((book) => book.work.title),
+        },
+      ),
+      searchSeriesDetectivePenguinRandomHouse(seriesName),
+      searchSeriesDetectivePenguinRandomHouse(author),
+    ]);
+    const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
+    const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
+    const seen = new Map<string, SeriesDetectiveCandidate>();
 
-  // Google sometimes returns structured volumeSeries IDs while its separate
-  // series-title endpoint is incomplete. First establish which IDs belong to
-  // the requested series using candidates that already pass Detective's
-  // existing verification gates. Then reuse that structured identity for
-  // sibling volumes carrying the exact same seriesId.
-  const confirmedGoogleSeriesIds = new Set<string>();
-  catalogs.forEach((catalog) => {
-    catalog.items.forEach((volume) => {
-      const verified = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
-      if (
-        !verified?.seriesName
-        || !detectiveSeriesNamesCompatible(verified.seriesName, seriesName)
-      ) return;
+    const providerCandidates: DetectiveMergeCandidate[] = [];
 
-      (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
-        const id = membership.seriesId?.trim();
-        if (id) confirmedGoogleSeriesIds.add(id);
+    // Google sometimes returns structured volumeSeries IDs while its separate
+    // series-title endpoint is incomplete. First establish which IDs belong to
+    // the requested series using candidates that already pass Detective's
+    // existing verification gates. Then reuse that structured identity for
+    // sibling volumes carrying the exact same seriesId.
+    const confirmedGoogleSeriesIds = new Set<string>();
+    catalogs.forEach((catalog) => {
+      catalog.items.forEach((volume) => {
+        const verified = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
+        if (
+          !verified?.seriesName
+          || !detectiveSeriesNamesCompatible(verified.seriesName, seriesName)
+        ) return;
+
+        (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
+          const id = membership.seriesId?.trim();
+          if (id) confirmedGoogleSeriesIds.add(id);
+        });
       });
     });
-  });
 
-  catalogs.forEach((catalog) => {
-    catalog.items.forEach((volume) => {
-      const candidate = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
-      if (!candidate) return;
+    catalogs.forEach((catalog) => {
+      catalog.items.forEach((volume) => {
+        const candidate = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
+        if (!candidate) return;
 
-      if (
-        !candidate.seriesName
-        && confirmedGoogleSeriesIds.size > 0
-        && volumeUsesConfirmedSeriesId(volume, confirmedGoogleSeriesIds)
-      ) {
-        candidate.seriesName = seriesName;
-        candidate.position = structuredSeriesPosition(volume, confirmedGoogleSeriesIds);
-        candidate.seriesProvider = 'google-books';
-        candidate.seriesStructured = true;
-      }
+        if (
+          !candidate.seriesName
+          && confirmedGoogleSeriesIds.size > 0
+          && volumeUsesConfirmedSeriesId(volume, confirmedGoogleSeriesIds)
+        ) {
+          candidate.seriesName = seriesName;
+          candidate.position = structuredSeriesPosition(volume, confirmedGoogleSeriesIds);
+          candidate.seriesProvider = 'google-books';
+          candidate.seriesStructured = true;
+        }
 
-      providerCandidates.push(candidate);
+        providerCandidates.push(candidate);
+      });
     });
-  });
 
-  openLibraryCandidates.forEach((candidate: DetectiveOpenLibraryCandidate) => {
-    providerCandidates.push({
-      work: candidate.work,
-      edition: candidate.edition,
-      seriesName: candidate.seriesName,
-      position: candidate.position,
-      provider: 'open-library',
-      seriesProvider: 'open-library',
-      seriesStructured: true,
+    openLibraryCandidates.forEach((candidate: DetectiveOpenLibraryCandidate) => {
+      providerCandidates.push({
+        work: candidate.work,
+        edition: candidate.edition,
+        seriesName: candidate.seriesName,
+        position: candidate.position,
+        provider: 'open-library',
+        seriesProvider: 'open-library',
+        seriesStructured: true,
+      });
     });
-  });
 
-  openLibraryContextCandidates.forEach((candidate) => {
-    providerCandidates.push({
-      work: candidate.work,
-      edition: candidate.edition,
-      seriesName: candidate.seriesName,
-      position: candidate.position,
-      provider: 'open-library',
-      seriesProvider: candidate.seriesName ? 'open-library' : undefined,
-      seriesStructured: Boolean(candidate.seriesName),
+    openLibraryContextCandidates.forEach((candidate) => {
+      providerCandidates.push({
+        work: candidate.work,
+        edition: candidate.edition,
+        seriesName: candidate.seriesName,
+        position: candidate.position,
+        provider: 'open-library',
+        seriesProvider: candidate.seriesName ? 'open-library' : undefined,
+        seriesStructured: Boolean(candidate.seriesName),
+      });
     });
-  });
 
-  providerCandidates.push(...hardcoverContextCandidates(
-    [
-      ...hardcoverSeriesAndAuthor.groups,
-      ...hardcoverSeriesOnly.groups,
-      ...hardcoverAuthor.groups,
-    ],
-    seriesName,
-    author,
-  ));
-  providerCandidates.push(...prhContextCandidates(
-    [
-      ...prhSeriesAndAuthor.groups,
-      ...prhSeriesOnly.groups,
-      ...prhAuthor.groups,
-    ],
-    seriesName,
-    author,
-  ));
+    providerCandidates.push(...hardcoverContextCandidates(
+      [
+        ...hardcoverSeriesAndAuthor.groups,
+        ...hardcoverSeriesOnly.groups,
+        ...hardcoverAuthor.groups,
+      ],
+      seriesName,
+      author,
+    ));
+    providerCandidates.push(...prhContextCandidates(
+      [
+        ...prhSeriesAndAuthor.groups,
+        ...prhSeriesOnly.groups,
+        ...prhAuthor.groups,
+      ],
+      seriesName,
+      author,
+    ));
 
-  // Position is ordering metadata, never work identity. Providers frequently
-  // omit or misreport it, so pruning to one candidate per position can delete
-  // legitimate sibling works. Merge/dedupe by work identity and ISBN only.
-  const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates)
-    .filter((candidate) => !isDerivativeSeriesProduct(candidate));
+    // Position is ordering metadata, never work identity. Providers frequently
+    // omit or misreport it, so pruning to one candidate per position can delete
+    // legitimate sibling works. Merge/dedupe by work identity and ISBN only.
+    const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates)
+      .filter((candidate) => !isDerivativeSeriesProduct(candidate));
 
-  const addCandidate = (candidate: SeriesDetectiveCandidate) => {
-    const titleKey = comparableDetectiveTitle(candidate.work.title);
-    const authorKey = canonicalDetectiveAuthor(candidate.work.authors[0]);
-    const isbnKey = compactDetectiveIsbn(candidate.edition.isbn13 ?? candidate.edition.isbn10);
-    // Series position is ordering metadata, not work identity. Two catalog
-    // records claiming the same slot must not cause one distinct work to be
-    // silently discarded.
-    const key = isbnKey
-      ? `isbn:${isbnKey}`
-      : `work:${titleKey}::${authorKey}`;
-    const current = seen.get(key);
-    if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
+    const addCandidate = (candidate: SeriesDetectiveCandidate) => {
+      const titleKey = comparableDetectiveTitle(candidate.work.title);
+      const authorKey = canonicalDetectiveAuthor(candidate.work.authors[0]);
+      const isbnKey = compactDetectiveIsbn(candidate.edition.isbn13 ?? candidate.edition.isbn10);
+      // Series position is ordering metadata, not work identity. Two catalog
+      // records claiming the same slot must not cause one distinct work to be
+      // silently discarded.
+      const key = isbnKey
+        ? `isbn:${isbnKey}`
+        : `work:${titleKey}::${authorKey}`;
+      const current = seen.get(key);
+      if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
+    };
+
+    mergedProviderCandidates.forEach((candidate) => {
+      const contextual = !candidate.seriesName && hasMergedKnownSeriesContext(candidate, seriesName);
+      const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
+      if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) return;
+
+      addCandidate({
+        work: candidate.work,
+        edition: candidate.edition,
+        seriesName: resolvedSeriesName,
+        position: candidate.position,
+      });
+    });
+
+    return [...seen.values()].sort((a, b) => {
+      if (a.position !== null && b.position !== null) return a.position - b.position;
+      if (a.position !== null) return -1;
+      if (b.position !== null) return 1;
+      return a.work.title.localeCompare(b.work.title);
+    });
   };
 
-  mergedProviderCandidates.forEach((candidate) => {
-    const contextual = !candidate.seriesName && hasMergedKnownSeriesContext(candidate, seriesName);
-    const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
-    if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) return;
+  // Catalog discovery is the expensive part and is independent of what the
+  // library currently holds, so it is cached briefly. Owned/missing is always
+  // recomputed against the live library below.
+  let candidates = options.forceRefresh ? null : readSeriesCandidateCache(cacheKey);
+  if (!candidates) {
+    candidates = await discoverCandidates();
+    writeSeriesCandidateCache(cacheKey, candidates);
+  }
 
-    addCandidate({
-      work: candidate.work,
-      edition: candidate.edition,
-      seriesName: resolvedSeriesName,
-      position: candidate.position,
-    });
-  });
-
-  const candidates = [...seen.values()].sort((a, b) => {
-    if (a.position !== null && b.position !== null) return a.position - b.position;
-    if (a.position !== null) return -1;
-    if (b.position !== null) return 1;
-    return a.work.title.localeCompare(b.work.title);
-  });
-
-  const existingIsbns = new Set(libraryBooks.flatMap((book) =>
-    book.editions.flatMap((edition) =>
-      [edition.isbn13, edition.isbn10, edition.isbn].map(compactDetectiveIsbn).filter(Boolean),
-    ),
-  ));
-  const existingWorkIds = new Set(
-    libraryBooks
-      .map((book) => book.work.externalWorkId?.trim())
-      .filter((value): value is string => Boolean(value)),
-  );
-
-  const missing = candidates.filter((candidate) => {
-    const candidateTitle = comparableDetectiveTitle(candidate.work.title);
-    const existingWork = libraryBooks.some((book) => {
-      const sameTitle = comparableDetectiveTitle(book.work.title) === candidateTitle;
-      if (!sameTitle) return false;
-
-      // Once a candidate has passed the requested-series admission gate, exact
-      // title identity is enough to recognize it as already owned. This avoids
-      // offering the same work again because one catalog says "Keira Cass" and
-      // another says "Kiera Cass".
-      return true;
-    });
-    if (existingWork) return false;
-    if (candidate.work.key && existingWorkIds.has(candidate.work.key)) return false;
-    return ![candidate.edition.isbn13, candidate.edition.isbn10]
-      .map(compactDetectiveIsbn)
-      .filter(Boolean)
-      .some((isbn) => existingIsbns.has(isbn));
-  });
-
-  return { seriesName, candidates, missing };
+  return classifySeriesCandidates(seriesName, candidates, libraryBooks);
 }

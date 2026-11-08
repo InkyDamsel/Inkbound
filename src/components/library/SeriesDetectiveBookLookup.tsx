@@ -1,7 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UserBookRecord } from '../../types';
-import { resolveSeriesMetadata } from '../../features/series/seriesLibrary';
-import { detectSeriesForBook, findMissingSeriesBooks, type SeriesDetectiveMatch, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
+import { resolveEffectiveSeriesMetadata } from '../../features/series/seriesLibrary';
+import { readSeriesOverrides } from '../../features/series/seriesOverrides';
+import {
+  classifySeriesCandidates,
+  detectSeriesForBook,
+  findMissingSeriesBooks,
+  type SeriesDetectiveMatch,
+  type SeriesDetectiveResult,
+} from '../../features/series/seriesDetective';
+import { detectiveSeriesNamesCompatible } from '../../features/series/seriesDetectiveEvidence';
+import { buildSeriesRoster } from '../../features/series/seriesDetectiveRoster';
+import { SeriesDetectiveRoster } from './SeriesDetectiveRoster';
 
 interface Props { book: UserBookRecord; libraryBooks?: UserBookRecord[]; }
 
@@ -14,7 +24,22 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
   const [result, setResult] = useState<SeriesDetectiveResult | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [run, setRun] = useState(0);
-  const savedSeries = resolveSeriesMetadata(book);
+
+  // Canonical resolver: manual corrections first, explicit metadata second.
+  const overrides = useMemo(() => readSeriesOverrides(), [book.id, open]);
+  const savedSeries = resolveEffectiveSeriesMetadata(book, overrides);
+
+  // The lookup must run once per explicit request. Reading the latest book and
+  // library through refs keeps a background sync (which swaps these objects)
+  // from aborting and restarting dozens of catalog calls mid-flight.
+  const bookRef = useRef(book);
+  bookRef.current = book;
+  const libraryRef = useRef(libraryBooks);
+  libraryRef.current = libraryBooks;
+  const savedSeriesRef = useRef(savedSeries);
+  savedSeriesRef.current = savedSeries;
+  const overridesRef = useRef(overrides);
+  overridesRef.current = overrides;
 
   useEffect(() => {
     setOpen(false); setMatch(null); setResult(null); setAttempted(false); setError(''); setRun(0);
@@ -23,21 +48,42 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
   useEffect(() => {
     if (!run) return;
     const controller = new AbortController();
+    const currentBook = bookRef.current;
     setLoading(true); setError(''); setMatch(null); setResult(null); setAttempted(true);
     void (async () => {
-      const found = await detectSeriesForBook(book, controller.signal);
+      const found = await detectSeriesForBook(currentBook, controller.signal);
       if (controller.signal.aborted) return;
       setMatch(found);
-      const seriesToInvestigate = found ?? savedSeries;
-      if (seriesToInvestigate && libraryBooks) {
-        const missing = await findMissingSeriesBooks(seriesToInvestigate.name, (found?.discoveryAuthor || book.work.author), libraryBooks, controller.signal);
+      const seriesToInvestigate = found ?? savedSeriesRef.current;
+      const library = libraryRef.current;
+      if (seriesToInvestigate && library) {
+        const missing = await findMissingSeriesBooks(
+          seriesToInvestigate.name,
+          found?.discoveryAuthor || currentBook.work.author,
+          library,
+          controller.signal,
+          undefined,
+          { forceRefresh: run > 1, overrides: overridesRef.current },
+        );
         if (!controller.signal.aborted) setResult(missing);
       }
     })().catch((reason: unknown) => {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Series discovery failed.');
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [run, book, libraryBooks, savedSeries?.name, savedSeries?.position]);
+  }, [run]);
+
+  // Re-classify against the live library so "Add Book" moves a row to
+  // "In your library" right away, without another network lookup.
+  const roster = useMemo(() => {
+    if (!result || !libraryBooks) return null;
+    const live = classifySeriesCandidates(result.seriesName, result.candidates, libraryBooks);
+    const seriesBooks = libraryBooks.filter((candidate) => {
+      const resolved = resolveEffectiveSeriesMetadata(candidate, overrides);
+      return Boolean(resolved && detectiveSeriesNamesCompatible(resolved.name, result.seriesName));
+    });
+    return buildSeriesRoster(live, seriesBooks, (entry) => resolveEffectiveSeriesMetadata(entry, overrides));
+  }, [result, libraryBooks, overrides]);
 
   return <div className="mt-1 mb-3">
     <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#c5a059]/40 px-3 text-xs font-semibold text-[#e5c158] transition-colors hover:bg-[#c5a059]/10" aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open && !attempted) setRun((value) => value + 1); }}>
@@ -56,15 +102,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
       {attempted && !loading && !error && !match && !savedSeries && <div className="mt-3 space-y-1"><p className="font-semibold">No verified series match returned</p><p className="text-xs text-stone-400">This does not mean the book is standalone. The catalog data may be missing, unavailable, or insufficient to verify a match. No book metadata was changed.</p></div>}
       {attempted && !loading && !error && !match && savedSeries && <p className="mt-2 text-xs text-stone-400">External catalogs did not independently verify the series. Your saved series information remains available.</p>}
       {match && <div className="mt-3"><p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p></div>}
-      {result && <div className="mt-3 space-y-2"><div className="flex flex-wrap items-center justify-between gap-3"><p>{result.missing.length} verified candidate(s) not in your library.</p>{result.missing.length > 1 && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: result.missing } }))} className="rounded-xl bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#211128] hover:bg-[#e4c47c]">Add All Missing</button>}</div>
-        {result.missing.map((candidate, index) => <div key={`${candidate.work.key ?? candidate.work.title}-${index}`} className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#c5a059]/20 bg-[#150d1b] p-4">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            {candidate.edition.coverUrl && <img src={candidate.edition.coverUrl} alt="" className="h-20 w-14 rounded-md object-cover shadow-lg" />}
-            <div><p className="font-serif text-base text-[#f3dbad]">{candidate.work.title}</p><p className="text-xs text-stone-400">{candidate.work.authors.join(', ')} · {candidate.position === null ? 'Order unverified' : `Book ${candidate.position}`}</p></div>
-          </div>
-          <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: [candidate] } }))} className="shrink-0 rounded-xl bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#211128] transition hover:bg-[#e4c47c]">Add Book</button>
-        </div>)}
-      </div>}
+      {roster && <SeriesDetectiveRoster entries={roster} />}
       </section>
     </div>}
   </div>;

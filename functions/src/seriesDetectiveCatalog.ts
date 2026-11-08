@@ -276,6 +276,27 @@ const normalizeHardcoverSeries = (value?: string): string => {
   return tokens.filter((token) => token !== 'x' && token !== 'and').join(' ');
 };
 
+// Hardcover stores "Hades x Persephone", "Hades & Persephone" and "The
+// Selection Series" as different strings. A raw %name% ILIKE only finds the
+// exact spelling, so match on the significant tokens in order instead. The
+// strict normalized-equality check below still decides which series is used.
+const hardcoverSeriesPattern = (value: string): string => {
+  const tokens = normalizeHardcoverSeries(value).split(' ').filter(Boolean);
+  return tokens.length ? `%${tokens.join('%')}%` : `%${value.trim()}%`;
+};
+
+// Anchor titles come from the reader's own library, where a title may carry a
+// subtitle or edition suffix that Hardcover omits (or vice versa).
+const hardcoverTitleMatchesAnchor = (anchors: string[], title?: string): boolean => {
+  const normalized = normalizeHardcoverText(title);
+  if (!normalized) return false;
+  return anchors.some((anchor) =>
+    anchor === normalized
+    || normalized.startsWith(`${anchor} `)
+    || anchor.startsWith(`${normalized} `),
+  );
+};
+
 const hardcoverBookAuthors = (book?: HardcoverBook, fallback: string[] = []): string[] => {
   const authors = book?.contributions
     ?.map((contribution) => contribution.author?.name?.trim())
@@ -444,6 +465,8 @@ async function detectiveHardcoverCatalog(
               books_count: { _gt: 0 }
               canonical_id: { _is_null: true }
             }
+            order_by: { books_count: desc }
+            limit: 40
           ) {
             id
             name
@@ -467,7 +490,7 @@ async function detectiveHardcoverCatalog(
             }
           }
         }`,
-        { seriesPattern: `%${requestedSeries}%` },
+        { seriesPattern: hardcoverSeriesPattern(requestedSeries) },
       );
 
       const requestedSeriesIdentity = normalizeHardcoverSeries(requestedSeries);
@@ -477,10 +500,8 @@ async function detectiveHardcoverCatalog(
           || normalizeHardcoverSeries(series.name) !== requestedSeriesIdentity
           || !anchors.length
         ) return false;
-        return (series.book_series ?? []).some((membership) => {
-          const title = normalizeHardcoverText(membership.book?.title);
-          return Boolean(title && anchors.includes(title));
-        });
+        return (series.book_series ?? []).some((membership) =>
+          hardcoverTitleMatchesAnchor(anchors, membership.book?.title));
       });
 
       const memberships = matchingSeries.flatMap((series) => series.book_series ?? []);

@@ -395,7 +395,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                         {item.isManual && <button type="button" onClick={() => deleteManualSeries(item.id)} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" />Remove custom grouping</button>}
                       </div>
 
-                      <SeriesDetectivePreview key={item.id} seriesName={item.name} author={item.author} books={books} seriesBookIds={item.books.map(({ book }) => book.id)} />
+                      <SeriesDetectivePreview key={item.id} seriesName={item.name} author={item.author} books={books} seriesBookIds={item.books.map(({ book }) => book.id)} overrides={overrides} onSelectBook={onSelectBook} />
 
                       <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4"><span className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">Owned</span><strong className="mt-1 block font-serif text-2xl text-[var(--ink-ivory)]">{item.ownedCount}</strong></div>
