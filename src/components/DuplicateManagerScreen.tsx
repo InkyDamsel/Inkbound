@@ -36,7 +36,7 @@ interface DuplicateGroup {
   books: UserBookRecord[];
 }
 
-type DuplicateCandidate = { reason: 'isbn' | 'title-author'; key: string; ids: string[] };
+type DuplicateCandidate = { reason: 'isbn' | 'title-author' | 'edition-variant'; key: string; ids: string[] };
 type MaintenanceSection = 'categories' | 'ownership' | 'statuses' | 'tags' | 'covers' | 'duplicates';
 
 const IGNORED_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups;
