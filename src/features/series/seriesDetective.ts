@@ -169,7 +169,7 @@ const isDerivativeSeriesProduct = (candidate: DetectiveMergeCandidate): boolean 
     candidate.edition.title,
     candidate.edition.subtitle,
     candidate.edition.editionName,
-  ].filter((value): value is string => Boolean(value?.trim()));
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
   return values.some((value) => DERIVATIVE_SERIES_PRODUCT_PATTERN.test(value));
 };
 
@@ -195,7 +195,7 @@ const hasMergedKnownSeriesContext = (
     candidate.edition.title,
     candidate.edition.subtitle,
   ]
-    .filter((value): value is string => Boolean(value?.trim()))
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .some((value) => {
       const normalized = canonicalDetectiveSeries(value);
       return Boolean(
@@ -217,7 +217,7 @@ const openLibrarySeriesHasBibliographicContext = (
     candidate.edition.title,
     candidate.edition.subtitle,
   ]
-    .filter((value): value is string => Boolean(value?.trim()))
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .some((value) => {
       const inferred = inferKnownDetectiveSeriesFromText(value, seriesName)
         ?? inferDetectiveSeriesFromTitle(value);
