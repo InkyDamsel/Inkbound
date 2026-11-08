@@ -17,10 +17,11 @@ export interface DetectiveMergeCandidate {
   providerSources?: Array<'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house'>;
 }
 
-const nonEmpty = (value?: string): string | undefined => value?.trim() || undefined;
+const nonEmpty = (value?: string): string | undefined =>
+  typeof value === 'string' ? value.trim() || undefined : undefined;
 
 const comparableWorkTitle = (value?: string): string => {
-  const raw = value?.trim() ?? '';
+  const raw = nonEmpty(value) ?? '';
   if (!raw) return '';
   const withoutSeriesSuffix = raw.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
   return normalizeDetectiveText(withoutSeriesSuffix);
@@ -47,7 +48,7 @@ export const detectiveCandidatesAreSameWork = (
   // colon separator. Broad prefix matching is unsafe for series where sequel
   // titles share a franchise prefix (for example "Harry Potter ..." books).
   const rawWithoutSeriesSuffix = (value?: string) =>
-    (value?.trim() ?? '').replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
+    (nonEmpty(value) ?? '').replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
 
   const leftRaw = rawWithoutSeriesSuffix(left.work.title);
   const rightRaw = rawWithoutSeriesSuffix(right.work.title);
@@ -133,8 +134,8 @@ const mergeSeries = (
   provider?: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
   structured?: boolean;
 } => {
-  const leftName = left.seriesName?.trim();
-  const rightName = right.seriesName?.trim();
+  const leftName = nonEmpty(left.seriesName);
+  const rightName = nonEmpty(right.seriesName);
   if (!leftName) return {
     name: rightName,
     position: right.position,
