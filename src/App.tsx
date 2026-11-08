@@ -38,6 +38,8 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { AdminScreen } from './components/AdminScreen';
 import { AddBookModal } from './components/AddBookModal';
+import { createBookFromSearchEdition } from './features/book-search/mapping/bookSearchMapper';
+import type { SeriesDetectiveCandidate } from './features/series/seriesDetective';
 import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
 import { usePersistentState } from './hooks/usePersistentState';
@@ -217,8 +219,33 @@ export default function App() {
       setDetectiveAddQuery(`${detail.title} ${detail.author || ''}`.trim());
       setIsAddBookOpen(true);
     };
+    const addDetectiveBooks = (event: Event) => {
+      const candidates = (event as CustomEvent<{ candidates: SeriesDetectiveCandidate[] }>).detail?.candidates;
+      if (!Array.isArray(candidates) || !candidates.length) return;
+      const current = booksRef.current;
+      const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const eligible = candidates.filter((candidate) => {
+        if (!candidate?.work?.title || !candidate.work.authors?.[0] || !candidate.edition) return false;
+        return !current.some((book) => normalize(book.work.title) === normalize(candidate.work.title)
+          && normalize(book.work.author).includes(normalize(candidate.work.authors[0])));
+      });
+      if (!eligible.length) { showToast('These books are already in your library.'); return; }
+      const additions = eligible.map((candidate) => createBookFromSearchEdition({
+        work: candidate.work,
+        edition: {
+          ...candidate.edition,
+          seriesName: candidate.seriesName,
+          ...(candidate.position !== null ? { seriesOrder: candidate.position } : {}),
+        },
+        status: 'tbr',
+      }));
+      const next = [...additions, ...current];
+      if (commitCanonicalBooks(next) !== next) { showToast('Could not save books. Your library was not changed.'); return; }
+      showToast(`Added ${additions.length} ${additions.length === 1 ? 'book' : 'books'} to Inkbound.`);
+    };
+    window.addEventListener('inkbound:series-detective-save', addDetectiveBooks);
     window.addEventListener('inkbound:series-detective-add', openCandidate);
-    return () => window.removeEventListener('inkbound:series-detective-add', openCandidate);
+    return () => { window.removeEventListener('inkbound:series-detective-add', openCandidate); window.removeEventListener('inkbound:series-detective-save', addDetectiveBooks); };
   }, []);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sessionMilestone, setSessionMilestone] = useState<SessionMilestoneNotice | null>(null);
