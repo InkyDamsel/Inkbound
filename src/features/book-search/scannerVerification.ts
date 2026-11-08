@@ -479,13 +479,12 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // connecting phrase. This is deliberately stricter than generic fuzzy
   // matching: require the complete printed author, a repeated connector,
   // repeated independently readable second title word, and an isolated
-  // prefix of the missing first word. A bare author bibliography result
+  // prefix of the missing first word. A three-word marketing blurb is not\n  // allowed to veto this stronger multi-pass title evidence. A bare author bibliography result
   // or a single moon-like fragment must never suffice.
   if (significantTitleWords.length === 2 && catalogTitleWords.length >= 4
     && catalogTitleWords[0] === 'the'
     && catalogTitleWords[2] === 'and'
-    && catalogTitleWords[3] === 'the'
-    && !strongerPhotographedTitleExists) {
+    && catalogTitleWords[3] === 'the') {
     const completeAuthorPrinted = authors.some((author) => {
       const parts = words(author);
       if (parts.length < 2) return false;
