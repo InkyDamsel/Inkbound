@@ -574,9 +574,10 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     });
     if (missing.length === 1 && strongWords.length >= 2 && authorCredit) {
       const word = missing[0];
-      if (word.length >= 7 && rawWords.some((token) =>
-        token.length >= 4 && token.length <= word.length - 3
-        && word.endsWith(token) && !titleLineDemoted(token, lines.indexOf(token)))) return true;
+      if (word.length >= 7 && rawLineWords.some((tokens, index) =>
+        !titleLineDemoted(lines[index], index) && tokens.length === 1
+        && tokens[0].length >= 4 && tokens[0].length <= word.length - 3
+        && word.endsWith(tokens[0]))) return true;
     }
   }
   return significantTitleWords.every(significantWordVerified);
