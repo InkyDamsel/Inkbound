@@ -555,5 +555,29 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     });
   }
 
+  // Decorative multi-word titles may lose the beginning of ONE long word
+  // (COOKBOOK -> BOOK). Recover only when two other distinctive title words
+  // are independently legible, the surname is exact, and the printed given
+  // name is present or visibly truncated. Never treat this as sufficient for
+  // a one- or two-word title, or an author-only catalog match.
+  if (significantTitleWords.length >= 3) {
+    const missing = significantTitleWords.filter((word) => !significantWordVerified(word));
+    const strongWords = significantTitleWords.filter(significantWordVerified);
+    const authorCredit = authors.some((author) => {
+      const parts = words(author);
+      if (parts.length < 2) return false;
+      const surname = parts[parts.length - 1];
+      const given = parts[0];
+      return rawWords.includes(surname) && rawWords.some((token) =>
+        token === given || (given.length >= 4 && token.length >= 3
+          && token.length === given.length - 1 && given.startsWith(token)));
+    });
+    if (missing.length === 1 && strongWords.length >= 2 && authorCredit) {
+      const word = missing[0];
+      if (word.length >= 7 && rawWords.some((token) =>
+        token.length >= 4 && token.length <= word.length - 3
+        && word.endsWith(token) && !titleLineDemoted(token, lines.indexOf(token)))) return true;
+    }
+  }
   return significantTitleWords.every(significantWordVerified);
 }
