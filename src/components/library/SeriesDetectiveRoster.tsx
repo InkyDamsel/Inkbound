@@ -89,6 +89,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
 export const SeriesDetectiveRoster: React.FC<Props> = ({ entries, onOpenBook }) => {
   const summary = summarizeSeriesRoster(entries);
   const missingEntries = entries.filter((entry) => entry.kind === 'missing');
+  const disconnectedEntries = entries.filter((entry) => entry.kind === 'owned' && entry.book && entry.candidate && !entry.book.work.seriesName?.trim());
 
   if (!entries.length) {
     return <p className="mt-3 text-sm text-stone-300">No books verified by available catalog evidence.</p>;
@@ -100,6 +101,15 @@ export const SeriesDetectiveRoster: React.FC<Props> = ({ entries, onOpenBook }) 
         <p className="text-sm text-stone-300">
           {summary.total} book(s): {summary.inLibrary} in your library, {summary.missing} not found in your library.
         </p>
+        {disconnectedEntries.length > 0 && <button type="button" onClick={() => {
+          const books = disconnectedEntries.map((entry) => ({
+            bookId: entry.book!.id,
+            seriesName: entry.candidate!.seriesName,
+            position: entry.candidate!.position,
+          }));
+          if (!window.confirm(`Connect ${books.length} existing book(s) to their verified series? Only empty series fields will be filled. No books will be added or removed.`)) return;
+          window.dispatchEvent(new CustomEvent('inkbound:series-detective-connect', { detail: { books } }));
+        }} className="rounded-xl border border-[#c5a059]/60 px-3 py-2 text-xs font-bold text-[#e5c158] hover:bg-[#c5a059]/10">Connect {disconnectedEntries.length} existing book(s) to series</button>}
         {missingEntries.length > 1 && (
           <button type="button" onClick={() => addEvent(missingEntries)} className="rounded-xl bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#211128] hover:bg-[#e4c47c]">Add All Missing</button>
         )}
