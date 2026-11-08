@@ -575,7 +575,12 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     if (missing.length === 1 && strongWords.length >= 2 && authorCredit) {
       const word = missing[0];
       if (word.length >= 7 && rawLineWords.some((tokens, index) =>
-        !titleLineDemoted(lines[index], index) && tokens.length === 1
+        !promoContext.has(index) && tokens.length === 1
+        // Standalone BOOK is normally demoted as a series label. In this
+        // narrow three-word-title recovery it can be a clipped title suffix,
+        // but never if immediately attached to a volume number.
+        && !(index + 1 < lines.length && isBookNumberLine(lines[index + 1]))
+        && (tokens[0] === 'book' || !isDemotedCoverTitleLine(lines[index]))
         && tokens[0].length >= 4 && tokens[0].length <= word.length - 3
         && word.endsWith(tokens[0]))) return true;
     }
