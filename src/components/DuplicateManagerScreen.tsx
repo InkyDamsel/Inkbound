@@ -52,7 +52,8 @@ const compactIsbn = (value?: string) => value?.toUpperCase().replace(/[^0-9X]/g,
 // Candidate discovery only: never merge automatically. Strip only recognizable
 // series/edition decorations; retain the author's identity as a hard boundary.
 const comparableWorkTitle = (value?: string): string => {
-  let title = normalizeText(value);
+  // Parenthesized collection names are common in imports: Exposed (Wellard Asylum).
+  let title = normalizeText(value?.replace(/\s*\([^)]{3,70}\)\s*$/, '') ?? '');
   title = title.replace(/\s+(?:the\s+)?[a-z0-9 ]+\s+series$/, '').trim();
   title = title.replace(/\s+(?:the\s+)?[a-z0-9 ]+\s+(?:book|volume|vol)\s+\d+$/, '').trim();
   return title;
