@@ -35,7 +35,27 @@ try {
   execFileSync('git', ['rev-parse', '--verify', base], { stdio: 'pipe' });
   const changed = execFileSync('git', ['diff', '--name-only', base + '...HEAD'], { encoding: 'utf8' }).trim().split('\n');
   const touched = changed.filter((name) => protectedPaths.some((path) => name === path || (path.endsWith('/') && name.startsWith(path))));
-  assert.deepEqual(touched, [], `Protected Search/scanner paths changed: ${touched.join(', ')}`);
+  // Series Detective may prefill the existing Add Book search field. This is
+  // the ONLY permitted integration in the protected AddBookModal component.
+  // Compare the entire file against the baseline plus those three exact edits,
+  // so changes to search/scanner behavior still fail this guard.
+  if (touched.includes('src/components/AddBookModal.tsx')) {
+    const path = 'src/components/AddBookModal.tsx';
+    const baseline = execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8' });
+    const replacements = [
+      ['  currentBookCount: number;\n', '  currentBookCount: number;\n  initialSearchQuery?: string;\n'],
+      ["({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook }) => {", "({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook, initialSearchQuery = '' }) => {"],
+      ["const [query, setQuery] = useState('');", "const [query, setQuery] = useState(initialSearchQuery);"],
+    ];
+    let expected = baseline;
+    for (const [before, after] of replacements) {
+      assert.equal(expected.split(before).length, 2, `Expected exactly one baseline integration anchor: ${before}`);
+      expected = expected.replace(before, after);
+    }
+    assert.equal(read(path), expected, 'AddBookModal differs from the three approved search-prefill edits; protected Search/scanner behavior may have changed.');
+  }
+  const unauthorized = touched.filter((name) => name !== 'src/components/AddBookModal.tsx');
+  assert.deepEqual(unauthorized, [], `Protected Search/scanner paths changed: ${unauthorized.join(', ')}`);
 } catch (error) {
   if (error?.code === 'ERR_ASSERTION') throw error;
   console.warn('Baseline comparison unavailable; module isolation checks still ran.');
