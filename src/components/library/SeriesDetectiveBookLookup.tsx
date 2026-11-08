@@ -30,7 +30,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
       setMatch(found);
       const seriesToInvestigate = found ?? savedSeries;
       if (seriesToInvestigate && libraryBooks) {
-        const missing = await findMissingSeriesBooks(seriesToInvestigate.name, ('discoveryAuthor' in seriesToInvestigate && seriesToInvestigate.discoveryAuthor) || book.work.author, libraryBooks, controller.signal);
+        const missing = await findMissingSeriesBooks(seriesToInvestigate.name, (found?.discoveryAuthor || book.work.author), libraryBooks, controller.signal);
         if (!controller.signal.aborted) setResult(missing);
       }
     })().catch((reason: unknown) => {
