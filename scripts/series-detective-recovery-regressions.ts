@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
 import { buildSeriesLibrary } from '../src/features/series/seriesLibrary';
-import { hasExplicitDetectiveSeriesBrand } from '../src/features/series/seriesDetective';
+import { hasExplicitDetectiveSeriesBrand } from '../src/features/series/seriesDetectiveBranding';
 import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
 import {
