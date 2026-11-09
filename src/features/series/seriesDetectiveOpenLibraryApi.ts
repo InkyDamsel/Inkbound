@@ -339,8 +339,9 @@ export async function searchDetectiveOpenLibraryContext(
   seriesName: string,
   author: string,
   signal?: AbortSignal,
+  allowOtherAuthors = false,
 ): Promise<DetectiveOpenLibraryContextCandidate[]> {
-  const params = new URLSearchParams({ q: `${seriesName} ${author}`.trim() });
+  const params = new URLSearchParams({ q: allowOtherAuthors ? seriesName : `${seriesName} ${author}`.trim() });
   try {
     const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 12, signal);
     const wantedAuthor = canonicalDetectiveAuthor(author);
@@ -349,6 +350,7 @@ export async function searchDetectiveOpenLibraryContext(
       const authors = work.author_name?.length ? work.author_name : ['Unknown author'];
       if (
         wantedAuthor
+        && !allowOtherAuthors
         && !authors.some((candidate) => detectiveAuthorsCompatible(author, candidate))
       ) return [];
 
