@@ -225,7 +225,7 @@ export const hasExplicitDetectiveSeriesBrand = (
       // Some catalog records store "Wellard Asylum Series" as the entire
       // subtitle rather than a colon-delimited suffix. Require the explicit
       // bibliographic "Series"/"Saga" designation, never a thematic phrase.
-      const fullSubtitleBrand = /\\b(?:series|saga)\\s*$/i.test(value)
+      const fullSubtitleBrand = /\b(?:series|saga)\s*$/i.test(value)
         && canonicalDetectiveSeries(value) === wanted;
       return Boolean((label && canonicalDetectiveSeries(label) === wanted) || fullSubtitleBrand);
     });
