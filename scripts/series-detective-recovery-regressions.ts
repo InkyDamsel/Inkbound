@@ -44,7 +44,7 @@ assert.equal(hasExplicitDetectiveSeriesBrand(
 assert.equal(hasExplicitDetectiveSeriesBrand(
   brandedFixture('Lethal', 'Wellard Asylum Series'),
   'Wellard Asylum',
-), false); // unanchored subtitle alone is not an explicit work-series suffix
+), true); // explicit series branding in a full subtitle is valid
 
 // Work identity must include every known edition identifier, not only activeEditionId.
 const queries = buildSeriesDetectionQueries(divergent);
