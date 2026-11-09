@@ -1090,10 +1090,9 @@ export async function findMissingSeriesBooks(
       if (!current || (!current.edition.coverUrl && candidate.edition.coverUrl)) seen.set(key, candidate);
     };
 
-    // A cross-author series can legitimately contain just one currently
-    // discoverable non-anchor author. Explicit bibliographic branding is
-    // stronger evidence than a count of unrelated catalog authors, and
-    // requiring two authors creates a circular discovery failure.
+    // Structured catalog membership and explicit bibliographic title branding
+    // are evaluated per work. A global count of other authors is circular:
+    // one legitimate cross-author book must be discoverable on its own.
     const verifiedMultiAuthorBrand = mergedProviderCandidates.some((candidate) =>
       hasExplicitDetectiveSeriesBrand(candidate, seriesName)
       && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName))
@@ -1120,7 +1119,7 @@ export async function findMissingSeriesBooks(
       const explicitBrand = hasExplicitDetectiveSeriesBrand(candidate, seriesName);
       const contextual = !candidate.seriesName
         && (hasMergedKnownSeriesContext(candidate, seriesName)
-          || (verifiedMultiAuthorBrand && explicitBrand));
+          || explicitBrand);
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
       if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) {
         diagnostics.rejectedSeries += 1;
@@ -1128,7 +1127,7 @@ export async function findMissingSeriesBooks(
       }
       const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
       const matchingAuthor = candidate.work.authors.some((name) => detectiveAuthorsCompatible(author, name));
-      if (!matchingAuthor && !(verifiedMultiAuthorBrand && explicitBrand)) {
+      if (!matchingAuthor && !candidate.seriesStructured && !explicitBrand) {
         diagnostics.rejectedAuthor += 1;
         return;
       }
