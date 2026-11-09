@@ -14,6 +14,7 @@ export async function searchSeriesDetectiveHardcover(
     exactTitle?: string;
     seriesName?: string;
     anchorTitles?: string[];
+    anchorAuthor?: string;
   } = {},
 ): Promise<SeriesDetectiveCatalogResponse> {
   const trimmed = query.trim();
@@ -26,6 +27,7 @@ export async function searchSeriesDetectiveHardcover(
       exactTitle?: string;
       seriesName?: string;
       anchorTitles?: string[];
+    anchorAuthor?: string;
     }, SeriesDetectiveHardcoverPayload>(
       functions,
       'searchSeriesDetectiveHardcover',
@@ -36,6 +38,7 @@ export async function searchSeriesDetectiveHardcover(
       exactTitle: options.exactTitle?.trim() || undefined,
       seriesName: options.seriesName?.trim() || undefined,
       anchorTitles: options.anchorTitles?.map((title) => title.trim()).filter(Boolean).slice(0, 12),
+      anchorAuthor: options.anchorAuthor?.trim() || undefined,
     });
     const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
     return {
