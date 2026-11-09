@@ -1088,11 +1088,14 @@ export async function findMissingSeriesBooks(
       if (!current || (!current.edition.coverUrl && candidate.edition.coverUrl)) seen.set(key, candidate);
     };
 
-    const brandedAuthors = new Set(mergedProviderCandidates
-      .filter((candidate) => hasExplicitDetectiveSeriesBrand(candidate, seriesName)
-        && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)))
-      .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
-    const verifiedMultiAuthorBrand = brandedAuthors.size >= 2;
+    // A cross-author series can legitimately contain just one currently
+    // discoverable non-anchor author. Explicit bibliographic branding is
+    // stronger evidence than a count of unrelated catalog authors, and
+    // requiring two authors creates a circular discovery failure.
+    const verifiedMultiAuthorBrand = mergedProviderCandidates.some((candidate) =>
+      hasExplicitDetectiveSeriesBrand(candidate, seriesName)
+      && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName))
+      && candidate.work.authors.some((name) => !detectiveAuthorsCompatible(author, name)));
 
     const diagnostics = {
       discovered: providerCandidates.length,
