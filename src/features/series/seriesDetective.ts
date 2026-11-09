@@ -1068,11 +1068,14 @@ export async function findMissingSeriesBooks(
       // Series position is ordering metadata, not work identity. Two catalog
       // records claiming the same slot must not cause one distinct work to be
       // silently discarded.
-      const key = isbnKey
-        ? `isbn:${isbnKey}`
-        : `work:${titleKey}::${authorKey}`;
+      // An ISBN identifies an edition, not a distinct literary work. Keep
+      // editions within the same work rather than offering duplicates as
+      // separate missing books. Only use ISBN when title/author are unavailable.
+      const key = titleKey && authorKey
+        ? `work:${titleKey}::${authorKey}`
+        : isbnKey ? `isbn:${isbnKey}` : `unidentified:${seen.size}`;
       const current = seen.get(key);
-      if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
+      if (!current || (!current.edition.coverUrl && candidate.edition.coverUrl)) seen.set(key, candidate);
     };
 
     const brandedAuthors = new Set(mergedProviderCandidates
