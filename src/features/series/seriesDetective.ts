@@ -209,7 +209,7 @@ const hasMergedKnownSeriesContext = (
 
 // Only explicit bibliographic branding qualifies for a cross-author roster.
 // A topical subtitle such as "A Hades and Persephone Romance" is not branding.
-const hasExplicitDetectiveSeriesBrand = (
+export const hasExplicitDetectiveSeriesBrand = (
   candidate: DetectiveMergeCandidate,
   wantedSeriesName: string,
 ): boolean => {
