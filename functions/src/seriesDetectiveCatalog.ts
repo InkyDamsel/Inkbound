@@ -471,8 +471,8 @@ async function detectiveHardcoverCatalog(
             id
             name
             book_series(
-              distinct_on: position
-              order_by: [{ position: asc }, { book: { users_count: desc } }]
+              limit: 250
+              order_by: [{ position: asc_nulls_last }, { book: { users_count: desc } }]
               where: {
                 book: {
                   canonical_id: { _is_null: true }
