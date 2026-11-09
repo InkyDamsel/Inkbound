@@ -1101,13 +1101,19 @@ export async function findMissingSeriesBooks(
       if (!current || (!current.edition.coverUrl && candidate.edition.coverUrl)) seen.set(key, candidate);
     };
 
-    // Structured catalog membership and explicit bibliographic title branding
-    // are evaluated per work. A global count of other authors is circular:
-    // one legitimate cross-author book must be discoverable on its own.
-    const verifiedMultiAuthorBrand = mergedProviderCandidates.some((candidate) =>
-      hasExplicitDetectiveSeriesBrand(candidate, seriesName)
-      && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName))
-      && candidate.work.authors.some((name) => !detectiveAuthorsCompatible(author, name)));
+    // Cross-author membership is enabled only when the catalog provides a
+    // multi-author family, or when two different authors explicitly brand
+    // their books with the requested series name.
+    const structuredAuthors = new Set(mergedProviderCandidates
+      .filter((candidate) => candidate.seriesStructured
+        && candidate.seriesName
+        && detectiveSeriesNamesCompatible(candidate.seriesName, seriesName))
+      .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
+    const brandedAuthors = new Set(mergedProviderCandidates
+      .filter((candidate) => hasExplicitDetectiveSeriesBrand(candidate, seriesName)
+        && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)))
+      .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
+    const verifiedMultiAuthorBrand = structuredAuthors.size >= 3 || brandedAuthors.size >= 2;
 
     const diagnostics = {
       discovered: providerCandidates.length,
@@ -1138,7 +1144,7 @@ export async function findMissingSeriesBooks(
       }
       const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
       const matchingAuthor = candidate.work.authors.some((name) => detectiveAuthorsCompatible(author, name));
-      if (!matchingAuthor && !candidate.seriesStructured && !explicitBrand) {
+      if (!matchingAuthor && !(verifiedMultiAuthorBrand && (candidate.seriesStructured || explicitBrand))) {
         diagnostics.rejectedAuthor += 1;
         return;
       }
