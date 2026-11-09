@@ -989,6 +989,10 @@ export async function findMissingSeriesBooks(
         if (
           !verified?.seriesName
           || !detectiveSeriesNamesCompatible(verified.seriesName, seriesName)
+          // A loosely inferred label on an unrelated work must never seed
+          // a provider-wide series ID used to admit additional volumes.
+          || !verified.work.authors.some((name) => detectiveAuthorsCompatible(author, name))
+          || !verified.seriesStructured
         ) return;
 
         (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
