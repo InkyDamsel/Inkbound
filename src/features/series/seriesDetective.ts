@@ -207,6 +207,25 @@ const hasMergedKnownSeriesContext = (
     });
 };
 
+// Only explicit bibliographic branding qualifies for a cross-author roster.
+// A topical subtitle such as "A Hades and Persephone Romance" is not branding.
+const hasExplicitDetectiveSeriesBrand = (
+  candidate: DetectiveMergeCandidate,
+  wantedSeriesName: string,
+): boolean => {
+  const wanted = canonicalDetectiveSeries(wantedSeriesName);
+  if (!wanted) return false;
+  return [candidate.work.title, candidate.edition.title, candidate.work.subtitle, candidate.edition.subtitle]
+    .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+    .some((value) => {
+      const suffix = value.split(/[:(\[]/).slice(1).join(' ').replace(/[)\]]/g, ' ').trim();
+      const branded = suffix.match(/^(.+?)\s+(?:series|saga)(?:\s+(?:book\s*)?#?\d+)?$/i);
+      const numbered = suffix.match(/^(.+?)\s*(?:#|book\s*#?)\s*\d+$/i);
+      const label = branded?.[1] ?? numbered?.[1];
+      return Boolean(label && canonicalDetectiveSeries(label) === wanted);
+    });
+};
+
 const openLibrarySeriesHasBibliographicContext = (
   candidate: DetectiveOpenLibraryCandidate | DetectiveOpenLibraryContextCandidate,
 ): boolean => {
@@ -1056,6 +1075,13 @@ export async function findMissingSeriesBooks(
       if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
     };
 
+    const brandedAuthors = new Set(mergedProviderCandidates
+      .filter((candidate) => candidate.seriesName
+        && detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)
+        && hasExplicitDetectiveSeriesBrand(candidate, seriesName))
+      .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
+    const verifiedMultiAuthorBrand = brandedAuthors.size >= 2;
+
     mergedProviderCandidates.forEach((candidate) => {
       // Fail closed at the final actionable-roster boundary. A matching series
       // phrase in a title, subtitle, or description is not proof of membership.
@@ -1065,7 +1091,10 @@ export async function findMissingSeriesBooks(
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
       if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) return;
       const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
-      if (!candidate.seriesStructured && !independentlyCorroborated) return;
+      const explicitBrand = hasExplicitDetectiveSeriesBrand(candidate, seriesName);
+      const matchingAuthor = candidate.work.authors.some((name) => detectiveAuthorsCompatible(author, name));
+      if (!matchingAuthor && !(verifiedMultiAuthorBrand && explicitBrand)) return;
+      if (!candidate.seriesStructured && !independentlyCorroborated && !explicitBrand) return;
 
       addCandidate({
         work: candidate.work,
