@@ -3,7 +3,8 @@ type CapacitorRuntime = {
   getPlatform?: () => string;
 };
 
-const buildRuntimeTarget = import.meta.env.VITE_RUNTIME_TARGET;
+// Vite provides env in app bundles; Node-based regression runners do not.
+const buildRuntimeTarget = import.meta.env?.VITE_RUNTIME_TARGET;
 
 function getCapacitorRuntime(): CapacitorRuntime | undefined {
   if (typeof globalThis === 'undefined') return undefined;
