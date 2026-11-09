@@ -950,6 +950,7 @@ export async function findMissingSeriesBooks(
         {
           seriesName,
           anchorTitles: seriesBooks.map((book) => book.work.title),
+          anchorAuthor: author,
         },
       ),
       searchSeriesDetectiveHardcover(seriesName),
