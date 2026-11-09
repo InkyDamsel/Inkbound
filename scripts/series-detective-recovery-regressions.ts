@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
 import { buildSeriesLibrary } from '../src/features/series/seriesLibrary';
+import { hasExplicitDetectiveSeriesBrand } from '../src/features/series/seriesDetective';
 import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
 import {
@@ -24,6 +25,26 @@ const divergent = {
     { id: 'b', isbn13: '9780007420421' },
   ],
 } as unknown as UserBookRecord;
+
+
+// A topical mythological description is not evidence of a specific series.
+// Multi-author branded titles remain eligible for corroboration.
+const brandedFixture = (title: string, subtitle: string) => ({
+  work: { title, subtitle },
+  edition: { title, subtitle },
+}) as Parameters<typeof hasExplicitDetectiveSeriesBrand>[0];
+assert.equal(hasExplicitDetectiveSeriesBrand(
+  brandedFixture('Salt & Blood', 'A Hades and Persephone Romance'),
+  'Hades x Persephone',
+), false);
+assert.equal(hasExplicitDetectiveSeriesBrand(
+  brandedFixture('Lethal: Wellard Asylum Series', ''),
+  'Wellard Asylum',
+), true);
+assert.equal(hasExplicitDetectiveSeriesBrand(
+  brandedFixture('Lethal', 'Wellard Asylum Series'),
+  'Wellard Asylum',
+), false); // unanchored subtitle alone is not an explicit work-series suffix
 
 // Work identity must include every known edition identifier, not only activeEditionId.
 const queries = buildSeriesDetectionQueries(divergent);
