@@ -1076,9 +1076,8 @@ export async function findMissingSeriesBooks(
     };
 
     const brandedAuthors = new Set(mergedProviderCandidates
-      .filter((candidate) => candidate.seriesName
-        && detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)
-        && hasExplicitDetectiveSeriesBrand(candidate, seriesName))
+      .filter((candidate) => hasExplicitDetectiveSeriesBrand(candidate, seriesName)
+        && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)))
       .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
     const verifiedMultiAuthorBrand = brandedAuthors.size >= 2;
 
@@ -1087,11 +1086,13 @@ export async function findMissingSeriesBooks(
       // phrase in a title, subtitle, or description is not proof of membership.
       // The catalog must supply structured membership or independent provider
       // corroboration. This applies equally to single- and multi-author series.
-      const contextual = !candidate.seriesName && hasMergedKnownSeriesContext(candidate, seriesName);
+      const explicitBrand = hasExplicitDetectiveSeriesBrand(candidate, seriesName);
+      const contextual = !candidate.seriesName
+        && (hasMergedKnownSeriesContext(candidate, seriesName)
+          || (verifiedMultiAuthorBrand && explicitBrand));
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
       if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) return;
       const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
-      const explicitBrand = hasExplicitDetectiveSeriesBrand(candidate, seriesName);
       const matchingAuthor = candidate.work.authors.some((name) => detectiveAuthorsCompatible(author, name));
       if (!matchingAuthor && !(verifiedMultiAuthorBrand && explicitBrand)) return;
       if (!candidate.seriesStructured && !independentlyCorroborated && !explicitBrand) return;
