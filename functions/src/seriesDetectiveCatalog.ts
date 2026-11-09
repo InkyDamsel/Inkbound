@@ -495,17 +495,35 @@ async function detectiveHardcoverCatalog(
       );
 
       const requestedSeriesIdentity = normalizeHardcoverSeries(requestedSeries);
-      const matchingSeries = (seriesData.series ?? []).filter((series) => {
-        if (
-          !requestedSeriesIdentity
-          || normalizeHardcoverSeries(series.name) !== requestedSeriesIdentity
-          || !anchors.length
-        ) return false;
-        return (series.book_series ?? []).some((membership) =>
+      const sameNameSeries = (seriesData.series ?? []).filter((series) =>
+        Boolean(requestedSeriesIdentity)
+        && normalizeHardcoverSeries(series.name) === requestedSeriesIdentity,
+      );
+      // Establish the owned title/author anchor before considering any other
+      // record. Same-name catalog series are not inherently the same series.
+      const anchoredSeries = sameNameSeries.filter((series) =>
+        anchors.length > 0 && (series.book_series ?? []).some((membership) =>
           hardcoverTitleMatchesAnchor(anchors, membership.book?.title)
           && (!options.anchorAuthor?.trim() || hardcoverBookAuthors(membership.book)
-            .some((name) => normalizeHardcoverText(name) === normalizeHardcoverText(options.anchorAuthor))));
-      });
+            .some((name) => normalizeHardcoverText(name) === normalizeHardcoverText(options.anchorAuthor))),
+        ),
+      );
+      const familyBooks = sameNameSeries.flatMap((series) =>
+        (series.book_series ?? []).map((membership) => membership.book).filter(
+          (book): book is HardcoverBook => Boolean(book?.id),
+        ),
+      );
+      const familyBookIds = new Set(familyBooks.map((book) => String(book.id)));
+      const familyAuthors = new Set(familyBooks.flatMap((book) =>
+        hardcoverBookAuthors(book).map(normalizeHardcoverText).filter(Boolean),
+      ));
+      // Shared-world series can be split into one Hardcover series record per
+      // contributing author. Only expand beyond the anchored record when the
+      // same-name family demonstrates multiple works and multiple authors.
+      const sharedWorldFamily = anchoredSeries.length > 0
+        && familyBookIds.size >= 3
+        && familyAuthors.size >= 2;
+      const matchingSeries = sharedWorldFamily ? sameNameSeries : anchoredSeries;
 
       const memberships = matchingSeries.flatMap((series) => series.book_series ?? []);
       const directSeriesBooks: HardcoverBook[] = memberships.flatMap((membership) => {
