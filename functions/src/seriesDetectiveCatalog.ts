@@ -356,6 +356,7 @@ async function detectiveHardcoverCatalog(
     exactTitle?: string;
     seriesName?: string;
     anchorTitles?: string[];
+    anchorAuthor?: string;
   } = {},
 ) {
   const token = HARDCOVER_API_TOKEN.value();
@@ -501,7 +502,9 @@ async function detectiveHardcoverCatalog(
           || !anchors.length
         ) return false;
         return (series.book_series ?? []).some((membership) =>
-          hardcoverTitleMatchesAnchor(anchors, membership.book?.title));
+          hardcoverTitleMatchesAnchor(anchors, membership.book?.title)
+          && (!options.anchorAuthor?.trim() || hardcoverBookAuthors(membership.book)
+            .some((name) => normalizeHardcoverText(name) === normalizeHardcoverText(options.anchorAuthor))));
       });
 
       const memberships = matchingSeries.flatMap((series) => series.book_series ?? []);
@@ -806,6 +809,7 @@ export const searchSeriesDetectiveHardcover = onCall(
     const expandSeries = request.data?.expandSeries === true;
     const exactTitle = typeof request.data?.exactTitle === 'string' ? request.data.exactTitle.trim() : '';
     const seriesName = typeof request.data?.seriesName === 'string' ? request.data.seriesName.trim() : '';
+    const anchorAuthor = typeof request.data?.anchorAuthor === 'string' ? request.data.anchorAuthor.trim().slice(0, 160) : '';
     const anchorTitles = Array.isArray(request.data?.anchorTitles)
       ? request.data.anchorTitles
         .filter((value: unknown): value is string => typeof value === 'string')
@@ -820,6 +824,7 @@ export const searchSeriesDetectiveHardcover = onCall(
         exactTitle: exactTitle || undefined,
         seriesName: seriesName || undefined,
         anchorTitles,
+        anchorAuthor: anchorAuthor || undefined,
       });
     } catch (error) {
       console.warn('Series Detective Hardcover catalog unavailable.', error);
