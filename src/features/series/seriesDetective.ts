@@ -222,7 +222,12 @@ export const hasExplicitDetectiveSeriesBrand = (
       const branded = suffix.match(/^(.+?)\s+(?:series|saga)(?:\s+(?:book\s*)?#?\d+)?$/i);
       const numbered = suffix.match(/^(.+?)\s*(?:#|book\s*#?)\s*\d+$/i);
       const label = branded?.[1] ?? numbered?.[1];
-      return Boolean(label && canonicalDetectiveSeries(label) === wanted);
+      // Some catalog records store "Wellard Asylum Series" as the entire
+      // subtitle rather than a colon-delimited suffix. Require the explicit
+      // bibliographic "Series"/"Saga" designation, never a thematic phrase.
+      const fullSubtitleBrand = /\\b(?:series|saga)\\s*$/i.test(value)
+        && canonicalDetectiveSeries(value) === wanted;
+      return Boolean((label && canonicalDetectiveSeries(label) === wanted) || fullSubtitleBrand);
     });
 };
 
