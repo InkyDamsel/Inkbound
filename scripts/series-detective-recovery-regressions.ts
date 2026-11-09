@@ -46,6 +46,19 @@ assert.equal(hasExplicitDetectiveSeriesBrand(
   'Wellard Asylum',
 ), true); // explicit series branding in a full subtitle is valid
 
+assert.equal(hasExplicitDetectiveSeriesBrand(
+  brandedFixture("Conceal, Don't Feel: A Twisted Tale", ''),
+  'A Twisted Tale',
+), true);
+assert.equal(hasExplicitDetectiveSeriesBrand(
+  brandedFixture('Exposed (Wellard Asylum)', ''),
+  'Wellard Asylum',
+), true);
+assert.equal(hasExplicitDetectiveSeriesBrand(
+  brandedFixture('Salt & Blood: A Hades and Persephone Romance', ''),
+  'Hades x Persephone',
+), false);
+
 // Work identity must include every known edition identifier, not only activeEditionId.
 const queries = buildSeriesDetectionQueries(divergent);
 assert.equal(queries.workQuery, 'Divergent Veronica Roth');
