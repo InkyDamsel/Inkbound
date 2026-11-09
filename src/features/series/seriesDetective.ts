@@ -933,6 +933,7 @@ export async function findMissingSeriesBooks(
       openLibrarySeriesCandidates,
       openLibraryAuthorCandidates,
       openLibraryContextCandidates,
+      openLibraryCrossAuthorContext,
       hardcoverSeriesAndAuthor,
       hardcoverSeriesOnly,
       hardcoverAuthor,
@@ -947,6 +948,7 @@ export async function findMissingSeriesBooks(
       searchDetectiveOpenLibrarySeries(seriesName, author, signal),
       searchDetectiveOpenLibraryAuthor(author, signal),
       searchDetectiveOpenLibraryContext(seriesName, author, signal),
+      searchDetectiveOpenLibraryContext(seriesName, author, signal, true),
       // Only the series + author query may expand Hardcover's structured
       // series ID. A bare series name can collide across unrelated authors.
       searchSeriesDetectiveHardcover(
@@ -1034,7 +1036,7 @@ export async function findMissingSeriesBooks(
       });
     });
 
-    openLibraryContextCandidates.forEach((candidate) => {
+    [...openLibraryContextCandidates, ...openLibraryCrossAuthorContext].forEach((candidate) => {
       providerCandidates.push({
         work: candidate.work,
         edition: candidate.edition,
