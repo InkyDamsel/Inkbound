@@ -1094,6 +1094,19 @@ export async function findMissingSeriesBooks(
       .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
     const verifiedMultiAuthorBrand = brandedAuthors.size >= 2;
 
+    const diagnostics = {
+      discovered: providerCandidates.length,
+      merged: mergedProviderCandidates.length,
+      rejectedSeries: 0,
+      rejectedAuthor: 0,
+      rejectedEvidence: 0,
+      admitted: 0,
+      providerCounts: Object.fromEntries(
+        ['google-books', 'open-library', 'hardcover', 'penguin-random-house']
+          .map((provider) => [provider, providerCandidates.filter((candidate) => candidate.provider === provider).length]),
+      ),
+    };
+
     mergedProviderCandidates.forEach((candidate) => {
       // Fail closed at the final actionable-roster boundary. A matching series
       // phrase in a title, subtitle, or description is not proof of membership.
@@ -1104,11 +1117,21 @@ export async function findMissingSeriesBooks(
         && (hasMergedKnownSeriesContext(candidate, seriesName)
           || (verifiedMultiAuthorBrand && explicitBrand));
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
-      if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) return;
+      if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) {
+        diagnostics.rejectedSeries += 1;
+        return;
+      }
       const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
       const matchingAuthor = candidate.work.authors.some((name) => detectiveAuthorsCompatible(author, name));
-      if (!matchingAuthor && !(verifiedMultiAuthorBrand && explicitBrand)) return;
-      if (!candidate.seriesStructured && !independentlyCorroborated && !explicitBrand) return;
+      if (!matchingAuthor && !(verifiedMultiAuthorBrand && explicitBrand)) {
+        diagnostics.rejectedAuthor += 1;
+        return;
+      }
+      if (!candidate.seriesStructured && !independentlyCorroborated && !explicitBrand) {
+        diagnostics.rejectedEvidence += 1;
+        return;
+      }
+      diagnostics.admitted += 1;
 
       addCandidate({
         work: candidate.work,
@@ -1117,6 +1140,15 @@ export async function findMissingSeriesBooks(
         position: candidate.position,
       });
     });
+
+    if (import.meta.env.DEV) {
+      console.info('[Series Detective] discovery diagnostics', {
+        seriesName,
+        ...diagnostics,
+        uniqueWorks: seen.size,
+        multiAuthorBrandVerified: verifiedMultiAuthorBrand,
+      });
+    }
 
     return [...seen.values()].sort((a, b) => {
       if (a.position !== null && b.position !== null) return a.position - b.position;
