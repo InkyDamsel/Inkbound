@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
-const read = (path) => fs.readFileSync(path, 'utf8');
+const normalizeLineEndings = (value) => value.replace(/\r\n/g, '\n');
+const read = (path) => normalizeLineEndings(fs.readFileSync(path, 'utf8'));
 const detectiveFiles = [
   'src/features/series/seriesDetective.ts',
   'src/features/series/seriesDetectiveEvidence.ts',
@@ -41,7 +42,7 @@ try {
   // so changes to search/scanner behavior still fail this guard.
   if (touched.includes('src/components/AddBookModal.tsx')) {
     const path = 'src/components/AddBookModal.tsx';
-    const baseline = execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8' });
+    const baseline = normalizeLineEndings(execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8' }));
     const replacements = [
       ['  currentBookCount: number;\n', '  currentBookCount: number;\n  initialSearchQuery?: string;\n'],
       ["({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook }) => {", "({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook, initialSearchQuery = '' }) => {"],
