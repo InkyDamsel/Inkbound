@@ -522,7 +522,7 @@ async function detectiveHardcoverCatalog(
       // same-name family demonstrates multiple works and multiple authors.
       const sharedWorldFamily = anchoredSeries.length > 0
         && familyBookIds.size >= 3
-        && familyAuthors.size >= 3;
+        && familyAuthors.size >= 2;
       const matchingSeries = sharedWorldFamily ? sameNameSeries : anchoredSeries;
 
       const memberships = matchingSeries.flatMap((series) => series.book_series ?? []);
