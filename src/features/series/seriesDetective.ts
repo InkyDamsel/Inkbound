@@ -222,12 +222,16 @@ export const hasExplicitDetectiveSeriesBrand = (
       const branded = suffix.match(/^(.+?)\s+(?:series|saga)(?:\s+(?:book\s*)?#?\d+)?$/i);
       const numbered = suffix.match(/^(.+?)\s*(?:#|book\s*#?)\s*\d+$/i);
       const label = branded?.[1] ?? numbered?.[1];
+      // Publishers also use a bare exact series subtitle, e.g.
+      // "Conceal, Don't Feel: A Twisted Tale". Exact equality is required:
+      // "A Hades and Persephone Romance" must never qualify.
+      const exactSuffixBrand = Boolean(suffix && canonicalDetectiveSeries(suffix) === wanted);
       // Some catalog records store "Wellard Asylum Series" as the entire
       // subtitle rather than a colon-delimited suffix. Require the explicit
       // bibliographic "Series"/"Saga" designation, never a thematic phrase.
       const fullSubtitleBrand = /\b(?:series|saga)\s*$/i.test(value)
         && canonicalDetectiveSeries(value) === wanted;
-      return Boolean((label && canonicalDetectiveSeries(label) === wanted) || fullSubtitleBrand);
+      return Boolean((label && canonicalDetectiveSeries(label) === wanted) || fullSubtitleBrand || exactSuffixBrand);
     });
 };
 
@@ -834,10 +838,17 @@ const mergeCandidateFromGoogleVolume = (
     && wantedSeriesName
     && detectiveSeriesNamesCompatible(metadata.name, wantedSeriesName),
   );
+  const explicitTitleBrand = Boolean(wantedSeriesName && hasExplicitDetectiveSeriesBrand({
+    work: { title, subtitle: info?.subtitle, authors } as SeriesDetectiveWorkGroup,
+    edition: { title, subtitle: info?.subtitle } as SeriesDetectiveEdition,
+    provider: 'google-books',
+    position: null,
+  }, wantedSeriesName));
   if (
     !hasStructuredSeries
     && !explicitBibliographicSeriesMatch
     && !explicitCompatibleSeries
+    && !explicitTitleBrand
     && !exactAuthor
   ) return null;
 
