@@ -14,7 +14,7 @@ interface Props {
 const positionLabel = (position: number | null) => (position === null ? 'Order unverified' : `Book ${position}`);
 
 const addEvent = (entries: SeriesRosterEntry[]) => {
-  const candidates = entries.flatMap((entry) => (entry.candidate ? [entry.candidate] : []));
+  const candidates = entries.flatMap((entry) => (entry.candidate?.verification === 'verified' ? [entry.candidate] : []));
   if (!candidates.length) return;
   // Detective never writes to the library. The canonical add path in App.tsx
   // receives this event and owns validation and persistence.
@@ -33,6 +33,7 @@ const Facts: React.FC<{ entry: SeriesRosterEntry }> = ({ entry }) => {
 
 const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpenBook'] }> = ({ entry, onOpenBook }) => {
   const missing = entry.kind === 'missing';
+  const reviewOnly = missing && entry.candidate?.verification !== 'verified';
   const book = entry.book;
 
   return (
@@ -45,7 +46,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-[#e5c158]">{positionLabel(entry.position)}</span>
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${missing ? 'bg-[#c5a059]/20 text-[#f3dbad]' : 'bg-emerald-400/15 text-emerald-200'}`}>
-              {missing ? 'Not in your library' : 'In your library'}
+              {missing ? (reviewOnly ? 'Review series evidence' : 'Not in your library') : 'In your library'}
             </span>
           </div>
           <p className="mt-1 font-serif text-base text-[#f3dbad]">{entry.title}</p>
@@ -60,7 +61,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
 
         </div>
         <div className="flex shrink-0 flex-col gap-2">
-          {missing && (
+          {missing && !reviewOnly && (
             <button type="button" onClick={() => addEvent([entry])} className="rounded-xl bg-[#c5a059] px-3 py-2 text-xs font-bold text-[#211128] transition hover:bg-[#e4c47c]">Add Book</button>
           )}
           {book && onOpenBook && (
@@ -75,7 +76,8 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
 /** Read-only roster: every book in the series, owned or missing, with its details. */
 export const SeriesDetectiveRoster: React.FC<Props> = ({ entries, onOpenBook }) => {
   const summary = summarizeSeriesRoster(entries);
-  const missingEntries = entries.filter((entry) => entry.kind === 'missing');
+  const missingEntries = entries.filter((entry) => entry.kind === 'missing' && entry.candidate?.verification === 'verified');
+  const reviewCount = entries.filter((entry) => entry.kind === 'missing' && entry.candidate?.verification !== 'verified').length;
   const disconnectedEntries = entries.filter((entry) => entry.kind === 'owned' && entry.book && entry.candidate && !entry.book.work.seriesName?.trim());
 
   if (!entries.length) {
@@ -88,6 +90,7 @@ export const SeriesDetectiveRoster: React.FC<Props> = ({ entries, onOpenBook }) 
         <p className="text-sm text-stone-300">
           {summary.total} book(s): {summary.inLibrary} in your library, {summary.missing} not found in your library.
         </p>
+        {reviewCount > 0 && <p className="text-xs text-amber-200">{reviewCount} candidate(s) need independent series verification before adding.</p>}
         {disconnectedEntries.length > 0 && <button type="button" onClick={() => {
           const books = disconnectedEntries.map((entry) => ({
             bookId: entry.book!.id,
