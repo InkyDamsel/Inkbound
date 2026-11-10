@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { SeriesRosterEntry } from '../../features/series/seriesDetectiveRoster';
 import { summarizeSeriesRoster } from '../../features/series/seriesDetectiveRoster';
 import { getCanonicalProgressPercentage } from '../../features/reading/bookReadingState';
@@ -32,6 +32,7 @@ const Facts: React.FC<{ entry: SeriesRosterEntry }> = ({ entry }) => {
 };
 
 const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpenBook'] }> = ({ entry, onOpenBook }) => {
+  const [reviewOpen, setReviewOpen] = useState(false);
   const missing = entry.kind === 'missing';
   const reviewOnly = missing && entry.candidate?.verification !== 'verified';
   const book = entry.book;
@@ -61,6 +62,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
 
         </div>
         <div className="flex shrink-0 flex-col gap-2">
+          {reviewOnly && <button type="button" onClick={() => setReviewOpen(true)} className="rounded-xl border border-[#c5a059]/60 px-3 py-2 text-xs font-bold text-[#e5c158] hover:bg-[#c5a059]/10">Review</button>}
           {missing && !reviewOnly && (
             <button type="button" onClick={() => addEvent([entry])} className="rounded-xl bg-[#c5a059] px-3 py-2 text-xs font-bold text-[#211128] transition hover:bg-[#e4c47c]">Add Book</button>
           )}
@@ -69,6 +71,27 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
           )}
         </div>
       </div>
+      {reviewOpen && entry.candidate && (
+        <div role="dialog" aria-modal="true" aria-label={`Review series evidence for ${entry.title}`} className="mt-3 rounded-xl border border-[#c5a059]/50 bg-[#211628] p-4 text-sm text-stone-200">
+          <p className="font-serif text-lg text-[#f3dbad]">Review series membership</p>
+          <p className="mt-2 font-semibold">{entry.title}</p>
+          <p>{entry.authors || 'Author unverified'}</p>
+          <p className="mt-2">Proposed series: <strong>{entry.candidate.seriesName}</strong></p>
+          <p>Proposed order: {entry.position === null ? 'Unverified' : entry.position}</p>
+          <p>Catalog source: {entry.candidate.edition.source}</p>
+          {entry.isbn && <p>ISBN: {entry.isbn}</p>}
+          <p className="mt-3 text-amber-200">The catalog has not independently verified this membership. Confirm it using a trusted publisher or author source before adding. Accepting adds this book through Inkbound's normal library save path; it does not verify other candidates.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => setReviewOpen(false)} className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold">Close / Reject</button>
+            <button type="button" onClick={() => {
+              const candidate = entry.candidate;
+              if (!candidate || !window.confirm(`I independently verified that "${entry.title}" belongs to "${candidate.seriesName}". Add this book to my library?`)) return;
+              window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: [candidate] } }));
+              setReviewOpen(false);
+            }} className="rounded-xl bg-[#c5a059] px-3 py-2 text-xs font-bold text-[#211128]">Confirm membership &amp; Add Book</button>
+          </div>
+        </div>
+      )}
     </li>
   );
 };
