@@ -1072,7 +1072,10 @@ export async function findMissingSeriesBooks(
         ? `work:${titleKey}::${authorKey}`
         : isbnKey ? `isbn:${isbnKey}` : `unidentified:${seen.size}`;
       const current = seen.get(key);
-      if (!current || (!current.edition.coverUrl && candidate.edition.coverUrl)) seen.set(key, candidate);
+      if (!current || (current.verification !== 'verified' && candidate.verification === 'verified')
+        || (current.verification === candidate.verification && !current.edition.coverUrl && candidate.edition.coverUrl)) {
+        seen.set(key, candidate);
+      }
     };
 
     // Cross-author membership is enabled only when the catalog provides a
