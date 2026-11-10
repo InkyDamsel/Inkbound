@@ -25,7 +25,9 @@ export const hasExplicitDetectiveSeriesBrand = (
       // bibliographic "Series"/"Saga" designation, never a thematic phrase.
       const fullSubtitleBrand = /\b(?:series|saga)\s*$/i.test(value)
         && canonicalDetectiveSeries(value) === wanted;
-      return Boolean((label && canonicalDetectiveSeries(label) === wanted) || fullSubtitleBrand || exactSuffixBrand);
+      const bareSubtitleBrand = (value === candidate.work.subtitle || value === candidate.edition.subtitle)
+        && canonicalDetectiveSeries(value) === wanted;
+      return Boolean((label && canonicalDetectiveSeries(label) === wanted) || fullSubtitleBrand || exactSuffixBrand || bareSubtitleBrand);
     });
 };
 
