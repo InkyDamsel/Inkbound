@@ -700,10 +700,13 @@ async function detectiveHardcoverCatalog(
       ?? matchedEditions.map((edition) => edition.book?.description)
         .find((description): description is string => Boolean(description?.trim()));
 
-    const bookMembership = matchedBook?.book_series?.find((membership) => membership.series?.name?.trim());
+    const requestedMembership = (memberships?: HardcoverSeriesMembership[]) =>
+      memberships?.find((membership) => options.seriesName && normalizeHardcoverSeries(membership.series?.name) === normalizeHardcoverSeries(options.seriesName))
+      ?? memberships?.find((membership) => membership.series?.name?.trim());
+    const bookMembership = requestedMembership(matchedBook?.book_series);
     const normalizedEditions: NormalizedHardcoverEdition[] = matchedEditions.length > 0
       ? matchedEditions.map((edition) => {
-          const membership = edition.book?.book_series?.find((item) => item.series?.name?.trim()) ?? bookMembership;
+          const membership = requestedMembership(edition.book?.book_series) ?? bookMembership;
           return {
             source: 'hardcover' as const,
             externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
