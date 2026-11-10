@@ -777,7 +777,8 @@ async function detectiveHardcoverCatalog(
     if (!id || searchResultBookIds.has(id)) return;
 
     const memberships = book.book_series ?? [];
-    const membership = memberships.find((item) => item.series?.name?.trim());
+    const membership = memberships.find((item) => options.seriesName && normalizeHardcoverSeries(item.series?.name) === normalizeHardcoverSeries(options.seriesName))
+      ?? memberships.find((item) => item.series?.name?.trim());
     if (!membership?.series?.name?.trim()) return;
 
     const matchedEditions = editionsByBook.get(id) ?? [];
@@ -802,6 +803,12 @@ async function detectiveHardcoverCatalog(
           editionName: edition.title,
           binding: edition.edition_format,
           specialFeatures: [] as string[],
+          seriesMemberships: memberships.filter((item) => item.series?.name?.trim()).map((item) => ({
+            name: item.series!.name!.trim(),
+            position: item.position,
+            provider: 'hardcover' as const,
+            externalSeriesId: item.series?.id == null ? undefined : String(item.series.id),
+          })),
           seriesName: membership.series?.name?.trim(),
           seriesOrder: typeof membership.position === 'number' ? membership.position : undefined,
         }))
@@ -817,6 +824,12 @@ async function detectiveHardcoverCatalog(
           format: 'hardcover' as const,
           coverUrl: book.image?.url,
           specialFeatures: [] as string[],
+          seriesMemberships: memberships.filter((item) => item.series?.name?.trim()).map((item) => ({
+            name: item.series!.name!.trim(),
+            position: item.position,
+            provider: 'hardcover' as const,
+            externalSeriesId: item.series?.id == null ? undefined : String(item.series.id),
+          })),
           seriesName: membership.series?.name?.trim(),
           seriesOrder: typeof membership.position === 'number' ? membership.position : undefined,
         }];
