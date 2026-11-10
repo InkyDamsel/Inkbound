@@ -707,6 +707,13 @@ async function detectiveHardcoverCatalog(
       memberships?.find((membership) => options.seriesName && normalizeHardcoverSeries(membership.series?.name) === normalizeHardcoverSeries(options.seriesName))
       ?? memberships?.find((membership) => membership.series?.name?.trim());
     const bookMembership = requestedMembership(matchedBook?.book_series);
+    const allMemberships = (memberships?: HardcoverSeriesMembership[]) =>
+      (memberships ?? []).filter((membership) => membership.series?.name?.trim()).map((membership) => ({
+        name: membership.series!.name!.trim(),
+        position: typeof membership.position === 'number' ? membership.position : undefined,
+        provider: 'hardcover' as const,
+        externalSeriesId: membership.series?.id == null ? undefined : String(membership.series.id),
+      }));
     const normalizedEditions: NormalizedHardcoverEdition[] = matchedEditions.length > 0
       ? matchedEditions.map((edition) => {
           const membership = requestedMembership(edition.book?.book_series) ?? bookMembership;
@@ -729,6 +736,7 @@ async function detectiveHardcoverCatalog(
             editionName: edition.title,
             binding: edition.edition_format,
             specialFeatures: [] as string[],
+            seriesMemberships: allMemberships(edition.book?.book_series?.length ? edition.book.book_series : matchedBook?.book_series),
             seriesName: membership?.series?.name?.trim(),
             seriesOrder: typeof membership?.position === 'number' ? membership.position : undefined,
           };
@@ -746,6 +754,7 @@ async function detectiveHardcoverCatalog(
           pageCount: result.pages,
           coverUrl: matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
           specialFeatures: [] as string[],
+          seriesMemberships: allMemberships(matchedBook?.book_series),
           seriesName: bookMembership?.series?.name?.trim(),
           seriesOrder: typeof bookMembership?.position === 'number' ? bookMembership.position : undefined,
         }];
