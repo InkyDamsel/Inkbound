@@ -55,6 +55,9 @@ const knownSeriesMetadataFromCatalogWork = (
   wantedSeriesName: string,
 ): SeriesDetectiveMatch | null => {
   const seriesAware = edition as DetectiveSeriesAwareEdition;
+  const explicitMembership = edition.seriesMemberships?.find((membership) =>
+    detectiveSeriesNamesCompatible(membership.name, wantedSeriesName));
+  if (explicitMembership) return { name: explicitMembership.name, position: explicitMembership.position ?? null };
   if (
     seriesAware.seriesName
     && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName)
@@ -112,9 +115,9 @@ const hardcoverContextCandidates = (
             }
           : null;
       const structuredSeriesMatch = Boolean(
-        wantedSeriesName
-        && seriesAware.seriesName
-        && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName),
+        wantedSeriesName && (edition.seriesMemberships?.some((membership) =>
+          detectiveSeriesNamesCompatible(membership.name, wantedSeriesName))
+          || (seriesAware.seriesName && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName))),
       );
       if (!exactAuthor && !structuredSeriesMatch) return [];
       return [{
@@ -124,10 +127,7 @@ const hardcoverContextCandidates = (
         position: metadata?.position ?? null,
         provider: 'hardcover' as const,
         seriesProvider: metadata ? 'hardcover' as const : undefined,
-        seriesStructured: Boolean(
-          seriesAware.seriesName
-          && (!wantedSeriesName || detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName)),
-        ),
+        seriesStructured: structuredSeriesMatch || Boolean(!wantedSeriesName && (seriesAware.seriesName || edition.seriesMemberships?.length)),
       }];
     });
   });
