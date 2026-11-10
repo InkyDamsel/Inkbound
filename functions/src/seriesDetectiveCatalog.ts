@@ -230,6 +230,7 @@ interface NormalizedHardcoverEdition {
   specialFeatures: string[];
   seriesName?: string;
   seriesOrder?: number;
+  seriesMemberships?: Array<{ name: string; position?: number; provider: 'hardcover'; externalSeriesId?: string }>;
 }
 
 interface NormalizedHardcoverGroup {
