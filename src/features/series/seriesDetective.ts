@@ -288,6 +288,7 @@ export interface SeriesDetectiveResult {
   missing: SeriesDetectiveCandidate[];
   /** Catalog candidates already in the library (additive; `missing` is unchanged). */
   owned: SeriesDetectiveOwnedEntry[];
+  completeness?: 'complete' | 'partial' | 'unavailable' | 'conflict';
 }
 
 export interface FindMissingSeriesOptions {
@@ -349,7 +350,9 @@ export const classifySeriesCandidates = (
     if (book) owned.push({ candidate, book });
     else missing.push(candidate);
   });
-  return { seriesName, candidates, missing, owned };
+  // No provider in this pipeline supplies a trusted complete-series total.
+  // A nonempty roster is partial, never automatically complete.
+  return { seriesName, candidates, missing, owned, completeness: candidates.length ? 'partial' : 'unavailable' };
 };
 
 const SERIES_CANDIDATE_CACHE_TTL_MS = 15 * 60 * 1000;
