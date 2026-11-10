@@ -36,6 +36,13 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
   const missing = entry.kind === 'missing';
   const reviewOnly = missing && entry.candidate?.verification !== 'verified';
   const book = entry.book;
+  // Only a provider-supplied Amazon identifier may form a direct product URL.
+  // ISBNs identify editions but cannot safely be assumed to be Amazon ASINs.
+  const asin = entry.candidate?.edition.asin?.trim().toUpperCase();
+  const directAmazonUrl = asin && /^[A-Z0-9]{10}$/.test(asin)
+    ? `https://www.amazon.com/dp/${asin}`
+    : null;
+  const amazonSearchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(entry.isbn || [entry.title, entry.authors].filter(Boolean).join(' '))}&i=stripbooks`;
 
   return (
     <li className={`rounded-xl border p-3 ${missing ? 'border-[#c5a059]/30 bg-[#150d1b]' : 'border-white/10 bg-white/[0.03]'}`}>
@@ -81,9 +88,9 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
           <p>Catalog source: {entry.candidate.edition.source}</p>
           {entry.isbn && <p>ISBN: {entry.isbn}</p>}
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-            <a href={`https://www.amazon.com/s?k=${encodeURIComponent(entry.isbn || [entry.title, entry.authors].filter(Boolean).join(' '))}&i=stripbooks`} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#e5c158] underline underline-offset-2 hover:text-[#f3dbad]">Find on Amazon ↗</a>
+            <a href={directAmazonUrl ?? amazonSearchUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#e5c158] underline underline-offset-2 hover:text-[#f3dbad]">{directAmazonUrl ? 'View on Amazon ↗' : 'Find on Amazon ↗'}</a>
           </div>
-          <p className="mt-2 text-[11px] text-stone-400">Opens Amazon book search by ISBN when available, otherwise title and author. This is a search, not a verified catalog citation or endorsement.</p>
+          <p className="mt-2 text-[11px] text-stone-400">Opens the Amazon product page when the catalog supplies an ASIN; otherwise searches by ISBN or title and author. Amazon listings are research aids, not independent series verification.</p>
           <p className="mt-3 text-amber-200">The catalog has not independently verified this membership. Confirm it using a trusted publisher or author source before adding. Accepting adds this book through Inkbound's normal library save path; it does not verify other candidates.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={() => setReviewOpen(false)} className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold">Close / Reject</button>
