@@ -890,12 +890,14 @@ export async function findMissingSeriesBooks(
 ): Promise<SeriesDetectiveResult> {
   const overrides = options.overrides ?? {};
   const scopedSeriesBookIds = new Set(seriesBookIds ?? []);
-  const seriesBooks = scopedSeriesBookIds.size > 0
-    ? libraryBooks.filter((book) => scopedSeriesBookIds.has(book.id))
-    : libraryBooks.filter((book) => {
-        const resolved = resolveEffectiveSeriesMetadata(book, overrides);
-        return Boolean(resolved && detectiveSeriesNamesCompatible(resolved.name, seriesName));
-      });
+  // An entry point is a hint, not a limit on discovery. Include every owned
+  // installment carrying the same verified series identity as additional
+  // anchors, even when the library grouped authors into separate clusters.
+  const seriesBooks = libraryBooks.filter((book) => {
+    const resolved = resolveEffectiveSeriesMetadata(book, overrides);
+    return scopedSeriesBookIds.has(book.id)
+      || Boolean(resolved && detectiveSeriesNamesCompatible(resolved.name, seriesName));
+  });
   const knownPositions = seriesBooks.flatMap((book) => {
     const resolved = resolveEffectiveSeriesMetadata(book, overrides);
     return typeof resolved?.position === 'number' && Number.isFinite(resolved.position)
