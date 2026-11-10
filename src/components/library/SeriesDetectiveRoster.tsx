@@ -80,11 +80,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
           <p>Proposed order: {entry.position === null ? 'Unverified' : entry.position}</p>
           <p>Catalog source: {entry.candidate.edition.source}</p>
           {entry.isbn && <p>ISBN: {entry.isbn}</p>}
-          <div className="mt-3 flex flex-wrap gap-3 text-xs">
-            <a href={`https://www.google.com/search?q=${encodeURIComponent([entry.title, entry.authors, entry.isbn || '', entry.candidate.seriesName, 'publisher series'].filter(Boolean).join(' '))}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#e5c158] underline underline-offset-2 hover:text-[#f3dbad]">Research this book ↗</a>
-            {entry.isbn && <a href={`https://search.worldcat.org/search?q=${encodeURIComponent(entry.isbn)}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#e5c158] underline underline-offset-2 hover:text-[#f3dbad]">Look up ISBN on WorldCat ↗</a>}
-          </div>
-          <p className="mt-2 text-[11px] text-stone-400">These are research searches, not verified source records. Confirm the series with the author or publisher.</p>
+          <p className="mt-2 text-[11px] text-stone-400">The catalog source is a discovery provider, not proof of series membership. Direct source links will appear only when a verified record URL is available.</p>
           <p className="mt-3 text-amber-200">The catalog has not independently verified this membership. Confirm it using a trusted publisher or author source before adding. Accepting adds this book through Inkbound's normal library save path; it does not verify other candidates.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={() => setReviewOpen(false)} className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold">Close / Reject</button>
