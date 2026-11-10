@@ -27,12 +27,12 @@ export const compactDetectiveIsbn = (value?: string): string =>
   typeof value === 'string' ? value.replace(/[^0-9X]/gi, '').toUpperCase() : '';
 
 export const comparableDetectiveTitle = (value?: string): string => {
-  const title = typeof value === 'string' ? value.trim() : '';
+  let title = typeof value === 'string' ? value.trim() : '';
   if (!title) return '';
-  const withoutSeriesSuffix = inferDetectiveSeriesFromTitle(title)
-    ? title.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim()
-    : title;
-  return normalizeDetectiveText(withoutSeriesSuffix);
+  // Strip all numbered series parentheticals, not just the final group.
+  title = title.replace(/\s*[\[(]([^\])]+)[\])]/g, (whole, inner: string) =>
+    inferDetectiveSeriesFromTitle('Book (' + inner + ')') ? '' : whole);
+  return normalizeDetectiveText(title);
 };
 
 export const canonicalDetectiveAuthor = (value?: string): string => {
@@ -90,6 +90,9 @@ export const detectiveAuthorsCompatible = (left?: string, right?: string): boole
 
 export const canonicalDetectiveSeries = (value?: string): string => {
   const tokens = normalizeDetectiveText(value).split(' ').filter(Boolean);
+  // Explicit Disney anthology alias only; do not singularize arbitrary series.
+  if (tokens[0] === 'disney' && tokens.includes('twisted') && tokens.includes('tale')) tokens.shift();
+  if (['twisted tales', 'a twisted tales', 'a twisted tale'].includes(tokens.join(' '))) return 'twisted tale';
   while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
   while (
     tokens.length > 1
