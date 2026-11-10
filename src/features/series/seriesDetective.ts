@@ -272,6 +272,7 @@ export interface SeriesDetectiveCandidate {
   edition: SeriesDetectiveEdition;
   seriesName: string;
   position: number | null;
+  verification?: 'verified' | 'review';
 }
 
 export interface SeriesDetectiveOwnedEntry {
@@ -1126,12 +1127,16 @@ export async function findMissingSeriesBooks(
         return;
       }
       diagnostics.admitted += 1;
+      // A title/subtitle brand alone is not sufficient for bulk addition.
+      // A single provider's uncorroborated structured claim remains reviewable.
+      const verification: 'verified' | 'review' = independentlyCorroborated ? 'verified' : 'review';
 
       addCandidate({
         work: candidate.work,
         edition: candidate.edition,
         seriesName: resolvedSeriesName,
         position: candidate.position,
+        verification,
       });
     });
 
