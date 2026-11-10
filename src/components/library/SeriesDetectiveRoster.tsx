@@ -80,7 +80,10 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
           <p>Proposed order: {entry.position === null ? 'Unverified' : entry.position}</p>
           <p>Catalog source: {entry.candidate.edition.source}</p>
           {entry.isbn && <p>ISBN: {entry.isbn}</p>}
-          <p className="mt-2 text-[11px] text-stone-400">The catalog source is a discovery provider, not proof of series membership. Direct source links will appear only when a verified record URL is available.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+            <a href={`https://www.amazon.com/s?k=${encodeURIComponent(entry.isbn || [entry.title, entry.authors].filter(Boolean).join(' '))}&i=stripbooks`} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#e5c158] underline underline-offset-2 hover:text-[#f3dbad]">Find on Amazon ↗</a>
+          </div>
+          <p className="mt-2 text-[11px] text-stone-400">Opens Amazon book search by ISBN when available, otherwise title and author. This is a search, not a verified catalog citation or endorsement.</p>
           <p className="mt-3 text-amber-200">The catalog has not independently verified this membership. Confirm it using a trusted publisher or author source before adding. Accepting adds this book through Inkbound's normal library save path; it does not verify other candidates.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={() => setReviewOpen(false)} className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold">Close / Reject</button>
