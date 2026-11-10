@@ -30,8 +30,13 @@ export const comparableDetectiveTitle = (value?: string): string => {
   let title = typeof value === 'string' ? value.trim() : '';
   if (!title) return '';
   // Strip all numbered series parentheticals, not just the final group.
-  title = title.replace(/\s*[\[(]([^\])]+)[\])]/g, (whole, inner: string) =>
-    inferDetectiveSeriesFromTitle('Book (' + inner + ')') ? '' : whole);
+  title = title.replace(/\s*[\[(]([^\])]+)[\])]/g, (whole, inner: string) => {
+    const label = inner.trim();
+    if (inferDetectiveSeriesFromTitle('Book (' + label + ')')) return '';
+    // A trailing unnumbered series label may accompany a numbered label.
+    // Never strip arbitrary parentheticals: they may be part of the title.
+    return /^(?:disney\s*:\s*)?(?:a\s+)?twisted\s+tales?$/i.test(label) ? '' : whole;
+  });
   return normalizeDetectiveText(title);
 };
 
