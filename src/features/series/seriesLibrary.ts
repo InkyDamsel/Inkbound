@@ -49,6 +49,9 @@ export const canonicalSeriesIdentity = (value?: string): string => {
     .split(/\s+/)
     .filter(Boolean);
 
+  // Keep the Disney anthology aliases aligned with Detective and Hardcover.
+  if (tokens[0] === 'disney' && tokens.includes('twisted') && tokens.includes('tale')) tokens.shift();
+  if (['twisted tales', 'a twisted tales', 'a twisted tale'].includes(tokens.join(' '))) return 'twisted tale';
   while (tokens.length > 1 && SERIES_LEADING_ARTICLES.has(tokens[0])) tokens.shift();
   while (tokens.length > 1 && SERIES_TRAILING_QUALIFIERS.has(tokens[tokens.length - 1])) tokens.pop();
   return tokens.filter((token) => !SERIES_CONNECTOR_TOKENS.has(token)).join(' ');
