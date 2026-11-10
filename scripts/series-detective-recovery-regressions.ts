@@ -7,6 +7,7 @@ import { mergeDetectiveCandidates } from '../src/features/series/seriesDetective
 import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
+  comparableDetectiveTitle,
   detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
   inferDetectiveSeriesFromDescription,
@@ -58,6 +59,23 @@ assert.equal(hasExplicitDetectiveSeriesBrand(
   brandedFixture('Salt & Blood: A Hades and Persephone Romance', ''),
   'Hades x Persephone',
 ), false);
+
+// Provider variations and translated/numbered metadata must not break exact branding.
+assert.equal(detectiveSeriesNamesCompatible('Disney: A Twisted Tale', 'Twisted Tales'), true);
+assert.equal(detectiveSeriesNamesCompatible('Twisted Tales', 'A Twisted Tale'), true);
+assert.equal(detectiveSeriesNamesCompatible('The Heart Duology', 'The Heart of Darkness'), false);
+assert.equal(hasExplicitDetectiveSeriesBrand(
+  brandedFixture('Once Upon a Dream', 'A Twisted Tale'),
+  'Twisted Tales',
+), true);
+assert.equal(hasExplicitDetectiveSeriesBrand(
+  brandedFixture('Salt & Blood', 'A Hades and Persephone Romance'),
+  'Hades x Persephone',
+), false);
+assert.equal(
+  comparableDetectiveTitle("Conceal, Don't Feel (Disney: A Twisted Tale #6) (Twisted Tales)"),
+  comparableDetectiveTitle("Conceal, Don't Feel"),
+);
 
 // Work identity must include every known edition identifier, not only activeEditionId.
 const queries = buildSeriesDetectionQueries(divergent);
