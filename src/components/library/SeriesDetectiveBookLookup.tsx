@@ -52,18 +52,30 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
     const currentBook = bookRef.current;
     setLoading(true); setError(''); setMatch(null); setResult(null); setAttempted(true);
     void (async () => {
-      const found = await detectSeriesForBook(currentBook, controller.signal);
+      // The Series tab and Book Details must share the same series-first
+      // discovery path. A catalog guess for an individual edition must never
+      // override the reader's canonical series identity.
+      const saved = savedSeriesRef.current;
+      const library = libraryRef.current;
+      const found = saved ? null : await detectSeriesForBook(currentBook, controller.signal);
       if (controller.signal.aborted) return;
       setMatch(found);
-      const seriesToInvestigate = found ?? savedSeriesRef.current;
-      const library = libraryRef.current;
+      const seriesToInvestigate = saved ?? found;
       if (seriesToInvestigate && library) {
+        const scopedBooks = library.filter((candidate) => {
+          const metadata = resolveEffectiveSeriesMetadata(candidate, overridesRef.current);
+          return Boolean(metadata && detectiveSeriesNamesCompatible(metadata.name, seriesToInvestigate.name));
+        });
+        const seriesBookIds = scopedBooks.map((candidate) => candidate.id);
+        const seriesAuthors = [...new Set(scopedBooks.map((candidate) => candidate.work.author.trim()).filter(Boolean))];
+        // Match the Series tab's "Various authors" convention for shared worlds.
+        const author = seriesAuthors.length > 1 ? '' : (seriesAuthors[0] || currentBook.work.author);
         const missing = await findMissingSeriesBooks(
           seriesToInvestigate.name,
-          found?.discoveryAuthor || currentBook.work.author,
+          author,
           library,
           controller.signal,
-          undefined,
+          seriesBookIds,
           { forceRefresh: run > 1, overrides: overridesRef.current },
         );
         if (!controller.signal.aborted) setResult(missing);
@@ -102,7 +114,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
       {savedSeries && <p className="mt-3 text-sm">Saved series: <strong className="text-[#e5c158]">{savedSeries.name}</strong> · {savedSeries.position === null ? 'Order not recorded' : `Book ${savedSeries.position}`} <span className="text-xs text-stone-400">(from your library)</span></p>}
       {attempted && !loading && !error && !match && !savedSeries && <div className="mt-3 space-y-1"><p className="font-semibold">No verified series match returned</p><p className="text-xs text-stone-400">This does not mean the book is standalone. The catalog data may be missing, unavailable, or insufficient to verify a match. No book metadata was changed.</p></div>}
       {attempted && !loading && !error && !match && savedSeries && <p className="mt-2 text-xs text-stone-400">External catalogs did not independently verify the series. Your saved series information remains available.</p>}
-      {match && <div className="mt-3 space-y-2">
+      {match && !savedSeries && <div className="mt-3 space-y-2">
         <p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p>
         {(!savedSeries || (savedSeries.name === match.name && savedSeries.position === null && match.position !== null)) && !applied && <button type="button"
           className="rounded-lg border border-[#c5a059] bg-[#c5a059]/15 px-3 py-2 text-sm font-semibold text-[#f3dbad]"
