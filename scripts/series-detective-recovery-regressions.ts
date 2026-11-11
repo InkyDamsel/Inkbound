@@ -1023,4 +1023,17 @@ const wrongAuthor = scoreDetectiveEvidence({
 });
 assert.equal(selectVerifiedDetectiveEvidence([wrongAuthor]), null);
 
+// Beta #001: the two Karin Slaughter series must retain distinct identities.
+assert.equal(detectiveSeriesNamesCompatible('Grant County', 'Will Trent'), false);
+assert.equal(detectiveSeriesNamesCompatible('Grant County', 'Grant County Series'), true);
+assert.deepEqual(parseDetectiveOpenLibrarySeries(['Grant County (#1)']), {
+  name: 'Grant County', position: 1,
+});
+assert.deepEqual(parseDetectiveOpenLibrarySeries(['Will Trent, Book Three']), {
+  name: 'Will Trent', position: 3,
+});
+// Catalog edition suffixes are stripped only when the requested series agrees.
+assert.equal(comparableDetectiveTitle('Tending to the Rot (High Crest Chronicles 1)', 'High Crest Chronicles'), comparableDetectiveTitle('Tending to the Rot'));
+assert.notEqual(comparableDetectiveTitle('Tending to the Rot (High Crest Chronicles 1)', 'Grant County'), comparableDetectiveTitle('Tending to the Rot'));
+
 console.log('Inkbound Series Detective recovery regressions passed.');
