@@ -26,7 +26,7 @@ export const normalizeDetectiveText = (value?: string): string =>
 export const compactDetectiveIsbn = (value?: string): string =>
   typeof value === 'string' ? value.replace(/[^0-9X]/gi, '').toUpperCase() : '';
 
-export const comparableDetectiveTitle = (value?: string): string => {
+export const comparableDetectiveTitle = (value?: string, seriesName?: string): string => {
   let title = typeof value === 'string' ? value.trim() : '';
   if (!title) return '';
   // Strip all numbered series parentheticals, not just the final group.
@@ -37,6 +37,15 @@ export const comparableDetectiveTitle = (value?: string): string => {
     // Never strip arbitrary parentheticals: they may be part of the title.
     return /^(?:disney\s*:\s*)?(?:a\s+)?twisted\s+tales?$/i.test(label) ? '' : whole;
   });
+  // Catalogs sometimes append "(Series Name 4)" without a Book/# marker.
+  // Only strip that suffix when the caller supplies the matching series;
+  // stripping arbitrary numeric parentheticals would merge unrelated works.
+  if (seriesName) {
+    title = title.replace(/\\s*[\\[(]([^\\])]+)[\\])]\\s*$/, (whole, inner: string) => {
+      const match = inner.trim().match(/^(.+?)\\s+(\\d+(?:\\.\\d+)?)$/);
+      return match && detectiveSeriesNamesCompatible(match[1], seriesName) ? '' : whole;
+    });
+  }
   return normalizeDetectiveText(title);
 };
 
