@@ -112,7 +112,7 @@ export const SeriesDetectiveRoster: React.FC<Props> = ({ entries, onOpenBook }) 
   const summary = summarizeSeriesRoster(entries);
   const missingEntries = entries.filter((entry) => entry.kind === 'missing' && entry.candidate?.verification === 'verified');
   const reviewCount = entries.filter((entry) => entry.kind === 'missing' && entry.candidate?.verification !== 'verified').length;
-  const disconnectedEntries = entries.filter((entry) => entry.kind === 'owned' && entry.book && entry.candidate && !entry.book.work.seriesName?.trim());
+  const disconnectedEntries = entries.filter((entry) => entry.kind === 'owned' && entry.book && entry.candidate?.verification === 'verified' && !entry.book.work.seriesName?.trim());
 
   if (!entries.length) {
     return <p className="mt-3 text-sm text-stone-300">No books verified by available catalog evidence.</p>;
