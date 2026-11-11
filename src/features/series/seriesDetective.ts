@@ -310,7 +310,7 @@ export const findLibraryBookForCandidate = (
   candidate: SeriesDetectiveCandidate,
   libraryBooks: UserBookRecord[],
 ): UserBookRecord | null => {
-  const candidateTitle = comparableDetectiveTitle(candidate.work.title);
+  const candidateTitle = comparableDetectiveTitle(candidate.work.title, candidate.seriesName);
   const candidateIsbns = [candidate.edition.isbn13, candidate.edition.isbn10]
     .map(compactDetectiveIsbn)
     .filter(Boolean);
@@ -322,7 +322,7 @@ export const findLibraryBookForCandidate = (
     if (candidate.work.key && safeDetectiveTrim(book.work.externalWorkId) === candidate.work.key) return true;
     if (
       candidateTitle
-      && comparableDetectiveTitle(book.work.title) === candidateTitle
+      && comparableDetectiveTitle(book.work.title, candidate.seriesName) === candidateTitle
       && candidate.work.authors.some((author) =>
         Boolean(canonicalDetectiveAuthor(author))
         && detectiveAuthorsCompatible(author, book.work.author))
@@ -1069,7 +1069,7 @@ export async function findMissingSeriesBooks(
       .filter((candidate) => !isDerivativeSeriesProduct(candidate));
 
     const addCandidate = (candidate: SeriesDetectiveCandidate) => {
-      const titleKey = comparableDetectiveTitle(candidate.work.title);
+      const titleKey = comparableDetectiveTitle(candidate.work.title, candidate.seriesName);
       const authorKey = canonicalDetectiveAuthor(candidate.work.authors[0]);
       const isbnKey = compactDetectiveIsbn(candidate.edition.isbn13 ?? candidate.edition.isbn10);
       // Series position is ordering metadata, not work identity. Two catalog
