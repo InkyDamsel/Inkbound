@@ -1140,9 +1140,12 @@ export async function findMissingSeriesBooks(
         return;
       }
       diagnostics.admitted += 1;
-      // A title/subtitle brand alone is not sufficient for bulk addition.
-      // A single provider's uncorroborated structured claim remains reviewable.
-      const verification: 'verified' | 'review' = independentlyCorroborated ? 'verified' : 'review';
+      // Provider overlap alone is not proof of series membership: two search
+      // providers may repeat the same title/description branding. Require
+      // explicit structured series evidence as well as corroboration before
+      // offering bulk addition. Brand-only discoveries remain reviewable.
+      const verification: 'verified' | 'review' =
+        candidate.seriesStructured && independentlyCorroborated ? 'verified' : 'review';
 
       addCandidate({
         work: candidate.work,
