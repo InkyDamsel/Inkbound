@@ -316,12 +316,17 @@ export const findLibraryBookForCandidate = (
     .filter(Boolean);
 
   return libraryBooks.find((book) => {
-    // Once a candidate has passed the requested-series admission gate, exact
-    // title identity is enough to recognise it as owned. This avoids offering
-    // the same work again because one catalog says "Keira Cass" and another
-    // says "Kiera Cass".
-    if (candidateTitle && comparableDetectiveTitle(book.work.title) === candidateTitle) return true;
+    // A shared title is not a work identity: different authors can publish
+    // books with the same title. Preserve exact external identifiers, and
+    // require compatible authors for title-based ownership reconciliation.
     if (candidate.work.key && safeDetectiveTrim(book.work.externalWorkId) === candidate.work.key) return true;
+    if (
+      candidateTitle
+      && comparableDetectiveTitle(book.work.title) === candidateTitle
+      && candidate.work.authors.some((author) =>
+        Boolean(canonicalDetectiveAuthor(author))
+        && detectiveAuthorsCompatible(author, book.work.author))
+    ) return true;
     if (!candidateIsbns.length) return false;
     return book.editions.some((edition) =>
       [edition.isbn13, edition.isbn10, edition.isbn]
