@@ -98,9 +98,9 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
     return buildSeriesRoster(live, seriesBooks, (entry) => resolveEffectiveSeriesMetadata(entry, overrides));
   }, [result, libraryBooks, overrides]);
 
-  return <div className="mt-1 mb-3">
+  return <div>
     <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-[#e5c158] underline decoration-[#c5a059]/60 underline-offset-4 transition-colors hover:text-[#f3dbad] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#e5c158]" aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open && !attempted) setRun((value) => value + 1); }}>
-      <span aria-hidden="true">⌕</span> Series Detective
+      Series Detective
     </button>
     {open && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section role="dialog" aria-modal="true" aria-label="Series Detective discovery" className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#c5a059]/40 bg-[#211128] p-6 text-sm text-[#f4efe6] shadow-2xl">
