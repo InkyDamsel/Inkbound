@@ -42,7 +42,7 @@ export const comparableDetectiveTitle = (value?: string, seriesName?: string): s
   // stripping arbitrary numeric parentheticals would merge unrelated works.
   if (seriesName) {
     title = title.replace(/\s*\(([^()]*)\)\s*$/, (whole, inner: string) => {
-      const match = inner.trim().match(/^(.+?)\\s+(\\d+(?:\\.\\d+)?)$/);
+      const match = inner.trim().match(/^(.+?)\s+(\d+(?:\.\d+)?)$/);
       return match && detectiveSeriesNamesCompatible(match[1], seriesName) ? '' : whole;
     });
   }
