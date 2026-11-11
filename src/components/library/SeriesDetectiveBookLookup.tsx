@@ -99,7 +99,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
   }, [result, libraryBooks, overrides]);
 
   return <div>
-    <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-[#e5c158] underline decoration-[#c5a059]/60 underline-offset-4 transition-colors hover:text-[#f3dbad] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#e5c158]" aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open && !attempted) setRun((value) => value + 1); }}>
+    <button type="button" className="inline-flex min-h-11 items-center rounded-full border border-[var(--ink-gold)]/35 bg-[#17101b]/85 px-4 py-2.5 text-xs font-semibold text-[#e5c158] shadow-lg transition hover:border-[var(--ink-gold)]/60 hover:text-[#f3dbad] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#e5c158]" aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open && !attempted) setRun((value) => value + 1); }}>
       Series Detective
     </button>
     {open && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
