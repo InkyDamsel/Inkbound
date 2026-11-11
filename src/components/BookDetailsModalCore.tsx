@@ -454,7 +454,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, librar
           <div className="book-details-swipe-handle mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/25 sm:hidden" aria-hidden="true" />
           <button type="button" onClick={onClose} className="book-details-close-button absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-300" aria-label="Close book details"><X className="h-5 w-5" /></button>
           <div className="flex items-start gap-4 pr-10 sm:gap-6"><button type="button" onClick={() => { setCoverManagerOpen(true); setCoverMode('choices'); }} className="shrink-0"><BookCover work={book.work} edition={activeEdition} size="lg" /></button><div className="min-w-0 flex-1"><span className="inline-flex rounded bg-[#c5a059] px-2 py-1 text-[10px] font-bold uppercase text-[#120817]">{activeEdition.format}</span><h2 className="mt-3 line-clamp-2 font-serif text-2xl font-bold text-[#f4efe6] sm:text-4xl">{book.work.title}</h2><p className="mt-1 text-sm italic text-stone-400">by {book.work.author}</p><p className="mt-2 text-xs text-[#b9aaba]">Metadata: <strong className="text-[#e5c158]">{metadataLabel}</strong></p>{syncMessage && <p className="mt-2 text-xs text-[#b9aaba]">{syncMessage}</p>}</div></div>
-          <div className="mt-3 pl-1">
+          <div data-series-actions-row className="mt-3 flex flex-wrap items-center gap-2 pl-1 pr-12">
+            <span data-series-shortcut-slot />
             <SeriesDetectiveBookLookup key={book.id} book={book} libraryBooks={libraryBooks} />
           </div>
         </header>
