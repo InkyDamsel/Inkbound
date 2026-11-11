@@ -43,6 +43,7 @@ import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingSta
 import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 import { diagnoseNativeAppCheckFailure, getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
+import { detectSeriesForBook, findMissingSeriesBooks, type SeriesDetectiveResult } from '../features/series/seriesDetective';
 
 // Vite production builds run inside Android debug APKs too. Scanner diagnostics
 // are opt-in for test bundles, and the release verifier rejects their strings.
@@ -205,6 +206,28 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
+  const [seriesPreview, setSeriesPreview] = useState<{ title: string; result: SeriesDetectiveResult | null; message: string | null; loading: boolean } | null>(null);
+  const seriesPreviewRequest = useRef(0);
+  const exploreSearchSeries = async (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
+    const request = ++seriesPreviewRequest.current;
+    setSeriesPreview({ title: work.title, result: null, message: null, loading: true });
+    try {
+      // Temporary seed for read-only detection. This does not call onAddBook
+      // or persist a record; the existing catalog search remains untouched.
+      const seed = createBookFromSearchEdition({ work, edition, status: 'tbr' });
+      const match = await detectSeriesForBook(seed);
+      if (request !== seriesPreviewRequest.current) return;
+      if (!match) {
+        setSeriesPreview({ title: work.title, result: null, message: 'Series membership could not be verified from the available catalogs.', loading: false });
+        return;
+      }
+      const result = await findMissingSeriesBooks(match.name, match.discoveryAuthor || work.authors[0] || '', [], undefined);
+      if (request !== seriesPreviewRequest.current) return;
+      setSeriesPreview({ title: work.title, result, message: null, loading: false });
+    } catch {
+      if (request === seriesPreviewRequest.current) setSeriesPreview({ title: work.title, result: null, message: 'Series discovery is temporarily unavailable. No books were added.', loading: false });
+    }
+  };
   const [addedSearchBooks, setAddedSearchBooks] = useState<Map<string, UserBookRecord>>(() => new Map());
   const [authorPage, setAuthorPage] = useState<AuthorPageState | null>(null);
   const [authorNextStartIndex, setAuthorNextStartIndex] = useState(0);
@@ -2113,6 +2136,26 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             {!authorPage && !hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65" /><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. You can correct the material type later if the source does not identify it reliably.</p></div>}
             {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">{authorPage ? `No books found for ${authorPage.name}` : 'No matching material found'}</p>{!authorPage && <button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button>}</div>}
 
+            {seriesPreview && (
+              <section className="rounded-2xl border border-[#c5a059]/35 bg-[#1d1422] p-4" aria-live="polite">
+                <div className="flex items-start justify-between gap-3">
+                  <div><p className="inkbound-kicker">Series Detective · Read-only preview</p><h3 className="mt-1 font-serif text-xl text-[#f4efe6]">{seriesPreview.title}</h3></div>
+                  <button type="button" className="min-h-9 rounded-lg border border-white/15 px-3 text-xs text-[#f4efe6]" onClick={() => { seriesPreviewRequest.current += 1; setSeriesPreview(null); }}>Close</button>
+                </div>
+                {seriesPreview.loading ? <p className="mt-3 text-sm text-[#ad9fac]">Investigating catalog evidence…</p> : seriesPreview.message ? <p className="mt-3 text-sm text-[#ad9fac]">{seriesPreview.message}</p> : seriesPreview.result && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-sm text-[#f4efe6]">{seriesPreview.result.seriesName} · {seriesPreview.result.candidates.length} catalog candidate(s)</p>
+                    <p className="text-xs text-[#ad9fac]">Catalog coverage is {seriesPreview.result.completeness ?? 'unavailable'}. This is not a verified complete reading order. Exploring does not add books.</p>
+                    {seriesPreview.result.candidates.length === 0 && <p className="text-sm text-[#ad9fac]">No additional membership could be established from available evidence.</p>}
+                    <ul className="max-h-64 space-y-2 overflow-y-auto">
+                      {seriesPreview.result.candidates.map((candidate, index) => <li key={candidate.work.key + ':' + index} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-[#f4efe6]">
+                        <span>{candidate.work.title}</span><span className="ml-2 text-xs text-[#ad9fac]">— {candidate.work.authors.join(', ')} · {candidate.position === null ? 'Order unverified' : `Book ${candidate.position}`} · {candidate.verification === 'verified' ? 'Verified' : 'Review'}</span>
+                      </li>)}
+                    </ul>
+                  </div>
+                )}
+              </section>
+            )}
             {results.length > 0 && (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {visibleSearchResults.map((work) => {
@@ -2170,6 +2213,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                               <div className="flex flex-col gap-2">
                                 <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
                                 <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
+                                <button type="button" onClick={() => void exploreSearchSeries(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Explore series</button>
                               </div>
                             )}
                           </div>
