@@ -182,9 +182,21 @@ const mapCandidate = (
 ): DetectiveOpenLibraryCandidate | null => {
   const title = (edition.title ?? work.title)?.trim();
   if (!title) return null;
-  const metadata = parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series, seriesSubjects(work.subject)));
+  // Editions may list a different series first (or a related-world series).
+  // Evaluate every explicit membership before rejecting the requested one.
+  // Do not merge the memberships: the requested series determines the roster.
+  const seriesValues = [
+    ...safeSeriesValues(edition.series),
+    ...safeSeriesValues(work.series),
+    ...safeSeriesValues(seriesSubjects(work.subject)),
+  ].flatMap((value) => value.split(';').map((part) => part.trim()).filter(Boolean));
+  const memberships = seriesValues
+    .map((value) => parseDetectiveOpenLibrarySeries([value]))
+    .filter((value): value is NonNullable<typeof value> => value !== null);
+  const metadata = wantedSeriesName
+    ? memberships.find((value) => detectiveSeriesNamesCompatible(value.name, wantedSeriesName))
+    : memberships[0];
   if (!metadata) return null;
-  if (wantedSeriesName && !detectiveSeriesNamesCompatible(metadata.name, wantedSeriesName)) return null;
 
   const authors = work.author_name?.length ? work.author_name : ['Unknown author'];
   if (wantedAuthor) {
