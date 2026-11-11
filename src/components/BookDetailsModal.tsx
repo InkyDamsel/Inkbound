@@ -109,7 +109,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
       return;
     }
     const host = document.querySelector('.book-details-modal-host');
-    const header = host?.querySelector("section[role='dialog'] > header");
+    const header = host?.querySelector("[data-series-shortcut-slot]");
     setSeriesHeaderTarget(header instanceof HTMLElement ? header : null);
     const footer = host?.querySelector('.book-details-bottom-toolbar');
     setBottomToolbarTarget(footer instanceof HTMLElement ? footer : null);
@@ -168,7 +168,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
 
   const seriesShortcut = normalizedBook && effectiveSeries && seriesHeaderTarget
     ? createPortal(
-        <div className="book-details-series-row mt-3 flex min-w-0 pr-14">
+        <div className="book-details-series-row flex min-w-0">
           <button
             type="button"
             onClick={viewSeries}
