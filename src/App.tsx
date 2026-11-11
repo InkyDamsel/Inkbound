@@ -39,7 +39,7 @@ import { ProfileScreen } from './components/ProfileScreen';
 import { AdminScreen } from './components/AdminScreen';
 import { AddBookModal } from './components/AddBookModal';
 import { createBookFromSearchEdition } from './features/book-search/mapping/bookSearchMapper';
-import type { SeriesDetectiveCandidate } from './features/series/seriesDetective';
+import { findLibraryBookForCandidate, type SeriesDetectiveCandidate } from './features/series/seriesDetective';
 import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
 import { usePersistentState } from './hooks/usePersistentState';
@@ -223,11 +223,11 @@ export default function App() {
       const candidates = (event as CustomEvent<{ candidates: SeriesDetectiveCandidate[] }>).detail?.candidates;
       if (!Array.isArray(candidates) || !candidates.length) return;
       const current = booksRef.current;
-      const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+      // Use the same work/edition ownership check as the Detective roster.
+      // A display-title suffix must not bypass duplicate protection on save.
       const eligible = candidates.filter((candidate) => {
         if (!candidate?.work?.title || !candidate.work.authors?.[0] || !candidate.edition) return false;
-        return !current.some((book) => normalize(book.work.title) === normalize(candidate.work.title)
-          && normalize(book.work.author).includes(normalize(candidate.work.authors[0])));
+        return !findLibraryBookForCandidate(candidate, current);
       });
       if (!eligible.length) { showToast('These books are already in your library.'); return; }
       const additions = eligible.map((candidate) => {
