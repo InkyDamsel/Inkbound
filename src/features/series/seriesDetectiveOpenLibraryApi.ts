@@ -149,6 +149,13 @@ export const parseDetectiveOpenLibrarySeries = (
   const raw = safeSeriesValues(values)[0];
   if (!raw) return null;
   const primary = raw.split(';').map((value) => value.trim()).find(Boolean) ?? raw;
+  // Open Library editions may express an ordinal as "Grant County (#1)".
+  // Normalize only an explicit parenthesized position, retaining the series name.
+  const parenthesized = primary.match(/^(.+?)\\s*\\(\\s*#\\s*(\\d+(?:\\.\\d+)?)\\s*\\)\\s*$/i);
+  if (parenthesized) return {
+    name: parenthesized[1].trim(),
+    position: parseDetectivePositionToken(parenthesized[2]),
+  };
   const positionWords = [
     'one','two','three','four','five','six','seven','eight','nine','ten',
     'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty',
