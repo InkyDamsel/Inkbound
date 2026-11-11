@@ -47,9 +47,13 @@ export const planSeriesDiscoveryQueries = (input: SeriesQueryPlanInput): SeriesQ
   const internalGaps = highest > 0
     ? Array.from({ length: highest }, (_, index) => index + 1).filter((position) => !known.has(position))
     : [];
-  const forward = highest > 0
-    ? Array.from({ length: FORWARD_QUERY_TARGETS }, (_, index) => highest + index + 1)
-    : [];
+  // A search-led discovery may have no owned numbered installment yet.
+  // Probe the opening positions instead of skipping numbered discovery entirely.
+  // These are catalog queries, never assumed membership or an asserted series length.
+  const forward = Array.from(
+    { length: FORWARD_QUERY_TARGETS },
+    (_, index) => highest + index + 1,
+  );
 
   const targetPositions = [
     ...internalGaps.slice(0, MAX_GAP_QUERY_TARGETS),
