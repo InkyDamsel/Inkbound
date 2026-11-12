@@ -44,9 +44,12 @@ export const planSeriesDiscoveryQueries = (input: SeriesQueryPlanInput): SeriesQ
   const highest = wholePositions.length ? Math.max(...wholePositions) : 0;
   const known = new Set(wholePositions);
 
-  const internalGaps = highest > 0
-    ? Array.from({ length: highest }, (_, index) => index + 1).filter((position) => !known.has(position))
-    : [];
+  // Only the earliest five gaps are queried. Never allocate an array sized
+  // by a catalog-supplied volume number (which may be erroneous or enormous).
+  const internalGaps: number[] = [];
+  for (let position = 1; position < highest && internalGaps.length < MAX_GAP_QUERY_TARGETS; position += 1) {
+    if (!known.has(position)) internalGaps.push(position);
+  }
   // A search-led discovery may have no owned numbered installment yet.
   // Probe the opening positions instead of skipping numbered discovery entirely.
   // These are catalog queries, never assumed membership or an asserted series length.
