@@ -1,10 +1,13 @@
 import SwiftUI
 import WidgetKit
+import AppIntents
 
 private let suiteName = "group.com.inkydameinteractive.inkbound"
 
 struct ReadingEntry: TimelineEntry {
     let date: Date
+    let bookPosition: Int
+    let bookCount: Int
     let sessionMode: String
     let bookId: String
     let title: String
@@ -24,6 +27,8 @@ struct ReadingProvider: TimelineProvider {
     func placeholder(in context: Context) -> ReadingEntry {
         ReadingEntry(
             date: Date(),
+            bookPosition: 0,
+            bookCount: 0,
             sessionMode: "none",
             bookId: "",
             title: "Currently Reading",
@@ -51,13 +56,22 @@ struct ReadingProvider: TimelineProvider {
 
     private func readEntry() -> ReadingEntry {
         let defaults = UserDefaults(suiteName: suiteName)
+        let roster = (defaults?.data(forKey: "readingBooks")).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [[String: String]]
+        } ?? []
+        let selectedId = defaults?.string(forKey: "selectedWidgetBookId") ?? ""
+        let index = roster.firstIndex(where: { $0["id"] == selectedId }) ?? 0
+        let selected = roster.indices.contains(index) ? roster[index] : nil
+        let alternate = selected != nil && selected?["id"] != defaults?.string(forKey: "bookId")
         return ReadingEntry(
             date: Date(),
-            sessionMode: defaults?.string(forKey: "sessionMode") ?? "none",
-            bookId: defaults?.string(forKey: "bookId") ?? "",
-            title: defaults?.string(forKey: "title") ?? "",
-            author: defaults?.string(forKey: "author") ?? "",
-            progressLabel: defaults?.string(forKey: "progressLabel") ?? "",
+            bookPosition: index,
+            bookCount: roster.count,
+            sessionMode: alternate ? "none" : (defaults?.string(forKey: "sessionMode") ?? "none"),
+            bookId: selected?["id"] ?? defaults?.string(forKey: "bookId") ?? "",
+            title: selected?["title"] ?? defaults?.string(forKey: "title") ?? "",
+            author: selected?["author"] ?? defaults?.string(forKey: "author") ?? "",
+            progressLabel: selected?["progressLabel"] ?? defaults?.string(forKey: "progressLabel") ?? "",
             timerSeconds: defaults?.integer(forKey: "timerSeconds") ?? 0,
             timerRunning: defaults?.bool(forKey: "timerRunning") ?? false,
             timerAnchorMillis: defaults?.double(forKey: "timerAnchorMillis") ?? 0,
@@ -67,6 +81,29 @@ struct ReadingProvider: TimelineProvider {
             dueDate: defaults?.string(forKey: "dueDate") ?? "",
             dueLabel: defaults?.string(forKey: "dueLabel") ?? ""
         )
+    }
+}
+
+@available(iOSApplicationExtension 17.0, *)
+struct SwitchReadingBookIntent: AppIntent {
+    static var title: LocalizedStringResource = "Switch reading book"
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Direction") var direction: Int
+    init() { direction = 1 }
+    init(direction: Int) { self.direction = direction }
+
+    func perform() async throws -> some IntentResult {
+        guard let defaults = UserDefaults(suiteName: suiteName),
+              let data = defaults.data(forKey: "readingBooks"),
+              let books = try? JSONSerialization.jsonObject(with: data) as? [[String: String]],
+              books.count > 1 else { return .result() }
+        let selected = defaults.string(forKey: "selectedWidgetBookId") ?? ""
+        let index = books.firstIndex(where: { $0["id"] == selected }) ?? 0
+        let next = (index + (direction < 0 ? -1 : 1) + books.count) % books.count
+        defaults.set(books[next]["id"] ?? "", forKey: "selectedWidgetBookId")
+        WidgetCenter.shared.reloadTimelines(ofKind: "InkboundReadingWidget")
+        return .result()
     }
 }
 
@@ -122,6 +159,25 @@ struct ReadingWidgetView: View {
                         Text("READING")
                             .font(.caption2.weight(.bold))
                             .foregroundColor(.green)
+                    }
+                }
+
+                if entry.bookCount > 1 {
+                    if #available(iOSApplicationExtension 17.0, *) {
+                        HStack(spacing: 8) {
+                            Button(intent: SwitchReadingBookIntent(direction: -1)) {
+                                Image(systemName: "chevron.left").frame(minWidth: 28, minHeight: 28)
+                            }
+                            Spacer()
+                            Text("\(entry.bookPosition + 1) of \(entry.bookCount)")
+                                .font(.caption2.weight(.semibold))
+                            Spacer()
+                            Button(intent: SwitchReadingBookIntent(direction: 1)) {
+                                Image(systemName: "chevron.right").frame(minWidth: 28, minHeight: 28)
+                            }
+                        }
+                        .foregroundColor(Color(red: 0.87, green: 0.74, blue: 0.52))
+                        .buttonStyle(.plain)
                     }
                 }
 
