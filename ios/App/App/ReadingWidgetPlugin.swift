@@ -24,6 +24,10 @@ public final class ReadingWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
         for key in stringKeys {
             defaults.set(call.getString(key) ?? "", forKey: key)
         }
+        if let books = call.getArray("readingBooks") as? [[String: String]],
+           let data = try? JSONSerialization.data(withJSONObject: books) {
+            defaults.set(data, forKey: "readingBooks")
+        }
         defaults.set(call.getInt("timerSeconds") ?? 0, forKey: "timerSeconds")
         defaults.set(call.getBool("timerRunning") ?? false, forKey: "timerRunning")
         defaults.set(call.getDouble("timerAnchorMillis") ?? 0, forKey: "timerAnchorMillis")
