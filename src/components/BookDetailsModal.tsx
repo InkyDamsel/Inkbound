@@ -205,7 +205,18 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
       )
     : null;
 
-  const nativeBookToolbar = usesEmbeddedBookDetailsToolbar();
+  // Compact web and native must use the same in-dialog action dock.
+  // Desktop retains its established floating controls unchanged.
+  const [compactViewport, setCompactViewport] = useState(() => typeof window !== 'undefined'
+    && window.matchMedia('(max-width: 639px), (orientation: landscape) and (max-height: 600px) and (max-width: 1024px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 639px), (orientation: landscape) and (max-height: 600px) and (max-width: 1024px)');
+    const update = () => setCompactViewport(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const nativeBookToolbar = usesEmbeddedBookDetailsToolbar() || compactViewport;
 
   return (
     <div className={`book-details-modal-host${nativeBookToolbar ? " book-details-native" : ""}`}>
