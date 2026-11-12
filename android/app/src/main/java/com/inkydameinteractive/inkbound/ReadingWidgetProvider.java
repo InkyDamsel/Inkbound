@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.SystemClock;
+import android.os.Bundle;
 import android.view.View;
 import android.widget.RemoteViews;
 
@@ -16,6 +17,12 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
     @Override
     public void onUpdate(Context context, AppWidgetManager manager, int[] appWidgetIds) {
         updateAll(context, manager, appWidgetIds);
+    }
+
+    @Override
+    public void onAppWidgetOptionsChanged(Context context, AppWidgetManager manager, int appWidgetId, Bundle newOptions) {
+        super.onAppWidgetOptionsChanged(context, manager, appWidgetId, newOptions);
+        updateAll(context, manager, new int[] { appWidgetId });
     }
 
     static void updateAll(Context context, AppWidgetManager manager, int[] appWidgetIds) {
@@ -59,11 +66,17 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             boolean paused = "paused".equals(sessionMode);
             boolean finished = "finished".equals(sessionMode);
 
-            views.setViewVisibility(R.id.widget_timer, (active || paused || finished) ? View.VISIBLE : View.GONE);
+            // Compact launcher sizes prioritize the book and progress; expanded
+            // widgets can show supplemental pace and loan details.
+            Bundle size = manager.getAppWidgetOptions(appWidgetId);
+            int minHeight = size.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+            boolean compact = minHeight > 0 && minHeight < 160;
+            views.setViewVisibility(R.id.widget_book_navigation, View.GONE); // Enabled only after multi-book state is wired.
+            views.setViewVisibility(R.id.widget_timer, (active || paused || finished) && !compact ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_progress, hasBook && !progress.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_pace, hasBook && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_pace_detail, hasBook && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_due, !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace, hasBook && !compact && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace_detail, hasBook && !compact && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_due, !compact && !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_start, hasBook && "none".equals(sessionMode) ? View.VISIBLE : View.GONE);
             // Active-session controls stay inside Inkbound. The widget remains a
             // glanceable mirror; tapping it opens the canonical timer UI.
