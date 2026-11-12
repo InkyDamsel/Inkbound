@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -19,6 +20,8 @@ public class ReadingWidgetPlugin extends Plugin {
     @PluginMethod
     public void syncState(PluginCall call) {
         SharedPreferences.Editor editor = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
+        JSArray readingBooks = call.getArray("readingBooks");
+        if (readingBooks != null) editor.putString("readingBooks", readingBooks.toString());
         editor.putString("sessionMode", value(call.getString("sessionMode")));
         editor.putString("bookId", value(call.getString("bookId")));
         editor.putString("title", value(call.getString("title")));
