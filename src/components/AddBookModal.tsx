@@ -1830,8 +1830,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         ? searchGoogleBooksAuthorPage(trimmedQuery, 0).catch(() => null)
         : null;
       const response = await searchGoogleBooks(trimmedQuery);
+      // Never hold the first usable results hostage to a slow supplemental
+      // author endpoint. It can improve results, but is not required to search.
+      const authorDeadline = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
       if (authorLookup) {
-        const authorResponse = await authorLookup;
+        const authorResponse = await Promise.race([authorLookup, authorDeadline]);
         if (authorResponse) {
           const exactAuthorResults = filterExactAuthorResults(authorResponse.groups, trimmedQuery);
           setResults(exactAuthorResults.length > 0
