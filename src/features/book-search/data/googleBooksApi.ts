@@ -902,11 +902,25 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     return cacheSearchResponse(cacheKey, { groups, totalItems: groups.length });
   }
 
+  // The optional enrichment catalogs must not block a usable Google Books
+  // response indefinitely (especially in Capacitor's mobile WebView).
+  // Preserve the existing Google-first ranking and provider merge order.
+  const optionalCatalog = async <T>(request: Promise<T>, fallback: T): Promise<T> => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        request.catch(() => fallback),
+        new Promise<T>((resolve) => { timeout = setTimeout(() => resolve(fallback), 4000); }),
+      ]);
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
+  };
   const [google, openLibrary, hardcover, prh] = await Promise.all([
     searchGoogleBaseline(trimmed, signal),
-    searchOpenLibraryWithAuthorFallback(trimmed, signal),
-    searchHardcoverWithBackoff(trimmed),
-    searchPrhWithBackoff(trimmed),
+    optionalCatalog(searchOpenLibraryWithAuthorFallback(trimmed, signal), { groups: [], totalItems: 0 }),
+    optionalCatalog(searchHardcoverWithBackoff(trimmed), { groups: [], totalItems: 0 }),
+    optionalCatalog(searchPrhWithBackoff(trimmed), { groups: [], totalItems: 0 }),
   ]);
 
   if (google.groups.length > 0) {
