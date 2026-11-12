@@ -17,6 +17,39 @@
         android:textStyle="bold"
         android:letterSpacing="0.18" />
 
+    <LinearLayout
+        android:id="@+id/widget_book_navigation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+        <Button
+            android:id="@+id/widget_previous_book"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:text="‹"
+            android:contentDescription="Previous currently reading book"
+            android:textAllCaps="false"
+            android:textSize="22sp" />
+        <TextView
+            android:id="@+id/widget_book_position"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:textColor="#D8B56D"
+            android:textSize="11sp" />
+        <Button
+            android:id="@+id/widget_next_book"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:text="›"
+            android:contentDescription="Next currently reading book"
+            android:textAllCaps="false"
+            android:textSize="22sp" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
