@@ -960,7 +960,12 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   }
 
   if (!isIsbnLookup) {
-    const trusted = await searchTrustedCatalogBaseline(trimmed);
+    const trusted = await boundedCatalogRequest(
+      'Trusted catalog',
+      searchTrustedCatalogBaseline(trimmed),
+      OPTIONAL_CATALOG_DEADLINE_MS,
+      { groups: [], totalItems: 0 },
+    );
     if (trusted.groups.length > 0) {
       return cacheSearchResponse(cacheKey, {
         groups: mergeGroups(trusted.groups, [hardcover.groups, prh.groups]),
