@@ -8,15 +8,48 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.SystemClock;
 import android.os.Bundle;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import android.view.View;
 import android.widget.RemoteViews;
 
 public class ReadingWidgetProvider extends AppWidgetProvider {
     static final String EXTRA_WIDGET_ACTION = "inkboundWidgetAction";
+    private static final String NAVIGATE = "com.inkydameinteractive.inkbound.WIDGET_NAVIGATE";
 
     @Override
     public void onUpdate(Context context, AppWidgetManager manager, int[] appWidgetIds) {
         updateAll(context, manager, appWidgetIds);
+    }
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        super.onReceive(context, intent);
+        if (!NAVIGATE.equals(intent.getAction())) return;
+        int widgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1);
+        if (widgetId < 0) return;
+        SharedPreferences prefs = context.getSharedPreferences(ReadingWidgetPlugin.PREFS, Context.MODE_PRIVATE);
+        JSONArray books = roster(prefs);
+        if (books.length() < 2) return;
+        int index = selectedIndex(prefs, books);
+        int direction = intent.getIntExtra("direction", 1);
+        int next = (index + (direction < 0 ? -1 : 1) + books.length()) % books.length();
+        prefs.edit().putString("selectedWidgetBookId", books.optJSONObject(next).optString("id")).apply();
+        updateAll(context, AppWidgetManager.getInstance(context), new int[] { widgetId });
+    }
+
+    private static JSONArray roster(SharedPreferences prefs) {
+        try { return new JSONArray(prefs.getString("readingBooks", "[]")); }
+        catch (Exception ignored) { return new JSONArray(); }
+    }
+
+    private static int selectedIndex(SharedPreferences prefs, JSONArray books) {
+        String selected = prefs.getString("selectedWidgetBookId", "");
+        for (int i = 0; i < books.length(); i++) {
+            JSONObject book = books.optJSONObject(i);
+            if (book != null && selected.equals(book.optString("id")) && !selected.isEmpty()) return i;
+        }
+        return 0;
     }
 
     @Override
@@ -39,6 +72,15 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             String dueTitle = prefs.getString("dueTitle", "");
             String dueDate = prefs.getString("dueDate", "");
             String dueLabel = prefs.getString("dueLabel", "");
+            JSONArray readingBooks = roster(prefs);
+            int selectedIndex = selectedIndex(prefs, readingBooks);
+            JSONObject selectedBook = readingBooks.optJSONObject(selectedIndex);
+            boolean showingAlternate = selectedBook != null && !selectedBook.optString("id").equals(prefs.getString("bookId", ""));
+            if (selectedBook != null) {
+                title = selectedBook.optString("title", title);
+                author = selectedBook.optString("author", author);
+                progress = selectedBook.optString("progressLabel", progress);
+            }
 
             views.setTextViewText(R.id.widget_title, title.isEmpty() ? "Inkbound" : title);
             views.setTextViewText(R.id.widget_author, author);
@@ -71,13 +113,17 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             Bundle size = manager.getAppWidgetOptions(appWidgetId);
             int minHeight = size.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
             boolean compact = minHeight > 0 && minHeight < 160;
-            views.setViewVisibility(R.id.widget_book_navigation, View.GONE); // Enabled only after multi-book state is wired.
-            views.setViewVisibility(R.id.widget_timer, (active || paused || finished) && !compact ? View.VISIBLE : View.GONE);
+            boolean multipleBooks = readingBooks.length() > 1;
+            views.setViewVisibility(R.id.widget_book_navigation, multipleBooks ? View.VISIBLE : View.GONE);
+            views.setTextViewText(R.id.widget_book_position, (selectedIndex + 1) + " of " + readingBooks.length());
+            views.setOnClickPendingIntent(R.id.widget_previous_book, navigationIntent(context, appWidgetId, -1));
+            views.setOnClickPendingIntent(R.id.widget_next_book, navigationIntent(context, appWidgetId, 1));
+            views.setViewVisibility(R.id.widget_timer, (active || paused || finished) && !compact && !showingAlternate ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_progress, hasBook && !progress.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_pace, hasBook && !compact && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_pace_detail, hasBook && !compact && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace, hasBook && !compact && !showingAlternate && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace_detail, hasBook && !compact && !showingAlternate && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_due, !compact && !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_start, hasBook && "none".equals(sessionMode) ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_start, hasBook && !showingAlternate && "none".equals(sessionMode) ? View.VISIBLE : View.GONE);
             // Active-session controls stay inside Inkbound. The widget remains a
             // glanceable mirror; tapping it opens the canonical timer UI.
             views.setViewVisibility(R.id.widget_resume, View.GONE);
@@ -93,6 +139,15 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
 
             manager.updateAppWidget(appWidgetId, views);
         }
+    }
+
+    private static PendingIntent navigationIntent(Context context, int widgetId, int direction) {
+        Intent intent = new Intent(context, ReadingWidgetProvider.class);
+        intent.setAction(NAVIGATE);
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
+        intent.putExtra("direction", direction);
+        return PendingIntent.getBroadcast(context, 9000 + widgetId * 2 + (direction > 0 ? 1 : 0), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     private static PendingIntent launchIntent(Context context, String action, int requestCode) {
