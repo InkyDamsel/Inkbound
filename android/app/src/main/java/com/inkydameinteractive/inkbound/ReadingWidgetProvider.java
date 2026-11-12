@@ -154,6 +154,7 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
         Intent intent = new Intent(context, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra(EXTRA_WIDGET_ACTION, action);
+        intent.putExtra("widgetBookId", context.getSharedPreferences(ReadingWidgetPlugin.PREFS, Context.MODE_PRIVATE).getString("selectedWidgetBookId", ""));
         return PendingIntent.getActivity(
             context,
             requestCode,
