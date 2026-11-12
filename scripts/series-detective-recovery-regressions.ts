@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
 import { buildSeriesLibrary } from '../src/features/series/seriesLibrary';
+// Discovery from search has no owned numbered anchor: probe opening volumes.
+const unanchoredPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [] });
+assert.deepEqual(unanchoredPlan.targetPositions, [1, 2, 3, 4, 5]);
+assert.ok(unanchoredPlan.queries.includes('Sample Chronicles book 1 A. Reader'));
+assert.ok(unanchoredPlan.queries.includes('"Sample Chronicles"'));
+// A malformed very high position must never allocate a massive gap array.
+const distantPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [1000000000] });
+assert.deepEqual(distantPlan.targetPositions.slice(0, MAX_GAP_QUERY_TARGETS), [1, 2, 3, 4, 5]);
+assert.equal(distantPlan.targetPositions.length, MAX_GAP_QUERY_TARGETS + FORWARD_QUERY_TARGETS);
+assert.ok(!distantPlan.targetPositions.includes(1000000000));
+
+import { planSeriesDiscoveryQueries, MAX_GAP_QUERY_TARGETS, FORWARD_QUERY_TARGETS } from '../src/features/series/seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand } from '../src/features/series/seriesDetectiveBranding';
 import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
