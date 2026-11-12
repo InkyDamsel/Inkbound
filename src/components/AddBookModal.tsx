@@ -2087,7 +2087,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     <p className="mt-1 text-sm text-[#ad9fac]">
                       {isSearching
                         ? 'Finding books…'
-                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal && authorProviderTotal >= results.length ? ` of ${authorProviderTotal}` : ''}`}
+                        : `${results.length} title${results.length === 1 ? '' : 's'} found${authorHasMore ? ' · More catalog results available' : ''}`}
                     </p>
                     {SCANNER_DEBUG_ENABLED && authorCatalogDiagnostics && (
                       <div className="mt-3 rounded-lg border border-[#c5a059]/20 bg-black/20 px-3 py-2 font-mono text-[10px] leading-5 text-[#b9a9ba]">
