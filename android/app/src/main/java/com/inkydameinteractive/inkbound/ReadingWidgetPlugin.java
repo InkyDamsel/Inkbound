@@ -64,17 +64,20 @@ public class ReadingWidgetPlugin extends Plugin {
     public void consumeAction(PluginCall call) {
         SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String action = prefs.getString(PENDING_ACTION, "");
-        prefs.edit().remove(PENDING_ACTION).apply();
+        String bookId = prefs.getString("pendingBookId", "");
+        prefs.edit().remove(PENDING_ACTION).remove("pendingBookId").apply();
         JSObject result = new JSObject();
         if (action != null && !action.isEmpty()) result.put("action", action);
+        if (bookId != null && !bookId.isEmpty()) result.put("bookId", bookId);
         call.resolve(result);
     }
 
-    static void storePendingAction(Context context, String action) {
+    static void storePendingAction(Context context, String action, String bookId) {
         if (action == null || action.isEmpty()) return;
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(PENDING_ACTION, action)
+            .putString("pendingBookId", bookId == null ? "" : bookId)
             .apply();
     }
 
