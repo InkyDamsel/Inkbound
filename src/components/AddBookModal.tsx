@@ -1824,21 +1824,30 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
+      // Start both discovery paths together. An optional author page must not
+      // prevent already available general catalog results from rendering.
+      const authorLookup = looksLikeAuthorNameQuery(trimmedQuery)
+        ? searchGoogleBooksAuthorPage(trimmedQuery, 0)
+            .then((page) => page.groups, () => [] as BookSearchWorkGroup[])
+        : null;
       const response = await searchGoogleBooks(trimmedQuery);
-      if (looksLikeAuthorNameQuery(trimmedQuery)) {
+      if (authorLookup) {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
-          const authorResponse = await searchGoogleBooksAuthorPage(trimmedQuery, 0);
-          const exactAuthorResults = filterExactAuthorResults(authorResponse.groups, trimmedQuery);
-          // An author-qualified search must not be diluted by generic keyword
-          // matches (e.g. books with the author's name in their title).
-          // Retain generic results only when no verified author match exists.
+          const authorGroups = await Promise.race([
+            authorLookup,
+            new Promise<BookSearchWorkGroup[]>((resolve) => {
+              deadline = setTimeout(() => resolve([]), 4000);
+            }),
+          ]);
+          const exactAuthorResults = filterExactAuthorResults(authorGroups, trimmedQuery);
+          // Keep verified author results first; generic keyword matches must
+          // not replace them. If no author supplement arrives, keep primary.
           setResults(exactAuthorResults.length > 0
             ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
             : response.groups);
-        } catch {
-          // Generic search remains fully usable if the author-qualified
-          // supplement is unavailable or rate-limited.
-          setResults(response.groups);
+        } finally {
+          if (deadline !== undefined) clearTimeout(deadline);
         }
       } else {
         setResults(response.groups);
