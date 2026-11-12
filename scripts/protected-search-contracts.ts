@@ -17,9 +17,21 @@ const section = (source: string, start: string, end: string) => {
 const search = section(modal, 'const handleSearch = async', 'const searchEditionKey =');
 assert.match(search, /searchGoogleBooks\(trimmedQuery\)/, 'General search must retain the catalog search path.');
 assert.match(search, /searchGoogleBooksAuthorPage\(trimmedQuery, 0\)/, 'Author queries must use the dedicated author lookup.');
-assert.match(search, /filterExactAuthorResults\(authorResponse\.groups, trimmedQuery\)/, 'Author results must be filtered by credited author.');
+assert.match(search, /filterExactAuthorResults\(authorGroups, trimmedQuery\)/, 'Author results must be filtered by credited author.');
+assert.match(search, /Promise\.race\(/, 'Author search must not wait indefinitely for an optional author supplement.');
+assert.match(search, /setTimeout\(\(\) => resolve\(\[\]\), 4000\)/, 'Author supplement must have a bounded wait.');
+assert.ok(search.indexOf('searchGoogleBooksAuthorPage(trimmedQuery, 0)') < search.indexOf('await searchGoogleBooks(trimmedQuery)'), 'Author and general searches must start concurrently.');
 assert.match(search, /exactAuthorResults\.length > 0/, 'Verified author results must take priority.');
 assert.match(search, /filterExactAuthorResults\(response\.groups, trimmedQuery\)/, 'Generic keyword matches must not pollute author results.');
+
+assert.match(catalog, /PRIMARY_SEARCH_DEADLINE_MS = 12000/, 'Primary Google request must have a deadline.');
+assert.match(catalog, /OPTIONAL_CATALOG_DEADLINE_MS = 4000/, 'Optional catalog providers must have a deadline.');
+assert.match(catalog, /boundedCatalogRequest\('Google Books'/, 'General search must bound its primary provider.');
+assert.match(catalog, /boundedCatalogRequest\('Open Library'/, 'General search must bound Open Library.');
+assert.match(catalog, /boundedCatalogRequest\('Hardcover'/, 'General search must bound Hardcover.');
+assert.match(catalog, /boundedCatalogRequest\('Penguin Random House'/, 'General search must bound PRH.');
+assert.match(catalog, /boundedCatalogRequest\(\s*'Trusted catalog'/, 'Trusted fallback must not block indefinitely.');
+assert.match(catalog, /timeout: PRIMARY_SEARCH_DEADLINE_MS/, 'Protected Firebase callable must have a network timeout.');
 
 const author = section(modal, 'const openAuthorPage = async', 'const loadMoreAuthorBooks = async');
 assert.match(author, /filterExactAuthorResults\(response\.groups, authorName\)/, 'Author catalog must filter credited authors.');
