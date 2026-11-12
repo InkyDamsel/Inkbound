@@ -44,8 +44,8 @@ public class MainActivity extends BridgeActivity {
     private void handleReadingWidgetIntent(Intent intent) {
         if (intent == null) return;
         String action = intent.getStringExtra(ReadingWidgetProvider.EXTRA_WIDGET_ACTION);
-        if (action == null || action.isEmpty() || "open".equals(action)) return;
-        ReadingWidgetPlugin.storePendingAction(this, action);
+        if (action == null || action.isEmpty()) return;
+        ReadingWidgetPlugin.storePendingAction(this, action, intent.getStringExtra("widgetBookId"));
     }
 
     @Override
