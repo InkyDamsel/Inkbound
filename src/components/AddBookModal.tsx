@@ -202,6 +202,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [query, setQuery] = useState(initialSearchQuery);
   const [results, setResults] = useState<BookSearchWorkGroup[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const searchGeneration = useRef(0);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
@@ -1813,6 +1814,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     event.preventDefault();
     const trimmedQuery = query.trim();
     if (!trimmedQuery || isSearching) return;
+    const generation = ++searchGeneration.current;
     setAuthorPage(null);
     setAuthorNextStartIndex(0);
     setAuthorProviderTotal(null);
@@ -1825,29 +1827,30 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setPendingSearchEdition(null);
     try {
       const response = await searchGoogleBooks(trimmedQuery);
-      if (looksLikeAuthorNameQuery(trimmedQuery)) {
-        try {
-          const authorResponse = await searchGoogleBooksAuthorPage(trimmedQuery, 0);
-          const exactAuthorResults = filterExactAuthorResults(authorResponse.groups, trimmedQuery);
-          // An author-qualified search must not be diluted by generic keyword
-          // matches (e.g. books with the author's name in their title).
-          // Retain generic results only when no verified author match exists.
-          setResults(exactAuthorResults.length > 0
-            ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
-            : response.groups);
-        } catch {
-          // Generic search remains fully usable if the author-qualified
-          // supplement is unavailable or rate-limited.
-          setResults(response.groups);
-        }
-      } else {
-        setResults(response.groups);
+      if (generation !== searchGeneration.current) return;
+      // The primary catalog is usable immediately. Never hold its results
+      // hostage to a second author-qualified provider request.
+      const authorQuery = looksLikeAuthorNameQuery(trimmedQuery);
+      const primary = authorQuery ? filterExactAuthorResults(response.groups, trimmedQuery) : response.groups;
+      setResults(primary.length ? primary : response.groups);
+      setIsSearching(false);
+      if (authorQuery) {
+        void searchGoogleBooksAuthorPage(trimmedQuery, 0).then((authorResponse) => {
+          if (generation !== searchGeneration.current) return;
+          const exact = filterExactAuthorResults(authorResponse.groups, trimmedQuery);
+          if (exact.length) {
+            setResults((current) => mergeCatalogResultGroups(exact, filterExactAuthorResults(current, trimmedQuery)));
+          }
+        }).catch(() => {
+          // An unavailable author supplement must not hide usable results.
+        });
       }
     } catch (error) {
+      if (generation !== searchGeneration.current) return;
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
     } finally {
-      setIsSearching(false);
+      if (generation === searchGeneration.current) setIsSearching(false);
     }
   };
 
@@ -1857,6 +1860,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const openAuthorPage = async (authorName: string) => {
     if (isSearching) return;
+    ++searchGeneration.current;
     const knownAuthorBooks = filterExactAuthorResults(results, authorName);
     setAuthorPage({
       name: authorName,
