@@ -83,6 +83,41 @@ const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
+const PRIMARY_SEARCH_DEADLINE_MS = 12000;
+const OPTIONAL_CATALOG_DEADLINE_MS = 4000;
+
+// Slow providers cannot hold the Add Book spinner indefinitely.
+function boundedCatalogRequest<T>(
+  label: string,
+  request: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let finished = false;
+    const timer = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      console.warn('[Inkbound search] ' + label + ' exceeded ' + timeoutMs + 'ms; continuing.');
+      resolve(fallback);
+    }, timeoutMs);
+    request.then(
+      (value) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        console.warn('[Inkbound search] ' + label + ' unavailable; continuing.', error);
+        resolve(fallback);
+      },
+    );
+  });
+}
 const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
 const googleAuthorPageCache = new Map<string, { expiresAt: number; payload: GoogleVolumesResponse }>();
@@ -269,7 +304,7 @@ async function requestProtectedGoogleBooks(
   const callable = httpsCallable<
     { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
     GoogleVolumesResponse
-  >(functions, 'searchHardcoverBooks');
+  >(functions, 'searchHardcoverBooks', { timeout: PRIMARY_SEARCH_DEADLINE_MS });
   const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
   return response.data;
@@ -902,11 +937,12 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     return cacheSearchResponse(cacheKey, { groups, totalItems: groups.length });
   }
 
+  const empty: BookSearchResponse = { groups: [], totalItems: 0 };
   const [google, openLibrary, hardcover, prh] = await Promise.all([
-    searchGoogleBaseline(trimmed, signal),
-    searchOpenLibraryWithAuthorFallback(trimmed, signal),
-    searchHardcoverWithBackoff(trimmed),
-    searchPrhWithBackoff(trimmed),
+    boundedCatalogRequest('Google Books', searchGoogleBaseline(trimmed, signal), PRIMARY_SEARCH_DEADLINE_MS, empty),
+    boundedCatalogRequest('Open Library', searchOpenLibraryWithAuthorFallback(trimmed, signal), OPTIONAL_CATALOG_DEADLINE_MS, empty),
+    boundedCatalogRequest('Hardcover', searchHardcoverWithBackoff(trimmed), OPTIONAL_CATALOG_DEADLINE_MS, empty),
+    boundedCatalogRequest('Penguin Random House', searchPrhWithBackoff(trimmed), OPTIONAL_CATALOG_DEADLINE_MS, empty),
   ]);
 
   if (google.groups.length > 0) {
