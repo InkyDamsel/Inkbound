@@ -49,7 +49,7 @@ try {
       ["const [query, setQuery] = useState('');", "const [query, setQuery] = useState(initialSearchQuery);"],
       [
         "${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal && authorProviderTotal >= results.length ? ` of ${authorProviderTotal}` : ''}",
-        "${results.length} title${results.length === 1 ? '' : 's'} found${authorHasMore ? ' · More catalog results available' : ''}",
+        "${results.length} title${results.length === 1 ? '' : 's'} loaded",
       ],
     ];
     let expected = baseline;
