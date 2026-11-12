@@ -8,7 +8,7 @@ import { customLibraryContext, moveLibraryBook, orderLibraryIds, type CustomLibr
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { compareRecentlyAddedBooks } from '../features/library/libraryRecentSort';
 import { bookMatchesLibrarySearch } from '../features/library/librarySearch';
-import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
+import { DEFAULT_LIBRARY_SECTION, type LibrarySection } from '../features/library/libraryNavigation';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
   CUSTOM_OWNERSHIP_CATEGORIES_KEY,
@@ -65,7 +65,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   onOpenAddBook,
 }) => {
   const { canUseBatchEdit, openUpgradeModal } = useUserPlan();
-  const [section, setSection] = usePersistentState<LibrarySection>(LIBRARY_SECTION_STORAGE_KEY, DEFAULT_LIBRARY_SECTION);
+  // Navigation is presentation state, not library data. Start on Books on every
+  // platform instead of restoring an old Rereads selection from device storage.
+  const [section, setSection] = useState<LibrarySection>(DEFAULT_LIBRARY_SECTION);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filtersExpanded, setFiltersExpanded] = usePersistentState<boolean>('inkbound_library_filters_expanded', false);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -244,7 +246,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       <nav className="inkbound-panel grid grid-cols-4 gap-1 p-1.5" aria-label="Library sections">
         {(['books', 'series', 'collections', 'loans'] as LibrarySection[]).map((item) => <button key={item} type="button" onClick={() => switchSection(item)} className={`flex min-h-11 min-w-0 items-center justify-center rounded-xl px-1 text-[10px] font-bold capitalize leading-none transition min-[390px]:px-1.5 min-[390px]:text-[11px] sm:px-3 sm:text-sm ${section === item ? 'bg-[#c5a059] text-[#171015]' : 'text-[#b9acba] hover:bg-white/5 hover:text-[#f4efe6]'}`}>{item}</button>)}
       </nav>
-      <button type="button" onClick={() => switchSection(section === 'rereads' ? 'books' : 'rereads')} aria-expanded={section === 'rereads'} aria-controls="library-rereads-summary" className={`inkbound-panel flex min-h-12 w-full items-center justify-between gap-3 px-4 text-left transition ${section === 'rereads' ? 'border-[#c5a059]/55 bg-[#c5a059]/10' : 'hover:border-[#c5a059]/30'}`}><span className="min-w-0"><span className="block text-sm font-bold text-[#f4efe6]">Rereads</span>{section === 'rereads' && <span className="mt-0.5 block text-xs text-[#ad9fac]">Books you came back to, with reread stats and reading activity.</span>}</span><span className="flex shrink-0 items-center gap-2"><span className="rounded-full border border-[#c5a059]/25 bg-[#0d0910] px-2.5 py-1 text-xs font-bold text-[#e2bd66]">{rereadBooks.length.toLocaleString()} books · {totalRereads.toLocaleString()} rereads</span><ChevronDown className={`h-4 w-4 text-[#e2bd66] transition-transform ${section === 'rereads' ? 'rotate-180' : ''}`} /></span></button>
+      <button type="button" onClick={() => switchSection(section === 'rereads' ? 'books' : 'rereads')} aria-expanded={section === 'rereads'} aria-controls="library-rereads-summary" className={`inkbound-panel flex min-h-12 w-full flex-wrap items-center justify-between gap-2 px-4 text-left transition ${section === 'rereads' ? 'border-[#c5a059]/55 bg-[#c5a059]/10' : 'hover:border-[#c5a059]/30'}`}><span className="min-w-0"><span className="block text-sm font-bold text-[#f4efe6]">Rereads</span>{section === 'rereads' && <span className="mt-0.5 block text-xs text-[#ad9fac]">Books you came back to, with reread stats and reading activity.</span>}</span><span className="flex shrink-0 items-center gap-2"><span className="rounded-full border border-[#c5a059]/25 bg-[#0d0910] px-2.5 py-1 text-xs font-bold text-[#e2bd66]">{rereadBooks.length.toLocaleString()} books · {totalRereads.toLocaleString()} rereads</span><ChevronDown className={`h-4 w-4 text-[#e2bd66] transition-transform ${section === 'rereads' ? 'rotate-180' : ''}`} /></span></button>
 
       {section === 'rereads' && <section id="library-rereads-summary" className="grid gap-3 sm:grid-cols-3"><div className="inkbound-panel p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#ad9fac]">Books reread</p><p className="mt-2 font-serif text-3xl text-[#f4efe6]">{rereadBooks.length.toLocaleString()}</p></div><div className="inkbound-panel p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#ad9fac]">Total rereads</p><p className="mt-2 font-serif text-3xl text-[#f4efe6]">{totalRereads.toLocaleString()}</p></div><div className="inkbound-panel p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#ad9fac]">Most reread</p><p className="mt-2 line-clamp-1 font-serif text-xl text-[#f4efe6]">{mostReread?.work.title ?? '—'}</p>{mostReread && <p className="mt-1 text-xs text-[#e2bd66]">Read {getEffectiveRereadCount(mostReread) + 1}×</p>}</div></section>}
 
