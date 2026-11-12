@@ -1824,20 +1824,20 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
+      // Run the author-qualified supplement concurrently. Waiting for the
+      // general search before starting it doubled latency on mobile devices.
+      const authorLookup = looksLikeAuthorNameQuery(trimmedQuery)
+        ? searchGoogleBooksAuthorPage(trimmedQuery, 0).catch(() => null)
+        : null;
       const response = await searchGoogleBooks(trimmedQuery);
-      if (looksLikeAuthorNameQuery(trimmedQuery)) {
-        try {
-          const authorResponse = await searchGoogleBooksAuthorPage(trimmedQuery, 0);
+      if (authorLookup) {
+        const authorResponse = await authorLookup;
+        if (authorResponse) {
           const exactAuthorResults = filterExactAuthorResults(authorResponse.groups, trimmedQuery);
-          // An author-qualified search must not be diluted by generic keyword
-          // matches (e.g. books with the author's name in their title).
-          // Retain generic results only when no verified author match exists.
           setResults(exactAuthorResults.length > 0
             ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
             : response.groups);
-        } catch {
-          // Generic search remains fully usable if the author-qualified
-          // supplement is unavailable or rate-limited.
+        } else {
           setResults(response.groups);
         }
       } else {
