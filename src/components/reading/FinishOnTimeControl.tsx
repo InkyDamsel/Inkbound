@@ -1,3 +1,4 @@
+import { BookDetailsDialogActions } from '../BookDetailsDialogActions';
 import { createPortal } from 'react-dom';
 import { useBookDetailsDialogFocus } from '../bookDetailsDialogFocus';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -145,10 +146,10 @@ export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, 
               )}
             </div>
 
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setOpen(false)} className="quiet-shelf-secondary-action justify-center">Close</button>
-              {!usesLibraryDueDate && <button type="button" onClick={save} className="quiet-shelf-primary-action justify-center"><Save className="h-4 w-4" />Save finish date</button>}
-            </div>
+            <BookDetailsDialogActions>
+              <button type="button" onClick={() => setOpen(false)} className="book-details-dialog-secondary">Close</button>
+              {!usesLibraryDueDate && <button type="button" onClick={save} className="book-details-dialog-primary"><Save className="h-4 w-4" />Save finish date</button>}
+            </BookDetailsDialogActions>
           </section>
         </div>
       , document.body)}
