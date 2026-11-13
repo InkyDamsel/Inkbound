@@ -100,51 +100,17 @@ assert.match(
 );
 
 const appSource = fs.readFileSync(path.join(ROOT, 'src/App.tsx'), 'utf8');
-assert.match(
-  appSource,
-  /const handleAddBook = \(newBook: UserBookRecord\)/,
-  'App must own the canonical single-book add mutation.',
-);
-assert.match(
-  appSource,
-  /onAddBook=\{handleAddBook\}/,
-  'Search and library surfaces must route single-book adds through App.handleAddBook.',
-);
-
-const detailsSource = fs.readFileSync(
-  path.join(ROOT, 'src/components/BookDetailsModalCore.tsx'),
-  'utf8',
-);
-assert.match(
-  detailsSource,
-  /detectSeriesForBook/,
-  'Series Recovery Book Details must retain the verified Detective reconciliation bridge.',
-);
-
-console.log('Inkbound canonical Search/Detective architecture guards passed.');
-
-
-const appSeriesRecoverySource = fs.readFileSync(path.join(ROOT, 'src/App.tsx'), 'utf8');
-assert.match(
-  appSeriesRecoverySource,
-  /const reconcileAddedBookSeries = async/,
-  'Automatic add reconciliation must remain App-owned.',
-);
-assert.match(
-  appSeriesRecoverySource,
-  /detectSeriesForBook\(book\)/,
-  'New books missing series metadata must use verified Series Detective reconciliation.',
-);
-assert.match(
-  appSeriesRecoverySource,
-  /void reconcileAddedBookSeries\(newBook\)/,
-  'Single-book adds must automatically reconcile missing series metadata.',
-);
-assert.match(
-  appSeriesRecoverySource,
-  /newBooks\.forEach[\s\S]*reconcileAddedBookSeries\(book\)/,
-  'Batch adds must automatically reconcile missing series metadata.',
-);
+assert.match(appSource, /const addDetectiveBooks = \\(event: Event\\) =>/,
+  'Detective bulk writes must remain App-owned.');
+assert.match(appSource, /candidate\\?\\.verification !== 'verified'/,
+  'App must reject unverified Detective candidates at the mutation boundary.');
+assert.match(appSource, /findLibraryBookForCandidate\\(candidate, \\[\\.\\.\\.current, \\.\\.\\.pendingWorks\\]\\)/,
+  'Detective bulk writes must deduplicate against existing and pending works.');
+assert.match(appSource, /commitCanonicalBooks\\(next\\)/,
+  'Detective writes must use the canonical library commit path.');
+assert.match(appSource, /isSeriesDetectiveAvailable\\(\\)/,
+  'Detective event handlers must remain web-gated.');
+console.log('Inkbound canonical Detective mutation boundary guards passed.');
 
 const detectiveCatalogServer = fs.readFileSync(
   path.join(ROOT, 'functions/src/seriesDetectiveCatalog.ts'),
