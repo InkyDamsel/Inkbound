@@ -49,4 +49,7 @@ export interface SeriesDetectiveWorkGroup {
 export interface SeriesDetectiveCatalogResponse {
   groups: SeriesDetectiveWorkGroup[];
   totalItems: number;
+  /** Empty results are not proof of an empty bibliography when a provider failed. */
+  providerStatus?: 'ok' | 'unavailable';
+  providerErrorCode?: string;
 }
