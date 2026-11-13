@@ -59,6 +59,9 @@ jobs:
       - name: Series Detective integration regressions
         run: npm run test:series:integration
 
+      - name: Series Detective native release gate
+        run: npm run test:series:native-gate
+
       - name: Book Details compact layout contracts
         run: npm run test:book-details:layout
 
