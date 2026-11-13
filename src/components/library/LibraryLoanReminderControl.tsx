@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { useBookDetailsDialogFocus } from '../bookDetailsDialogFocus';
 import React, { useEffect, useState } from 'react';
 import { CalendarClock, Save, X } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
@@ -9,6 +11,7 @@ interface LibraryLoanReminderControlProps {
 
 export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProps> = ({ book, onUpdateBook }) => {
   const [open, setOpen] = useState(false);
+  const dialogRef = useBookDetailsDialogFocus(open, () => setOpen(false));
   const [borrowedDate, setBorrowedDate] = useState(book.libraryLoan?.borrowedDate ?? '');
   const [dueDate, setDueDate] = useState(book.libraryLoan?.dueDate ?? '');
   const [error, setError] = useState('');
@@ -56,8 +59,8 @@ export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProp
         </span>
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[260] flex items-end justify-center bg-black/80 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
+      {open && createPortal(
+        <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[260] flex items-end justify-center bg-black/80 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
           <section className="w-full max-w-lg rounded-t-3xl border border-[var(--ink-gold)]/30 bg-[#17101b] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:p-6" role="dialog" aria-modal="true" aria-label="Library loan dates" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -82,7 +85,7 @@ export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProp
             </div>
           </section>
         </div>
-      )}
+      , document.body)}
     </>
   );
 };
