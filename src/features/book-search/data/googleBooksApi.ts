@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
 import { isNativeRuntime } from '../../../platform/runtimePlatform';
+import { getNativeAppCheckToken } from '../../../platform/runtimeNativeAppCheck';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover, searchHardcoverAuthorBibliography } from './hardcoverApi';
@@ -325,6 +326,11 @@ async function requestProtectedGoogleBooks(
 ): Promise<GoogleVolumesResponse> {
   if (!functions || !auth) {
     throw new Error('Protected Google Books search requires initialized Firebase services.');
+  }
+  // Verify native attestation explicitly. A native token failure must surface
+  // as a failed protected catalog, not silently replace Google with another provider.
+  if (isNativeRuntime()) {
+    await requireCatalogResponse('Native device verification', getNativeAppCheckToken(false), 8000);
   }
   // Guest libraries are fully functional and local-only. Firebase App Check
   // protects the callable independently of an optional signed-in account.
@@ -992,10 +998,16 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   }
 
   if (openLibrary.groups.length > 0) {
-    return cacheSearchResponse(cacheKey, {
+    const response: BookSearchResponse = {
       groups: mergeGroups(openLibrary.groups, [hardcover.groups, prh.groups]),
       totalItems: openLibrary.totalItems,
-    });
+      ...(google.scannerProviderError ? {
+        partial: true,
+        warning: 'Google Books unavailable; showing alternative catalog results. Search may be incomplete. Retry later.',
+      } : {}),
+    };
+    // A fallback caused by a Google failure cannot become an authoritative cache hit.
+    return response.partial ? response : cacheSearchResponse(cacheKey, response);
   }
 
   if (!isIsbnLookup) {
@@ -1013,8 +1025,14 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     }
   }
 
-  if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
-  if (prh.groups.length > 0) return cacheSearchResponse(cacheKey, prh);
+  if (hardcover.groups.length > 0 || prh.groups.length > 0) {
+    const fallback = hardcover.groups.length > 0 ? hardcover : prh;
+    return google.scannerProviderError
+      ? { ...fallback, partial: true, warning: 'Google Books unavailable; these alternative results may be incomplete.' }
+      : cacheSearchResponse(cacheKey, fallback);
+  }
 
-  return { groups: [], totalItems: 0 };
+  return google.scannerProviderError
+    ? { groups: [], totalItems: 0, partial: true, warning: 'Google Books unavailable. Retry this search; no verified Google results were returned.' }
+    : { groups: [], totalItems: 0 };
 }
