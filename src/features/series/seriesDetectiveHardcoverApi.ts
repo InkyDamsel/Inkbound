@@ -18,7 +18,8 @@ export async function searchSeriesDetectiveHardcover(
   } = {},
 ): Promise<SeriesDetectiveCatalogResponse> {
   const trimmed = query.trim();
-  if (!trimmed || !functions) return { groups: [], totalItems: 0 };
+  if (!trimmed) return { groups: [], totalItems: 0, providerStatus: 'ok' };
+  if (!functions) return { groups: [], totalItems: 0, providerStatus: 'unavailable', providerErrorCode: 'firebase-unavailable' };
 
   try {
     const callable = httpsCallable<{
@@ -43,12 +44,15 @@ export async function searchSeriesDetectiveHardcover(
     const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
     return {
       groups,
+      providerStatus: 'ok',
       totalItems: typeof response.data.totalItems === 'number'
         ? response.data.totalItems
         : groups.length,
     };
   } catch (error) {
     console.warn('Series Detective Hardcover provider unavailable.', error);
-    return { groups: [], totalItems: 0 };
+    const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+      ? error.code : 'unknown';
+    return { groups: [], totalItems: 0, providerStatus: 'unavailable', providerErrorCode: code };
   }
 }
