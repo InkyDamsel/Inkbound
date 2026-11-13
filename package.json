@@ -59,14 +59,15 @@
     "verify:ios-ready": "node scripts/verify-ios-ready.mjs",
     "ios:branding:sync": "node scripts/sync-ios-branding.mjs",
     "ios:google-signin:configure": "node scripts/configure-ios-google-signin.mjs",
-    "test:critical:catalog": "tsx scripts/isbn-resolution-regressions.ts && tsx scripts/scanner-verification-regressions.ts && tsx scripts/hardcover-search-results-regressions.ts && tsx scripts/scanner-cover-regressions.ts && tsx scripts/catalog-metadata-regressions.ts && tsx scripts/protected-search-contracts.ts",
+    "test:critical:catalog": "tsx scripts/isbn-resolution-regressions.ts && tsx scripts/scanner-verification-regressions.ts && tsx scripts/hardcover-search-results-regressions.ts && tsx scripts/scanner-cover-regressions.ts && tsx scripts/catalog-metadata-regressions.ts && tsx scripts/protected-search-contracts.ts && npm run test:search:behavior",
     "verify:native-projects": "node scripts/verify-native-project-wiring.mjs",
     "build:scanner-debug": "vite build --mode scanner-debug",
     "android:scanner-debug:sync": "node scripts/build-android.mjs --scanner-debug && npx cap sync android && npm run android:branding:sync && npm run android:version:sync",
     "test:critical:importer": "node scripts/run-importer-regressions.mjs",
     "android:release:sync": "npm run build:android && npx cap sync android && npm run android:branding:sync && npm run android:version:sync && npm run verify:android-config && npm run verify:android-gradle && npm run verify:android-branding",
     "verify:ios-clean": "node scripts/verify-ios-clean.mjs",
-    "ios:release:prepare": "npm run release:verify && npm run ios:sync"
+    "ios:release:prepare": "npm run release:verify && npm run ios:sync",
+    "test:search:behavior": "tsx scripts/catalog-deadline-regressions.ts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",

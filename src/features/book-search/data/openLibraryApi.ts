@@ -60,6 +60,7 @@ interface OpenLibraryAuthorWorksResponse {
   entries?: Array<OpenLibraryWork & {
     covers?: number[];
     first_publish_date?: string;
+    authors?: Array<{ author?: { key?: string }; key?: string }>;
   }>;
 }
 
@@ -280,8 +281,8 @@ export async function searchOpenLibraryAuthorBibliography(
 
   const authorPayload = (await authorResponse.json()) as OpenLibraryAuthorSearchResponse;
   const wanted = normalize(trimmed);
-  const author = (authorPayload.docs ?? []).find((candidate) => normalize(candidate.name) === wanted)
-    ?? authorPayload.docs?.[0];
+  // Never silently substitute the first similarly named author.
+  const author = (authorPayload.docs ?? []).find((candidate) => normalize(candidate.name) === wanted);
   const authorKey = author?.key?.replace(/^\/authors\//, '');
   if (!authorKey) return { groups: [], totalItems: 0 };
 
@@ -294,6 +295,12 @@ export async function searchOpenLibraryAuthorBibliography(
   const worksPayload = (await worksResponse.json()) as OpenLibraryAuthorWorksResponse;
   const groups = (worksPayload.entries ?? []).flatMap((entry): BookSearchWorkGroup[] => {
     if (!entry.title) return [];
+    // Open Library author works include collaborations and edited collections.
+    // A work is an exact-author result only if its own author reference verifies it.
+    const creditedKeys = (entry.authors ?? []).map((credit) =>
+      (credit.author?.key ?? credit.key ?? '').replace(/^\/authors\//, ''),
+    );
+    if (!creditedKeys.includes(authorKey)) return [];
     const coverId = entry.covers?.find((value) => Number.isFinite(value) && value > 0);
     const publicationDate = entry.first_publish_date;
     const edition: BookSearchEdition = {
@@ -301,7 +308,7 @@ export async function searchOpenLibraryAuthorBibliography(
       externalEditionId: entry.key ?? `${authorKey}:${normalize(entry.title)}`,
       title: entry.title,
       subtitle: entry.subtitle,
-      authors: [trimmed],
+      authors: [author?.name ?? trimmed],
       genres: (entry.subject ?? []).slice(0, 12),
       publicationDate,
       publicationYear: publicationYear(publicationDate, entry.first_publish_year),
@@ -313,7 +320,7 @@ export async function searchOpenLibraryAuthorBibliography(
       key: `open-library:${entry.key ?? `${authorKey}:${normalize(entry.title)}`}`,
       title: entry.title,
       subtitle: entry.subtitle,
-      authors: [trimmed],
+      authors: [author?.name ?? trimmed],
       genres: (entry.subject ?? []).slice(0, 12),
       editions: [edition],
     }];

@@ -213,6 +213,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [isLoadingAuthorMore, setIsLoadingAuthorMore] = useState(false);
   const [authorCatalogPage, setAuthorCatalogPage] = useState(1);
   const [authorCatalogDiagnostics, setAuthorCatalogDiagnostics] = useState<AuthorCatalogDiagnostics | null>(null);
+  const [authorCatalogWarning, setAuthorCatalogWarning] = useState<string | null>(null);
+  const authorRequestGeneration = useRef(0);
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [customReadingStatuses, setCustomReadingStatuses] = useState<CustomReadingStatus[]>(() => readCustomReadingStatuses());
   const [creatingCustomReadingStatus, setCreatingCustomReadingStatus] = useState(false);
@@ -1813,6 +1815,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     event.preventDefault();
     const trimmedQuery = query.trim();
     if (!trimmedQuery || isSearching) return;
+    authorRequestGeneration.current += 1;
     setAuthorPage(null);
     setAuthorNextStartIndex(0);
     setAuthorProviderTotal(null);
@@ -1824,21 +1827,31 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
+      // Start both discovery paths together. An optional author page must not
+      // prevent already available general catalog results from rendering.
+      const authorLookup = looksLikeAuthorNameQuery(trimmedQuery)
+        ? searchGoogleBooksAuthorPage(trimmedQuery, 0)
+            .then((page) => page.groups, () => [] as BookSearchWorkGroup[])
+        : null;
       const response = await searchGoogleBooks(trimmedQuery);
-      if (looksLikeAuthorNameQuery(trimmedQuery)) {
+      if (response.partial) setSearchError(response.warning ?? 'Some catalog providers are unavailable. Results may be incomplete.');
+      if (authorLookup) {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
-          const authorResponse = await searchGoogleBooksAuthorPage(trimmedQuery, 0);
-          const exactAuthorResults = filterExactAuthorResults(authorResponse.groups, trimmedQuery);
-          // An author-qualified search must not be diluted by generic keyword
-          // matches (e.g. books with the author's name in their title).
-          // Retain generic results only when no verified author match exists.
+          const authorGroups = await Promise.race([
+            authorLookup,
+            new Promise<BookSearchWorkGroup[]>((resolve) => {
+              deadline = setTimeout(() => resolve([]), 4000);
+            }),
+          ]);
+          const exactAuthorResults = filterExactAuthorResults(authorGroups, trimmedQuery);
+          // Keep verified author results first; generic keyword matches must
+          // not replace them. If no author supplement arrives, keep primary.
           setResults(exactAuthorResults.length > 0
             ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
             : response.groups);
-        } catch {
-          // Generic search remains fully usable if the author-qualified
-          // supplement is unavailable or rate-limited.
-          setResults(response.groups);
+        } finally {
+          if (deadline !== undefined) clearTimeout(deadline);
         }
       } else {
         setResults(response.groups);
@@ -1857,12 +1870,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const openAuthorPage = async (authorName: string) => {
     if (isSearching) return;
-    const knownAuthorBooks = filterExactAuthorResults(results, authorName);
+    const requestGeneration = ++authorRequestGeneration.current;
+    const knownAuthorBooks = authorCatalogWarning ? [] : filterExactAuthorResults(results, authorName);
     setAuthorPage({
       name: authorName,
-      previousQuery: query,
-      previousResults: results,
-      previousHasSearched: hasSearched,
+      previousQuery: authorPage?.previousQuery ?? query,
+      previousResults: authorPage?.previousResults ?? results,
+      previousHasSearched: authorPage?.previousHasSearched ?? hasSearched,
     });
     // Keep already-discovered books visible while the author provider loads.
     // An empty or unavailable provider response must never erase these books.
@@ -1873,53 +1887,63 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setIsLoadingAuthorMore(false);
     setIsSearching(true);
     setSearchError(null);
+    setAuthorCatalogWarning(null);
     setHasSearched(true);
     setPendingSearchEdition(null);
 
     try {
       const response = await searchGoogleBooksAuthorPage(authorName, 0);
+      if (requestGeneration !== authorRequestGeneration.current) return;
       const exactAuthorResults = filterExactAuthorResults(response.groups, authorName);
-      setResults(mergeCatalogResultGroups(knownAuthorBooks, exactAuthorResults));
+      setResults(mergeCatalogResultGroups(exactAuthorResults, knownAuthorBooks));
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || null);
       setAuthorHasMore(response.hasMore);
       setAuthorCatalogDiagnostics(response.diagnostics ?? null);
+      setAuthorCatalogWarning(response.warning ?? null);
     } catch (error) {
+      if (requestGeneration !== authorRequestGeneration.current) return;
+      setAuthorCatalogWarning('Author catalog could not be verified. Retry when your connection is available.');
       setAuthorHasMore(false);
       if (knownAuthorBooks.length === 0) {
         setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
       }
       // Retain matching books already returned by the main search.
     } finally {
-      setIsSearching(false);
+      if (requestGeneration === authorRequestGeneration.current) setIsSearching(false);
     }
   };
 
   const loadMoreAuthorBooks = async () => {
     if (!authorPage || !authorHasMore || isLoadingAuthorMore) return;
+    const requestGeneration = ++authorRequestGeneration.current;
     setIsLoadingAuthorMore(true);
     setSearchError(null);
 
     try {
       const response = await searchGoogleBooksAuthorPage(authorPage.name, authorNextStartIndex);
+      if (requestGeneration !== authorRequestGeneration.current) return;
       const exactAuthorResults = filterExactAuthorResults(response.groups, authorPage.name);
       setResults((current) => mergeCatalogResultGroups(current, exactAuthorResults));
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || authorProviderTotal);
       setAuthorHasMore(response.hasMore && response.nextStartIndex > authorNextStartIndex);
     } catch (error) {
+      if (requestGeneration !== authorRequestGeneration.current) return;
       setSearchError(error instanceof Error ? error.message : 'Could not load more books. Please try again.');
     } finally {
-      setIsLoadingAuthorMore(false);
+      if (requestGeneration === authorRequestGeneration.current) setIsLoadingAuthorMore(false);
     }
   };
 
   const closeAuthorPage = () => {
     if (!authorPage) return;
+    authorRequestGeneration.current += 1;
     setQuery(authorPage.previousQuery);
     setResults(authorPage.previousResults);
     setHasSearched(authorPage.previousHasSearched);
     setSearchError(null);
+    setAuthorCatalogWarning(null);
     setAuthorPage(null);
     setAuthorNextStartIndex(0);
     setAuthorProviderTotal(null);
@@ -2087,8 +2111,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     <p className="mt-1 text-sm text-[#ad9fac]">
                       {isSearching
                         ? 'Finding books…'
-                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded`}
+                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorCatalogWarning ? ' (partial)' : ''}`}
                     </p>
+                    {authorCatalogWarning && !isSearching && (
+                      <div role="status" className="mt-3 rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
+                        <p>{authorCatalogWarning}</p>
+                        <button type="button" onClick={() => void openAuthorPage(authorPage.name)} className="mt-2 underline font-semibold">Retry author catalog</button>
+                      </div>
+                    )}
                     {SCANNER_DEBUG_ENABLED && authorCatalogDiagnostics && (
                       <div className="mt-3 rounded-lg border border-[#c5a059]/20 bg-black/20 px-3 py-2 font-mono text-[10px] leading-5 text-[#b9a9ba]">
                         <div>Google {authorCatalogDiagnostics.googleRaw} raw / {authorCatalogDiagnostics.googleCredited} credited{authorCatalogDiagnostics.googleError ? ` / ERROR: ${authorCatalogDiagnostics.googleError}` : ''}</div>

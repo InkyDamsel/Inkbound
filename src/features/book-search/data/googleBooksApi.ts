@@ -1,6 +1,9 @@
 import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
+import { isNativeRuntime } from '../../../platform/runtimePlatform';
+import { getNativeAppCheckToken } from '../../../platform/runtimeNativeAppCheck';
+import { requireCatalogResponse } from './catalogRequestDeadline';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover, searchHardcoverAuthorBibliography } from './hardcoverApi';
@@ -83,6 +86,41 @@ const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
+const PRIMARY_SEARCH_DEADLINE_MS = 12000;
+const OPTIONAL_CATALOG_DEADLINE_MS = 4000;
+
+// Slow providers cannot hold the Add Book spinner indefinitely.
+function boundedCatalogRequest<T>(
+  label: string,
+  request: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let finished = false;
+    const timer = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      console.warn('[Inkbound search] ' + label + ' exceeded ' + timeoutMs + 'ms; continuing.');
+      resolve(fallback);
+    }, timeoutMs);
+    request.then(
+      (value) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        console.warn('[Inkbound search] ' + label + ' unavailable; continuing.', error);
+        resolve(fallback);
+      },
+    );
+  });
+}
 const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
 const googleAuthorPageCache = new Map<string, { expiresAt: number; payload: GoogleVolumesResponse }>();
@@ -100,10 +138,14 @@ const isAdministrationActive = (): boolean =>
   readRuntimeJson<string>(ACTIVE_TAB_STORAGE_KEY, 'home') === 'admin';
 
 const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<void> => {
-  while (isAdministrationActive()) {
+  // A stale navigation preference must never block manual catalog searches.
+  // Keep the short admin throttle, but release it after a bounded grace period.
+  const deadline = Date.now() + 2000;
+  while (isAdministrationActive() && Date.now() < deadline) {
     if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
     await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
   }
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 };
 
 const shouldBackOffCatalog = (error: unknown): boolean => {
@@ -264,12 +306,17 @@ async function requestProtectedGoogleBooks(
   if (!functions || !auth) {
     throw new Error('Protected Google Books search requires initialized Firebase services.');
   }
+  // Verify native attestation explicitly. A native token failure must surface
+  // as a failed protected catalog, not silently replace Google with another provider.
+  if (isNativeRuntime()) {
+    await requireCatalogResponse('Native device verification', getNativeAppCheckToken(false), 8000);
+  }
   // Guest libraries are fully functional and local-only. Firebase App Check
   // protects the callable independently of an optional signed-in account.
   const callable = httpsCallable<
     { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
     GoogleVolumesResponse
-  >(functions, 'searchHardcoverBooks');
+  >(functions, 'searchHardcoverBooks', { timeout: PRIMARY_SEARCH_DEADLINE_MS });
   const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
   return response.data;
@@ -379,14 +426,20 @@ export async function searchGoogleBooksAuthorPage(
     // and keep the page briefly so those paths do not repeatedly spend Google
     // quota for the same author/page. A legitimate empty protected response is
     // authoritative; do not immediately repeat it against the public endpoint.
-    payload = await requestGoogleAuthorPage(authorQuery, startIndex, signal);
+    payload = await requireCatalogResponse(
+      'Google Books author page',
+      requestGoogleAuthorPage(authorQuery, startIndex, signal),
+      PRIMARY_SEARCH_DEADLINE_MS,
+    );
   } catch (protectedError) {
     if (signal?.aborted) throw protectedError;
+    googleError = protectedError instanceof Error ? protectedError.message : String(protectedError);
     if (shouldBackOffCatalog(protectedError)) {
       googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
       googleError = protectedError instanceof Error ? protectedError.message : String(protectedError);
-    } else try {
-      payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    } else if (!isNativeRuntime()) try {
+      payload = await requireCatalogResponse('Direct Google Books author page', requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE), PRIMARY_SEARCH_DEADLINE_MS);
+      googleError = undefined;
     } catch (directError) {
       googleError = directError instanceof Error ? directError.message : String(directError);
       if (shouldBackOffCatalog(directError)) {
@@ -395,6 +448,10 @@ export async function searchGoogleBooksAuthorPage(
       console.warn('Google Books author lookup unavailable; alternate author catalogs remain available.', protectedError, directError);
     }
   }
+
+  // A failed later page is not a genuine end of a bibliography.
+  // Preserve the current page position and let the user retry that same page.
+  if (googleError && startIndex > 0) throw new Error('Google Books author page unavailable. Retry to continue loading this catalog.');
 
   const rawItems = payload.items ?? [];
   const googleGroups = groupGoogleEditions(
@@ -418,13 +475,14 @@ export async function searchGoogleBooksAuthorPage(
 
   const supplements: SupplementResult[] = startIndex === 0
     ? await Promise.all([
-        safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)),
-        safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)),
-        safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor, true)),
-        safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor, true)),
+        boundedCatalogRequest('Open Library author', safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0, error: 'Open Library author lookup timed out' }),
+        boundedCatalogRequest('Hardcover author', safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0, error: 'Hardcover author lookup timed out' }),
+        boundedCatalogRequest('PRH author', safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor, true)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0, error: 'PRH author lookup timed out' }),
+        boundedCatalogRequest('Trusted catalog author', safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor, true)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0, error: 'Trusted author catalog lookup timed out' }),
       ])
     : [];
 
+  const supplementUnavailable = supplements.some((item) => Boolean(item.error));
   const requestedAuthor = normalizeText(trimmedAuthor);
   const creditedToAuthor = (work: BookSearchWorkGroup) =>
     work.authors.some((author) => normalizeText(author) === requestedAuthor);
@@ -467,6 +525,10 @@ export async function searchGoogleBooksAuthorPage(
     providerTotalItems,
     nextStartIndex,
     hasMore,
+    partial: Boolean(googleError || supplementUnavailable),
+    warning: googleError
+      ? 'Google Books unavailable. This author catalog is incomplete; retry to load verified Google results.'
+      : supplementUnavailable ? 'Some supplementary catalogs did not respond; these results may be incomplete.' : undefined,
     diagnostics,
   };
 }
@@ -902,11 +964,13 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     return cacheSearchResponse(cacheKey, { groups, totalItems: groups.length });
   }
 
+  const empty: BookSearchResponse = { groups: [], totalItems: 0 };
   const [google, openLibrary, hardcover, prh] = await Promise.all([
-    searchGoogleBaseline(trimmed, signal),
-    searchOpenLibraryWithAuthorFallback(trimmed, signal),
-    searchHardcoverWithBackoff(trimmed),
-    searchPrhWithBackoff(trimmed),
+    requireCatalogResponse('Google Books', searchGoogleBaseline(trimmed, signal), PRIMARY_SEARCH_DEADLINE_MS)
+      .catch((error): GoogleScannerResponse => ({ groups: [], totalItems: 0, scannerProviderError: error instanceof Error ? error.message : String(error) })),
+    boundedCatalogRequest('Open Library', searchOpenLibraryWithAuthorFallback(trimmed, signal), OPTIONAL_CATALOG_DEADLINE_MS, empty),
+    boundedCatalogRequest('Hardcover', searchHardcoverWithBackoff(trimmed), OPTIONAL_CATALOG_DEADLINE_MS, empty),
+    boundedCatalogRequest('Penguin Random House', searchPrhWithBackoff(trimmed), OPTIONAL_CATALOG_DEADLINE_MS, empty),
   ]);
 
   if (google.groups.length > 0) {
@@ -917,24 +981,46 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   }
 
   if (openLibrary.groups.length > 0) {
-    return cacheSearchResponse(cacheKey, {
+    const response: BookSearchResponse = {
       groups: mergeGroups(openLibrary.groups, [hardcover.groups, prh.groups]),
       totalItems: openLibrary.totalItems,
-    });
+      ...(google.scannerProviderError ? {
+        partial: true,
+        warning: 'Google Books unavailable; showing alternative catalog results. Search may be incomplete. Retry later.',
+      } : {}),
+    };
+    // A fallback caused by a Google failure cannot become an authoritative cache hit.
+    return response.partial ? response : cacheSearchResponse(cacheKey, response);
   }
 
   if (!isIsbnLookup) {
-    const trusted = await searchTrustedCatalogBaseline(trimmed);
+    const trusted = await boundedCatalogRequest(
+      'Trusted catalog',
+      searchTrustedCatalogBaseline(trimmed),
+      OPTIONAL_CATALOG_DEADLINE_MS,
+      { groups: [], totalItems: 0 },
+    );
     if (trusted.groups.length > 0) {
-      return cacheSearchResponse(cacheKey, {
+      const response: BookSearchResponse = {
         groups: mergeGroups(trusted.groups, [hardcover.groups, prh.groups]),
         totalItems: trusted.totalItems,
-      });
+        ...(google.scannerProviderError ? {
+          partial: true,
+          warning: 'Google Books unavailable; showing trusted-catalog fallback results. Search may be incomplete.',
+        } : {}),
+      };
+      return response.partial ? response : cacheSearchResponse(cacheKey, response);
     }
   }
 
-  if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
-  if (prh.groups.length > 0) return cacheSearchResponse(cacheKey, prh);
+  if (hardcover.groups.length > 0 || prh.groups.length > 0) {
+    const fallback = hardcover.groups.length > 0 ? hardcover : prh;
+    return google.scannerProviderError
+      ? { ...fallback, partial: true, warning: 'Google Books unavailable; these alternative results may be incomplete.' }
+      : cacheSearchResponse(cacheKey, fallback);
+  }
 
-  return { groups: [], totalItems: 0 };
+  return google.scannerProviderError
+    ? { groups: [], totalItems: 0, partial: true, warning: 'Google Books unavailable. Retry this search; no verified Google results were returned.' }
+    : { groups: [], totalItems: 0 };
 }
