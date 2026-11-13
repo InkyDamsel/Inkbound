@@ -40,4 +40,7 @@ export interface BookSearchWorkGroup {
 export interface BookSearchResponse {
   groups: BookSearchWorkGroup[];
   totalItems: number;
+  /** A failed provider must never be presented as an authoritative empty catalog. */
+  partial?: boolean;
+  warning?: string;
 }
