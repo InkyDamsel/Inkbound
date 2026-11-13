@@ -214,6 +214,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [authorCatalogPage, setAuthorCatalogPage] = useState(1);
   const [authorCatalogDiagnostics, setAuthorCatalogDiagnostics] = useState<AuthorCatalogDiagnostics | null>(null);
   const [authorCatalogWarning, setAuthorCatalogWarning] = useState<string | null>(null);
+  const authorRequestGeneration = useRef(0);
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [customReadingStatuses, setCustomReadingStatuses] = useState<CustomReadingStatus[]>(() => readCustomReadingStatuses());
   const [creatingCustomReadingStatus, setCreatingCustomReadingStatus] = useState(false);
@@ -1814,6 +1815,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     event.preventDefault();
     const trimmedQuery = query.trim();
     if (!trimmedQuery || isSearching) return;
+    authorRequestGeneration.current += 1;
     setAuthorPage(null);
     setAuthorNextStartIndex(0);
     setAuthorProviderTotal(null);
@@ -1868,12 +1870,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const openAuthorPage = async (authorName: string) => {
     if (isSearching) return;
-    const knownAuthorBooks = filterExactAuthorResults(results, authorName);
+    const requestGeneration = ++authorRequestGeneration.current;
+    const knownAuthorBooks = authorCatalogWarning ? [] : filterExactAuthorResults(results, authorName);
     setAuthorPage({
       name: authorName,
-      previousQuery: query,
-      previousResults: results,
-      previousHasSearched: hasSearched,
+      previousQuery: authorPage?.previousQuery ?? query,
+      previousResults: authorPage?.previousResults ?? results,
+      previousHasSearched: authorPage?.previousHasSearched ?? hasSearched,
     });
     // Keep already-discovered books visible while the author provider loads.
     // An empty or unavailable provider response must never erase these books.
@@ -1890,14 +1893,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
     try {
       const response = await searchGoogleBooksAuthorPage(authorName, 0);
+      if (requestGeneration !== authorRequestGeneration.current) return;
       const exactAuthorResults = filterExactAuthorResults(response.groups, authorName);
-      setResults(mergeCatalogResultGroups(knownAuthorBooks, exactAuthorResults));
+      setResults(mergeCatalogResultGroups(exactAuthorResults, knownAuthorBooks));
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || null);
       setAuthorHasMore(response.hasMore);
       setAuthorCatalogDiagnostics(response.diagnostics ?? null);
       setAuthorCatalogWarning(response.warning ?? null);
     } catch (error) {
+      if (requestGeneration !== authorRequestGeneration.current) return;
       setAuthorCatalogWarning('Author catalog could not be verified. Retry when your connection is available.');
       setAuthorHasMore(false);
       if (knownAuthorBooks.length === 0) {
@@ -1905,31 +1910,35 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       }
       // Retain matching books already returned by the main search.
     } finally {
-      setIsSearching(false);
+      if (requestGeneration === authorRequestGeneration.current) setIsSearching(false);
     }
   };
 
   const loadMoreAuthorBooks = async () => {
     if (!authorPage || !authorHasMore || isLoadingAuthorMore) return;
+    const requestGeneration = ++authorRequestGeneration.current;
     setIsLoadingAuthorMore(true);
     setSearchError(null);
 
     try {
       const response = await searchGoogleBooksAuthorPage(authorPage.name, authorNextStartIndex);
+      if (requestGeneration !== authorRequestGeneration.current) return;
       const exactAuthorResults = filterExactAuthorResults(response.groups, authorPage.name);
       setResults((current) => mergeCatalogResultGroups(current, exactAuthorResults));
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || authorProviderTotal);
       setAuthorHasMore(response.hasMore && response.nextStartIndex > authorNextStartIndex);
     } catch (error) {
+      if (requestGeneration !== authorRequestGeneration.current) return;
       setSearchError(error instanceof Error ? error.message : 'Could not load more books. Please try again.');
     } finally {
-      setIsLoadingAuthorMore(false);
+      if (requestGeneration === authorRequestGeneration.current) setIsLoadingAuthorMore(false);
     }
   };
 
   const closeAuthorPage = () => {
     if (!authorPage) return;
+    authorRequestGeneration.current += 1;
     setQuery(authorPage.previousQuery);
     setResults(authorPage.previousResults);
     setHasSearched(authorPage.previousHasSearched);
