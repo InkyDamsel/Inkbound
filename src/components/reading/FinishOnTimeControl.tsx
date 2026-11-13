@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Clock3, Save, X } from 'lucide-react';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { buildReadingDeadlinePlan } from '../../features/reading/readingDeadline';
-import { usesEmbeddedBookDetailsToolbar } from '../../platform/bookDetailsLayoutCapability';
+import { useEmbeddedBookDetailsToolbar } from '../../platform/bookDetailsLayoutCapability';
 
 interface FinishOnTimeControlProps {
   book: UserBookRecord;
@@ -25,7 +25,7 @@ const formatMinutes = (minutes: number) => {
 
 export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, sessions, onUpdateBook }) => {
   const [open, setOpen] = useState(false);
-  const nativeDialogLayout = usesEmbeddedBookDetailsToolbar();
+  const nativeDialogLayout = useEmbeddedBookDetailsToolbar();
   const [finishByDate, setFinishByDate] = useState(book.finishByDate ?? '');
   const [blockedByChildDialog, setBlockedByChildDialog] = useState(false);
   const activeEdition = useMemo(
