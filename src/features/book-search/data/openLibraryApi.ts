@@ -308,7 +308,7 @@ export async function searchOpenLibraryAuthorBibliography(
       externalEditionId: entry.key ?? `${authorKey}:${normalize(entry.title)}`,
       title: entry.title,
       subtitle: entry.subtitle,
-      authors: [author.name ?? trimmed],
+      authors: [author?.name ?? trimmed],
       genres: (entry.subject ?? []).slice(0, 12),
       publicationDate,
       publicationYear: publicationYear(publicationDate, entry.first_publish_year),
@@ -320,7 +320,7 @@ export async function searchOpenLibraryAuthorBibliography(
       key: `open-library:${entry.key ?? `${authorKey}:${normalize(entry.title)}`}`,
       title: entry.title,
       subtitle: entry.subtitle,
-      authors: [author.name ?? trimmed],
+      authors: [author?.name ?? trimmed],
       genres: (entry.subject ?? []).slice(0, 12),
       editions: [edition],
     }];
