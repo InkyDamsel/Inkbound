@@ -213,6 +213,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [isLoadingAuthorMore, setIsLoadingAuthorMore] = useState(false);
   const [authorCatalogPage, setAuthorCatalogPage] = useState(1);
   const [authorCatalogDiagnostics, setAuthorCatalogDiagnostics] = useState<AuthorCatalogDiagnostics | null>(null);
+  const [authorCatalogWarning, setAuthorCatalogWarning] = useState<string | null>(null);
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [customReadingStatuses, setCustomReadingStatuses] = useState<CustomReadingStatus[]>(() => readCustomReadingStatuses());
   const [creatingCustomReadingStatus, setCreatingCustomReadingStatus] = useState(false);
@@ -1882,6 +1883,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setIsLoadingAuthorMore(false);
     setIsSearching(true);
     setSearchError(null);
+    setAuthorCatalogWarning(null);
     setHasSearched(true);
     setPendingSearchEdition(null);
 
@@ -1893,7 +1895,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setAuthorProviderTotal(response.providerTotalItems || null);
       setAuthorHasMore(response.hasMore);
       setAuthorCatalogDiagnostics(response.diagnostics ?? null);
+      setAuthorCatalogWarning(response.warning ?? null);
     } catch (error) {
+      setAuthorCatalogWarning('Author catalog could not be verified. Retry when your connection is available.');
       setAuthorHasMore(false);
       if (knownAuthorBooks.length === 0) {
         setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
@@ -1929,6 +1933,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setResults(authorPage.previousResults);
     setHasSearched(authorPage.previousHasSearched);
     setSearchError(null);
+    setAuthorCatalogWarning(null);
     setAuthorPage(null);
     setAuthorNextStartIndex(0);
     setAuthorProviderTotal(null);
@@ -2096,8 +2101,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     <p className="mt-1 text-sm text-[#ad9fac]">
                       {isSearching
                         ? 'Finding books…'
-                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded`}
+                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorCatalogWarning ? ' (partial)' : ''}`}
                     </p>
+                    {authorCatalogWarning && !isSearching && (
+                      <div role="status" className="mt-3 rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
+                        <p>{authorCatalogWarning}</p>
+                        <button type="button" onClick={() => void openAuthorPage(authorPage.name)} className="mt-2 underline font-semibold">Retry author catalog</button>
+                      </div>
+                    )}
                     {SCANNER_DEBUG_ENABLED && authorCatalogDiagnostics && (
                       <div className="mt-3 rounded-lg border border-[#c5a059]/20 bg-black/20 px-3 py-2 font-mono text-[10px] leading-5 text-[#b9a9ba]">
                         <div>Google {authorCatalogDiagnostics.googleRaw} raw / {authorCatalogDiagnostics.googleCredited} credited{authorCatalogDiagnostics.googleError ? ` / ERROR: ${authorCatalogDiagnostics.googleError}` : ''}</div>
