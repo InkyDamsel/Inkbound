@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
+import { isNativeRuntime } from '../../../platform/runtimePlatform';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover, searchHardcoverAuthorBibliography } from './hardcoverApi';
@@ -85,6 +86,28 @@ const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
 const PRIMARY_SEARCH_DEADLINE_MS = 12000;
 const OPTIONAL_CATALOG_DEADLINE_MS = 4000;
+
+class CatalogRequestTimeout extends Error {
+  constructor(provider: string) {
+    super(provider + ' did not respond before the request deadline.');
+    this.name = 'CatalogRequestTimeout';
+  }
+}
+
+function requireCatalogResponse<T>(provider: string, request: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new CatalogRequestTimeout(provider));
+    }, ms);
+    request.then(
+      (value) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } },
+      (error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } },
+    );
+  });
+}
 
 // Slow providers cannot hold the Add Book spinner indefinitely.
 function boundedCatalogRequest<T>(
@@ -418,19 +441,20 @@ export async function searchGoogleBooksAuthorPage(
     // and keep the page briefly so those paths do not repeatedly spend Google
     // quota for the same author/page. A legitimate empty protected response is
     // authoritative; do not immediately repeat it against the public endpoint.
-    payload = await boundedCatalogRequest(
+    payload = await requireCatalogResponse(
       'Google Books author page',
       requestGoogleAuthorPage(authorQuery, startIndex, signal),
       PRIMARY_SEARCH_DEADLINE_MS,
-      { totalItems: 0, items: [] },
     );
   } catch (protectedError) {
     if (signal?.aborted) throw protectedError;
+    googleError = protectedError instanceof Error ? protectedError.message : String(protectedError);
     if (shouldBackOffCatalog(protectedError)) {
       googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
       googleError = protectedError instanceof Error ? protectedError.message : String(protectedError);
-    } else try {
-      payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    } else if (!isNativeRuntime()) try {
+      payload = await requireCatalogResponse('Direct Google Books author page', requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE), PRIMARY_SEARCH_DEADLINE_MS);
+      googleError = undefined;
     } catch (directError) {
       googleError = directError instanceof Error ? directError.message : String(directError);
       if (shouldBackOffCatalog(directError)) {
@@ -439,6 +463,10 @@ export async function searchGoogleBooksAuthorPage(
       console.warn('Google Books author lookup unavailable; alternate author catalogs remain available.', protectedError, directError);
     }
   }
+
+  // A failed later page is not a genuine end of a bibliography.
+  // Preserve the current page position and let the user retry that same page.
+  if (googleError && startIndex > 0) throw new Error('Google Books author page unavailable. Retry to continue loading this catalog.');
 
   const rawItems = payload.items ?? [];
   const googleGroups = groupGoogleEditions(
@@ -511,6 +539,8 @@ export async function searchGoogleBooksAuthorPage(
     providerTotalItems,
     nextStartIndex,
     hasMore,
+    partial: Boolean(googleError),
+    warning: googleError ? 'Google Books unavailable. This author catalog is incomplete; retry to load verified Google results.' : undefined,
     diagnostics,
   };
 }
