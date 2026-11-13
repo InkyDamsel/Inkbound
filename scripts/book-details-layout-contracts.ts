@@ -43,7 +43,7 @@ const sessionActionsStart = core.indexOf('<div className="book-details-session-a
 const sessionActionsEnd = core.indexOf('Start Reading Session</button>', sessionActionsStart);
 assert.ok(sessionActionsStart !== -1 && sessionActionsEnd > sessionActionsStart,
   'Book Details must expose the three Sessions actions.');
-const sessionActions = core.slice(sessionActionsStart, sessionActionsEnd);
+const sessionActions = core.slice(sessionActionsStart, sessionActionsEnd + 'Start Reading Session</button>'.length);
 for (const action of ['Add Past Session', 'Add Multiple', 'Start Reading Session']) {
   assert.ok(sessionActions.includes(action), 'Sessions action missing on compact view: ' + action);
 }
