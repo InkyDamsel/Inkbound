@@ -1001,10 +1001,15 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
       { groups: [], totalItems: 0 },
     );
     if (trusted.groups.length > 0) {
-      return cacheSearchResponse(cacheKey, {
+      const response: BookSearchResponse = {
         groups: mergeGroups(trusted.groups, [hardcover.groups, prh.groups]),
         totalItems: trusted.totalItems,
-      });
+        ...(google.scannerProviderError ? {
+          partial: true,
+          warning: 'Google Books unavailable; showing trusted-catalog fallback results. Search may be incomplete.',
+        } : {}),
+      };
+      return response.partial ? response : cacheSearchResponse(cacheKey, response);
     }
   }
 
