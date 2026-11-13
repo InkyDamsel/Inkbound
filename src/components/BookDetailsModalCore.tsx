@@ -1,3 +1,4 @@
+import { isSeriesDetectiveAvailable } from '../features/series/seriesDetectiveAvailability';
 import { uniquePrivateTags } from '../features/library/privateTags';
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Search, Star, Trash2, Upload, X } from 'lucide-react';
@@ -456,7 +457,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, librar
           <div className="flex items-start gap-4 pr-10 sm:gap-6"><button type="button" onClick={() => { setCoverManagerOpen(true); setCoverMode('choices'); }} className="shrink-0"><BookCover work={book.work} edition={activeEdition} size="lg" /></button><div className="min-w-0 flex-1"><span className="inline-flex rounded bg-[#c5a059] px-2 py-1 text-[10px] font-bold uppercase text-[#120817]">{activeEdition.format}</span><h2 className="mt-3 line-clamp-2 font-serif text-2xl font-bold text-[#f4efe6] sm:text-4xl">{book.work.title}</h2><p className="mt-1 text-sm italic text-stone-400">by {book.work.author}</p><p className="mt-2 text-xs text-[#b9aaba]">Metadata: <strong className="text-[#e5c158]">{metadataLabel}</strong></p>{syncMessage && <p className="mt-2 text-xs text-[#b9aaba]">{syncMessage}</p>}</div></div>
           <div data-series-actions-row className="mt-3 flex flex-wrap items-center gap-2 pl-1 pr-12">
             <span data-series-shortcut-slot />
-            <SeriesDetectiveBookLookup key={book.id} book={book} libraryBooks={libraryBooks} />
+            {isSeriesDetectiveAvailable() && <SeriesDetectiveBookLookup key={book.id} book={book} libraryBooks={libraryBooks} />}
           </div>
         </header>
         <div className="book-details-mobile-actions book-details-action-bar shrink-0 flex flex-wrap items-center gap-2 border-b border-[#3d2448] bg-[#1c0f24] px-3 py-2">
