@@ -496,13 +496,14 @@ export async function searchGoogleBooksAuthorPage(
 
   const supplements: SupplementResult[] = startIndex === 0
     ? await Promise.all([
-        boundedCatalogRequest('Open Library author', safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0 }),
-        boundedCatalogRequest('Hardcover author', safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0 }),
-        boundedCatalogRequest('PRH author', safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor, true)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0 }),
-        boundedCatalogRequest('Trusted catalog author', safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor, true)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0 }),
+        boundedCatalogRequest('Open Library author', safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0, error: 'Open Library author lookup timed out' }),
+        boundedCatalogRequest('Hardcover author', safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0, error: 'Hardcover author lookup timed out' }),
+        boundedCatalogRequest('PRH author', safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor, true)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0, error: 'PRH author lookup timed out' }),
+        boundedCatalogRequest('Trusted catalog author', safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor, true)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0, error: 'Trusted author catalog lookup timed out' }),
       ])
     : [];
 
+  const supplementUnavailable = supplements.some((item) => Boolean(item.error));
   const requestedAuthor = normalizeText(trimmedAuthor);
   const creditedToAuthor = (work: BookSearchWorkGroup) =>
     work.authors.some((author) => normalizeText(author) === requestedAuthor);
@@ -545,8 +546,10 @@ export async function searchGoogleBooksAuthorPage(
     providerTotalItems,
     nextStartIndex,
     hasMore,
-    partial: Boolean(googleError),
-    warning: googleError ? 'Google Books unavailable. This author catalog is incomplete; retry to load verified Google results.' : undefined,
+    partial: Boolean(googleError || supplementUnavailable),
+    warning: googleError
+      ? 'Google Books unavailable. This author catalog is incomplete; retry to load verified Google results.'
+      : supplementUnavailable ? 'Some supplementary catalogs did not respond; these results may be incomplete.' : undefined,
     diagnostics,
   };
 }
@@ -984,7 +987,8 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
 
   const empty: BookSearchResponse = { groups: [], totalItems: 0 };
   const [google, openLibrary, hardcover, prh] = await Promise.all([
-    boundedCatalogRequest('Google Books', searchGoogleBaseline(trimmed, signal), PRIMARY_SEARCH_DEADLINE_MS, empty),
+    requireCatalogResponse('Google Books', searchGoogleBaseline(trimmed, signal), PRIMARY_SEARCH_DEADLINE_MS)
+      .catch((error): GoogleScannerResponse => ({ groups: [], totalItems: 0, scannerProviderError: error instanceof Error ? error.message : String(error) })),
     boundedCatalogRequest('Open Library', searchOpenLibraryWithAuthorFallback(trimmed, signal), OPTIONAL_CATALOG_DEADLINE_MS, empty),
     boundedCatalogRequest('Hardcover', searchHardcoverWithBackoff(trimmed), OPTIONAL_CATALOG_DEADLINE_MS, empty),
     boundedCatalogRequest('Penguin Random House', searchPrhWithBackoff(trimmed), OPTIONAL_CATALOG_DEADLINE_MS, empty),
