@@ -229,10 +229,25 @@ export default function App() {
       const current = booksRef.current;
       // Use the same work/edition ownership check as the Detective roster.
       // A display-title suffix must not bypass duplicate protection on save.
-      const eligible = candidates.filter((candidate) => {
-        if (!candidate?.work?.title || !candidate.work.authors?.[0] || !candidate.edition) return false;
-        return !findLibraryBookForCandidate(candidate, current);
-      });
+      // Recheck the trust boundary at the mutation handler. UI verification
+      // controls are not authorization: custom events can be dispatched directly.
+      const eligible: SeriesDetectiveCandidate[] = [];
+      const pendingWorks: UserBookRecord[] = [];
+      for (const candidate of candidates) {
+        if (candidate?.verification !== 'verified'
+          || !candidate.work?.title?.trim()
+          || !candidate.work.authors?.[0]?.trim()
+          || !candidate.edition
+          || !candidate.seriesName?.trim()) continue;
+        if (findLibraryBookForCandidate(candidate, [...current, ...pendingWorks])) continue;
+        const pending = createBookFromSearchEdition({
+          work: candidate.work,
+          edition: candidate.edition,
+          status: 'tbr',
+        });
+        eligible.push(candidate);
+        pendingWorks.push(pending);
+      }
       if (!eligible.length) { showToast('These books are already in your library.'); return; }
       const additions = eligible.map((candidate) => {
         const created = createBookFromSearchEdition({
