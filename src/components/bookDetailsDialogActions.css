@@ -1,0 +1,55 @@
+/* Shared Book Details companion-dialog actions.
+ * Portal dialogs mount under document.body, outside .book-details-modal-host,
+ * so these rules intentionally live with the reusable footer component.
+ */
+.book-details-dialog-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  margin-top: 1.25rem;
+}
+.book-details-dialog-actions > .book-details-dialog-primary,
+.book-details-dialog-actions > .book-details-dialog-secondary {
+  display: inline-flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  height: auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.book-details-dialog-actions > .book-details-dialog-primary {
+  border: 1px solid rgba(206,157,190,0.5);
+  background: #79566f;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+}
+.book-details-dialog-actions > .book-details-dialog-primary:hover:not(:disabled) {
+  background: #8b657f;
+}
+.book-details-dialog-actions > .book-details-dialog-secondary {
+  border: 1px solid var(--ink-border);
+  background: var(--ink-surface);
+  color: var(--ink-ivory);
+}
+.book-details-dialog-actions > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.book-details-dialog-actions > button > svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
