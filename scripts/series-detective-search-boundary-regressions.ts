@@ -100,15 +100,15 @@ assert.match(
 );
 
 const appSource = fs.readFileSync(path.join(ROOT, 'src/App.tsx'), 'utf8');
-assert.match(appSource, /const addDetectiveBooks = \\(event: Event\\) =>/,
+assert.match(appSource, /const addDetectiveBooks = \(event: Event\) =>/,
   'Detective bulk writes must remain App-owned.');
-assert.match(appSource, /candidate\\?\\.verification !== 'verified'/,
+assert.match(appSource, /candidate\?\.verification !== 'verified'/,
   'App must reject unverified Detective candidates at the mutation boundary.');
-assert.match(appSource, /findLibraryBookForCandidate\\(candidate, \\[\\.\\.\\.current, \\.\\.\\.pendingWorks\\]\\)/,
+assert.match(appSource, /findLibraryBookForCandidate\(candidate, \[\.\.\.current, \.\.\.pendingWorks\]\)/,
   'Detective bulk writes must deduplicate against existing and pending works.');
-assert.match(appSource, /commitCanonicalBooks\\(next\\)/,
+assert.match(appSource, /commitCanonicalBooks\(next\)/,
   'Detective writes must use the canonical library commit path.');
-assert.match(appSource, /isSeriesDetectiveAvailable\\(\\)/,
+assert.match(appSource, /isSeriesDetectiveAvailable\(\)/,
   'Detective event handlers must remain web-gated.');
 console.log('Inkbound canonical Detective mutation boundary guards passed.');
 
