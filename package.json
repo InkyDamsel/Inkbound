@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:series:integration": "node scripts/series-detective-integration-guards.mjs && tsx scripts/series-detective-recovery-regressions.ts",
+    "test:series:integration": "node scripts/series-detective-integration-guards.mjs && tsx scripts/series-detective-search-boundary-regressions.ts && tsx scripts/series-detective-recovery-regressions.ts",
     "test:custom-library-order": "tsx scripts/custom-library-order-regressions.ts",
     "test:critical": "npm run test:custom-library-order && npm run test:critical:reading && npm run test:critical:reporting && npm run test:critical:catalog && npm run test:critical:sync && npm run test:critical:importer",
     "verify:source-of-truth": "npm run verify:source-boundary && npm run verify:domain-taxonomy",
