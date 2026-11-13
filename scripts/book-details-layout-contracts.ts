@@ -39,13 +39,17 @@ for (const path of [
   assert.match(source, /createPortal\(/, path + ' must portal dialogs outside the footer.');
   assert.match(source, /useBookDetailsDialogFocus\(/, path + ' must restore dialog keyboard focus.');
 }
-const sessionActions = core.match(/<div className="book-details-session-actions[\\s\\S]*?Start Reading Session<\\/button>/)?.[0];
-assert.ok(sessionActions, 'Book Details must have an explicitly scoped Sessions action group.');
+const sessionActionsStart = core.indexOf('<div className="book-details-session-actions');
+const sessionActionsEnd = core.indexOf('Start Reading Session</button>', sessionActionsStart);
+assert.ok(sessionActionsStart !== -1 && sessionActionsEnd > sessionActionsStart,
+  'Book Details must expose the three Sessions actions.');
+const sessionActions = core.slice(sessionActionsStart, sessionActionsEnd);
 for (const action of ['Add Past Session', 'Add Multiple', 'Start Reading Session']) {
   assert.ok(sessionActions.includes(action), 'Sessions action missing on compact view: ' + action);
 }
-assert.match(css, /\.book-details-session-actions > button \{[\\s\\S]*?display: inline-flex !important;/,
-  'All three compact session controls must remain visible.');
-assert.match(css, /\.book-details-session-actions \{[\\s\\S]*?grid-template-columns: minmax\\(0, 1fr\\)/,
+const sessionCss = css.slice(css.indexOf('/* Sessions has three independent actions'));
+assert.ok(sessionCss.includes('display: grid !important;') && sessionCss.includes('grid-template-columns: minmax(0, 1fr)'),
   'Portrait sessions controls should stack without clipping.');
+assert.ok(sessionCss.includes('display: inline-flex !important;'),
+  'All three compact session controls must remain visible.');
 console.log('Book Details static layout contracts passed (viewport geometry still requires browser/device verification).');
