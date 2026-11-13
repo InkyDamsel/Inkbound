@@ -24,14 +24,19 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:visibility="gone">
-        <Button
+        <TextView
             android:id="@+id/widget_previous_book"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:background="@android:color/transparent"
+            android:clickable="true"
+            android:focusable="true"
             android:text="‹"
-            android:contentDescription="Previous currently reading book"
-            android:textAllCaps="false"
-            android:textSize="22sp" />
+            android:textColor="#D8B56D"
+            android:textSize="32sp"
+            android:includeFontPadding="false"
+            android:contentDescription="Previous currently reading book" />
         <TextView
             android:id="@+id/widget_book_position"
             android:layout_width="0dp"
@@ -40,14 +45,19 @@
             android:gravity="center"
             android:textColor="#D8B56D"
             android:textSize="11sp" />
-        <Button
+        <TextView
             android:id="@+id/widget_next_book"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:background="@android:color/transparent"
+            android:clickable="true"
+            android:focusable="true"
             android:text="›"
-            android:contentDescription="Next currently reading book"
-            android:textAllCaps="false"
-            android:textSize="22sp" />
+            android:textColor="#D8B56D"
+            android:textSize="32sp"
+            android:includeFontPadding="false"
+            android:contentDescription="Next currently reading book" />
     </LinearLayout>
 
     <TextView
