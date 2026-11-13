@@ -1,3 +1,4 @@
+import { BookDetailsDialogActions } from '../BookDetailsDialogActions';
 import { createPortal } from 'react-dom';
 import { useBookDetailsDialogFocus } from '../bookDetailsDialogFocus';
 import React, { useMemo, useState } from 'react';
@@ -57,7 +58,10 @@ export const EditionLccnControl: React.FC<EditionLccnControlProps> = ({ book, on
             <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Save the LCCN/LOC number for this specific edition. This is separate from the ISBN and is useful for older, collectible, and library-cataloged books.</p>
             <label className="mt-5 block text-sm font-semibold text-[var(--ink-ivory)]" htmlFor="edition-lccn">LCCN / LOC Number</label>
             <input id="edition-lccn" autoComplete="off" value={value} onChange={(event) => setValue(event.target.value)} placeholder="Example: 2001023456" className="inkbound-select mt-2 w-full" />
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={save} className="quiet-shelf-primary-action justify-center"><Save className="h-4 w-4" /> Save LCCN</button></div>
+            <BookDetailsDialogActions>
+              <button type="button" onClick={() => setOpen(false)} className="book-details-dialog-secondary">Cancel</button>
+              <button type="button" onClick={save} className="book-details-dialog-primary"><Save className="h-4 w-4" /> Save LCCN</button>
+            </BookDetailsDialogActions>
           </section>
         </div>
       , document.body)}
