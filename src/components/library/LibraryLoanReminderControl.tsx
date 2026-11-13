@@ -1,3 +1,4 @@
+import { BookDetailsDialogActions } from '../BookDetailsDialogActions';
 import { createPortal } from 'react-dom';
 import { useBookDetailsDialogFocus } from '../bookDetailsDialogFocus';
 import React, { useEffect, useState } from 'react';
@@ -79,10 +80,10 @@ export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProp
             {error && <p className="mt-3 text-sm text-rose-300">{error}</p>}
             <p className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs leading-5 text-[var(--ink-muted)]">Borrowed from a person is tracked separately and does not require a return date. On Android, library due reminders are device notifications. On the web, they appear under the notification bell.</p>
 
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button>
-              <button type="button" onClick={save} className="quiet-shelf-primary-action justify-center"><Save className="h-4 w-4" />Save loan dates</button>
-            </div>
+            <BookDetailsDialogActions>
+              <button type="button" onClick={() => setOpen(false)} className="book-details-dialog-secondary">Cancel</button>
+              <button type="button" onClick={save} className="book-details-dialog-primary"><Save className="h-4 w-4" />Save loan dates</button>
+            </BookDetailsDialogActions>
           </section>
         </div>
       , document.body)}
