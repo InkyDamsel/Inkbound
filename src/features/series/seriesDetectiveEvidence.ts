@@ -35,7 +35,7 @@ export const comparableDetectiveTitle = (value?: string, seriesName?: string): s
     if (inferDetectiveSeriesFromTitle('Book (' + label + ')')) return '';
     // A trailing unnumbered series label may accompany a numbered label.
     // Never strip arbitrary parentheticals: they may be part of the title.
-    return /^(?:disney\s*:\s*)?(?:a\s+)?twisted\s+tales?$/i.test(label) ? '' : whole;
+    return whole;
   });
   // Catalogs sometimes append "(Series Name 4)" without a Book/# marker.
   // Only strip that suffix when the caller supplies the matching series;
@@ -104,13 +104,11 @@ export const detectiveAuthorsCompatible = (left?: string, right?: string): boole
 
 export const canonicalDetectiveSeries = (value?: string): string => {
   const tokens = normalizeDetectiveText(value).split(' ').filter(Boolean);
-  // Explicit Disney anthology alias only; do not singularize arbitrary series.
-  if (tokens[0] === 'disney' && tokens.includes('twisted') && tokens.includes('tale')) tokens.shift();
-  if (['twisted tales', 'a twisted tales', 'a twisted tale'].includes(tokens.join(' '))) return 'twisted tale';
+  // Generic structural qualifiers only: never alias a specific franchise or series.
   while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
   while (
     tokens.length > 1
-    && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections'].includes(tokens[tokens.length - 1])
+    && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections', 'trilogy', 'duology', 'duet', 'quartet', 'quintet', 'sextet', 'septet', 'octet'].includes(tokens[tokens.length - 1])
   ) tokens.pop();
   return tokens.filter((token) => token !== 'x' && token !== 'and').join(' ');
 };
