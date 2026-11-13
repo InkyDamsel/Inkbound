@@ -126,4 +126,17 @@ const session = (
     'Start must carry the currently selected carousel book ID.');
 }
 
+// Navigation should be floating gold arrows, not platform-default white buttons.
+{
+  const layout = readFileSync('android/app/src/main/res/layout/reading_widget.xml', 'utf8');
+  for (const id of ['widget_previous_book', 'widget_next_book']) {
+    const control = layout.match(new RegExp('<TextView\\s+android:id="@\\+id/' + id + '"[\\s\\S]*?/>'))?.[0];
+    assert.ok(control, id + ' must use a text-only control instead of a default button.');
+    assert.match(control, /android:background="@android:color\\/transparent"/, id + ' must have no pill background.');
+    assert.match(control, /android:textColor="#D8B56D"/, id + ' must use the Inkbound gold accent.');
+    assert.match(control, /android:layout_width="48dp"/, id + ' must keep an accessible tap target.');
+    assert.match(control, /android:layout_height="48dp"/, id + ' must keep an accessible tap target.');
+  }
+}
+
 console.log('Inkbound reading widget selection regressions passed.');
