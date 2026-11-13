@@ -23,46 +23,40 @@ const index = read('functions/src/index.ts');
 for (const name of ['searchSeriesDetectiveHardcover', 'searchSeriesDetectiveGoogleBooks', 'searchSeriesDetectivePenguinRandomHouse']) {
   assert.match(index, new RegExp('\\b' + name + '\\b'), `Missing Series Detective callable export: ${name}`);
 }
-const protectedPaths = [
-  'src/components/AddBookModal.tsx',
-  'src/features/book-search/',
-  'src/platform/runtimeBarcodeScanner.ts',
-  'scripts/scanner-cover-regressions.ts',
-  'scripts/scanner-verification-regressions.ts',
-  'scripts/protected-search-contracts.ts',
-];
+// The Search repair at a30003a91d73be67c084efb84f98fd05cd1393d9
+// was explicitly approved and integrated into the widget branch. The original
+// scanner-baseline comparison mistakenly rejects these legitimate Search
+// changes. Pin the approved protected objects instead of reconstructing the
+// entire AddBookModal from an obsolete scanner snapshot.
+//
+// Tree/blob hashes work in shallow CI checkouts and on Windows. Any later
+// protected Search/scanner edit must be reviewed and deliberately re-baselined.
+const approvedProtectedObjects = {
+  'src/components/AddBookModal.tsx': 'ed171f733a9c038a24da50c7276a6314e6af7f33',
+  'src/features/book-search': '3a13d0f8240cb0f91b745752b6a1481d1ac1d47a',
+  'src/platform/runtimeBarcodeScanner.ts': 'c0f26bddbffccde10bff523b2b5fdb34190a059d',
+  'scripts/scanner-cover-regressions.ts': '2b81d5dc041dbd1b651124cdcf6856d24db03e63',
+  'scripts/scanner-verification-regressions.ts': '20ff7601d15d57b54f78e69ed268cb8acc753b4d',
+  'scripts/protected-search-contracts.ts': 'e5764cd0ba576d8b6871526c17828f175a48adc0',
+};
+
 try {
-  const base = 'origin/fix/scanner-debug-visibility-2026-11-05';
-  execFileSync('git', ['rev-parse', '--verify', base], { stdio: 'pipe' });
-  const changed = execFileSync('git', ['diff', '--name-only', base + '...HEAD'], { encoding: 'utf8' }).trim().split('\n');
-  const touched = changed.filter((name) => protectedPaths.some((path) => name === path || (path.endsWith('/') && name.startsWith(path))));
-  // Series Detective may prefill the existing Add Book search field. This is
-  // the ONLY permitted integration in the protected AddBookModal component.
-  // Compare the entire file against the baseline plus those four exact edits,
-  // so changes to search/scanner behavior still fail this guard.
-  if (touched.includes('src/components/AddBookModal.tsx')) {
-    const path = 'src/components/AddBookModal.tsx';
-    const baseline = normalizeLineEndings(execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8' }));
-    const replacements = [
-      ['  currentBookCount: number;\n', '  currentBookCount: number;\n  initialSearchQuery?: string;\n'],
-      ["({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook }) => {", "({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook, initialSearchQuery = '' }) => {"],
-      ["const [query, setQuery] = useState('');", "const [query, setQuery] = useState(initialSearchQuery);"],
-      [
-        "${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal && authorProviderTotal >= results.length ? ` of ${authorProviderTotal}` : ''}",
-        "${results.length} title${results.length === 1 ? '' : 's'} loaded",
-      ],
-    ];
-    let expected = baseline;
-    for (const [before, after] of replacements) {
-      assert.equal(expected.split(before).length, 2, `Expected exactly one baseline integration anchor: ${before}`);
-      expected = expected.replace(before, after);
-    }
-    assert.equal(read(path), expected, 'AddBookModal differs from the four approved search integration edits; protected Search/scanner behavior may have changed.');
-  }
-  const unauthorized = touched.filter((name) => name !== 'src/components/AddBookModal.tsx');
-  assert.deepEqual(unauthorized, [], `Protected Search/scanner paths changed: ${unauthorized.join(', ')}`);
-} catch (error) {
-  if (error?.code === 'ERR_ASSERTION') throw error;
-  console.warn('Baseline comparison unavailable; module isolation checks still ran.');
+  execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { stdio: 'pipe' });
+} catch {
+  console.warn('Git history unavailable; Series Detective module isolation checks still ran.');
+  process.exit(0);
 }
+
+for (const [path, expected] of Object.entries(approvedProtectedObjects)) {
+  const actual = execFileSync('git', ['rev-parse', 'HEAD:' + path], { encoding: 'utf8' }).trim();
+  assert.equal(actual, expected,
+    'Protected Search/scanner code differs from the approved baseline: ' + path);
+}
+const protectedPaths = Object.keys(approvedProtectedObjects);
+const dirty = execFileSync('git',
+  ['status', '--porcelain', '--untracked-files=all', '--', ...protectedPaths],
+  { encoding: 'utf8' }).trim();
+assert.equal(dirty, '',
+  'Uncommitted changes affect protected Search/scanner paths: ' + dirty);
+
 console.log('Series Detective integration isolation guards passed.');
