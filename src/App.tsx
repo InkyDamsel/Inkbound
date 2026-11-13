@@ -1,3 +1,4 @@
+import { isSeriesDetectiveAvailable } from './features/series/seriesDetectiveAvailability';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ImportRecordItem,
@@ -213,6 +214,9 @@ export default function App() {
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
   const [detectiveAddQuery, setDetectiveAddQuery] = useState('');
   useEffect(() => {
+    // Detective's preview actions must never write library data from a native build.
+    // Keep standard manual Series editing and normal Add Book flows untouched.
+    if (!isSeriesDetectiveAvailable()) return;
     const openCandidate = (event: Event) => {
       const detail = (event as CustomEvent<{ title: string; author: string }>).detail;
       if (!detail?.title) return;
