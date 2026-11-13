@@ -52,4 +52,28 @@ assert.ok(sessionCss.includes('display: grid !important;') && sessionCss.include
   'Portrait sessions controls should stack without clipping.');
 assert.ok(sessionCss.includes('display: inline-flex !important;'),
   'All three compact session controls must remain visible.');
+
+// All companion dialogs share the same CTA/footer styling; never depend on a
+// narrow generic .quiet-shelf-primary-action pill in a portal.
+const companionCss = read('src/components/bookDetailsDialogActions.css');
+const companionFooter = read('src/components/BookDetailsDialogActions.tsx');
+assert.match(companionCss, /grid-template-columns: minmax\\(0, 1fr\\)/,
+  'Companion footer must have a full-width grid track.');
+assert.match(companionCss, /width: 100%/, 'Companion CTA must fill its dialog.');
+assert.match(companionCss, /min-width: 0/, 'Companion CTA must not overflow narrow phones.');
+assert.match(companionCss, /background: #79566f/, 'Companion primary CTA must use approved mauve.');
+assert.match(companionFooter, /book-details-dialog-actions/,
+  'All companion dialogs must use the same reusable footer component.');
+for (const [path, label] of [
+  ['src/components/reading/FinishOnTimeControl.tsx', 'Save finish date'],
+  ['src/components/edition/EditionLccnControl.tsx', 'Save LCCN'],
+  ['src/components/library/LibraryLoanReminderControl.tsx', 'Save loan dates'],
+  ['src/components/catalog/CatalogContributionPanel.tsx', 'Share edition details for review'],
+]) {
+  const source = read(path);
+  assert.match(source, /<BookDetailsDialogActions/, path + ' must use the shared footer.');
+  assert.match(source, /className="book-details-dialog-primary"/,
+    path + ' must use the shared full-width primary button.');
+  assert.ok(source.includes(label), path + ' must retain its original action.');
+}
 console.log('Book Details static layout contracts passed (viewport geometry still requires browser/device verification).');
