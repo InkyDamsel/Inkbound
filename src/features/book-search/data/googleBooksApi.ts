@@ -135,10 +135,14 @@ const isAdministrationActive = (): boolean =>
   readRuntimeJson<string>(ACTIVE_TAB_STORAGE_KEY, 'home') === 'admin';
 
 const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<void> => {
-  while (isAdministrationActive()) {
+  // A stale navigation preference must never block manual catalog searches.
+  // Keep the short admin throttle, but release it after a bounded grace period.
+  const deadline = Date.now() + 2000;
+  while (isAdministrationActive() && Date.now() < deadline) {
     if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
     await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
   }
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 };
 
 const shouldBackOffCatalog = (error: unknown): boolean => {
@@ -414,7 +418,12 @@ export async function searchGoogleBooksAuthorPage(
     // and keep the page briefly so those paths do not repeatedly spend Google
     // quota for the same author/page. A legitimate empty protected response is
     // authoritative; do not immediately repeat it against the public endpoint.
-    payload = await requestGoogleAuthorPage(authorQuery, startIndex, signal);
+    payload = await boundedCatalogRequest(
+      'Google Books author page',
+      requestGoogleAuthorPage(authorQuery, startIndex, signal),
+      PRIMARY_SEARCH_DEADLINE_MS,
+      { totalItems: 0, items: [] },
+    );
   } catch (protectedError) {
     if (signal?.aborted) throw protectedError;
     if (shouldBackOffCatalog(protectedError)) {
@@ -453,10 +462,10 @@ export async function searchGoogleBooksAuthorPage(
 
   const supplements: SupplementResult[] = startIndex === 0
     ? await Promise.all([
-        safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)),
-        safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)),
-        safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor, true)),
-        safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor, true)),
+        boundedCatalogRequest('Open Library author', safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0 }),
+        boundedCatalogRequest('Hardcover author', safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0 }),
+        boundedCatalogRequest('PRH author', safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor, true)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0 }),
+        boundedCatalogRequest('Trusted catalog author', safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor, true)), OPTIONAL_CATALOG_DEADLINE_MS, { groups: [], totalItems: 0 }),
       ])
     : [];
 
