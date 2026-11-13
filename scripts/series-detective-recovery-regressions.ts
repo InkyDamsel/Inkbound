@@ -72,20 +72,22 @@ assert.equal(hasExplicitDetectiveSeriesBrand(
   'Hades x Persephone',
 ), false);
 
-// Provider variations and translated/numbered metadata must not break exact branding.
-assert.equal(detectiveSeriesNamesCompatible('Disney: A Twisted Tale', 'Twisted Tales'), true);
-assert.equal(detectiveSeriesNamesCompatible('Twisted Tales', 'A Twisted Tale'), true);
+// Never infer a franchise alias or singular/plural equivalence without bibliographic evidence.
+assert.equal(detectiveSeriesNamesCompatible('Disney: A Twisted Tale', 'Twisted Tales'), false);
+assert.equal(detectiveSeriesNamesCompatible('Twisted Tales', 'A Twisted Tale'), false);
+assert.equal(detectiveSeriesNamesCompatible('Unhinged Love Trilogy', 'Unhinged Love'), true);
+assert.equal(detectiveSeriesNamesCompatible('The Heart Duology', 'The Heart'), true);
 assert.equal(detectiveSeriesNamesCompatible('The Heart Duology', 'The Heart of Darkness'), false);
 assert.equal(hasExplicitDetectiveSeriesBrand(
   brandedFixture('Once Upon a Dream', 'A Twisted Tale'),
   'Twisted Tales',
-), true);
+), false);
 assert.equal(hasExplicitDetectiveSeriesBrand(
   brandedFixture('Salt & Blood', 'A Hades and Persephone Romance'),
   'Hades x Persephone',
 ), false);
 assert.equal(
-  comparableDetectiveTitle("Conceal, Don't Feel (Disney: A Twisted Tale #6) (Twisted Tales)"),
+  comparableDetectiveTitle("Conceal, Don't Feel (Disney: A Twisted Tale #6)"),
   comparableDetectiveTitle("Conceal, Don't Feel"),
 );
 
