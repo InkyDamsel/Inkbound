@@ -26,14 +26,22 @@ assert.match(search, /filterExactAuthorResults\(response\.groups, trimmedQuery\)
 
 assert.match(catalog, /PRIMARY_SEARCH_DEADLINE_MS = 12000/, 'Primary Google request must have a deadline.');
 assert.match(catalog, /OPTIONAL_CATALOG_DEADLINE_MS = 4000/, 'Optional catalog providers must have a deadline.');
-assert.match(catalog, /boundedCatalogRequest\('Google Books'/, 'General search must bound its primary provider.');
+assert.match(catalog, /requireCatalogResponse\('Google Books'/, 'General search must preserve Google request failures instead of converting them to empty results.');
 assert.match(catalog, /boundedCatalogRequest\('Open Library'/, 'General search must bound Open Library.');
 assert.match(catalog, /boundedCatalogRequest\('Hardcover'/, 'General search must bound Hardcover.');
 assert.match(catalog, /boundedCatalogRequest\('Penguin Random House'/, 'General search must bound PRH.');
 assert.match(catalog, /boundedCatalogRequest\(\s*'Trusted catalog'/, 'Trusted fallback must not block indefinitely.');
 assert.match(catalog, /timeout: PRIMARY_SEARCH_DEADLINE_MS/, 'Protected Firebase callable must have a network timeout.');
+assert.match(catalog, /partial: Boolean\(googleError \|\| supplementUnavailable\)/, 'Author pages must report degraded provider status.');
+assert.match(catalog, /if \(googleError && startIndex > 0\) throw/, 'Failed author pages must remain retryable.');
+assert.match(catalog, /getNativeAppCheckToken\(false\)/, 'Native search must validate App Check instead of silently substituting providers.');
+assert.match(modal, /Retry author catalog/, 'Users must be able to retry a partial author catalog.');
+const openLibrary = readFileSync('src/features/book-search/data/openLibraryApi.ts', 'utf8');
+assert.match(openLibrary, /creditedKeys\.includes\(authorKey\)/, 'Open Library author results must verify the work author reference.');
+assert.doesNotMatch(openLibrary, /\?\? authorPayload\.docs\?\.\[0\]/, 'Unverified first author matches must not be accepted.');
+
 assert.match(catalog, /const deadline = Date\.now\(\) \+ 2000/, 'Administrative navigation guard must be bounded.');
-assert.match(catalog, /boundedCatalogRequest\(\s*'Google Books author page'/, 'Author Google lookup must be bounded.');
+assert.match(catalog, /requireCatalogResponse\(\s*'Google Books author page'/, 'Author Google lookup must reject on failure instead of returning an empty page.');
 for (const provider of ['Open Library author', 'Hardcover author', 'PRH author', 'Trusted catalog author']) {
   assert.ok(catalog.includes("boundedCatalogRequest('" + provider + "'"), provider + ' must be bounded.');
 }
