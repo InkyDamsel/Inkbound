@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { useBookDetailsDialogFocus } from '../bookDetailsDialogFocus';
 import React, { useMemo, useState } from 'react';
 import { BadgeInfo, Save, X } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
@@ -18,6 +20,7 @@ export const EditionLccnControl: React.FC<EditionLccnControlProps> = ({ book, on
     [book],
   );
   const [open, setOpen] = useState(false);
+  const dialogRef = useBookDetailsDialogFocus(open, () => setOpen(false));
   const [value, setValue] = useState(activeEdition?.lccn ?? '');
 
   if (!activeEdition) return null;
@@ -45,8 +48,8 @@ export const EditionLccnControl: React.FC<EditionLccnControlProps> = ({ book, on
         <span>{activeEdition.lccn ? `LCCN ${activeEdition.lccn}` : 'Add LCCN / LOC'}</span>
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[260] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
+      {open && createPortal(
+        <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[260] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <section className="relative w-full max-w-md rounded-3xl border border-[var(--ink-border)] bg-[#17101b] p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="edition-lccn-title" onClick={(event) => event.stopPropagation()}>
             <button type="button" onClick={() => setOpen(false)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full text-[var(--ink-muted)] hover:bg-white/5" aria-label="Close LCCN editor"><X className="h-5 w-5" /></button>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ink-mauve)]">Edition identifier</p>
@@ -57,7 +60,7 @@ export const EditionLccnControl: React.FC<EditionLccnControlProps> = ({ book, on
             <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={save} className="quiet-shelf-primary-action justify-center"><Save className="h-4 w-4" /> Save LCCN</button></div>
           </section>
         </div>
-      )}
+      , document.body)}
     </>
   );
 };
