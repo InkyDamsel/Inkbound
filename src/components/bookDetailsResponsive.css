@@ -188,6 +188,30 @@
   font-size: 0.57rem !important;
   margin-bottom: 0.2rem;
 }
+/* Sessions has three independent actions on every platform. Do not collapse
+   Add Past Session or Add Multiple behind the primary Start button. */
+.book-details-modal-host.book-details-compact .book-details-session-actions {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  width: 100%;
+}
+.book-details-modal-host.book-details-compact .book-details-session-actions > button {
+  display: inline-flex !important;
+  visibility: visible !important;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  white-space: normal;
+  text-align: center;
+}
+@media (min-width: 640px) {
+  .book-details-modal-host.book-details-compact .book-details-session-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 /* On landscape phones and tablets all four actions fit in one row. */
 @media (min-width: 640px) {
   .book-details-modal-host.book-details-compact .book-details-bottom-toolbar,
