@@ -43,8 +43,7 @@ const approvedProtectedObjects = {
 try {
   execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { stdio: 'pipe' });
 } catch {
-  console.warn('Git history unavailable; Series Detective module isolation checks still ran.');
-  process.exit(0);
+  throw new Error('Git is required to verify protected Search/scanner objects; isolation check cannot be skipped.');
 }
 
 for (const [path, expected] of Object.entries(approvedProtectedObjects)) {
