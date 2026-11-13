@@ -1832,6 +1832,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             .then((page) => page.groups, () => [] as BookSearchWorkGroup[])
         : null;
       const response = await searchGoogleBooks(trimmedQuery);
+      if (response.partial) setSearchError(response.warning ?? 'Some catalog providers are unavailable. Results may be incomplete.');
       if (authorLookup) {
         let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
