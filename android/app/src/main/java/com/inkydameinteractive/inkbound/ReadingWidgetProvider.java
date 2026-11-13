@@ -123,7 +123,11 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             views.setViewVisibility(R.id.widget_pace, hasBook && !compact && !showingAlternate && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_pace_detail, hasBook && !compact && !showingAlternate && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_due, !compact && !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_start, hasBook && !showingAlternate && "none".equals(sessionMode) ? View.VISIBLE : View.GONE);
+            // Session mode belongs to the timer's book, not every book in the roster.
+            // An alternate currently-reading book must retain its own Start button.
+            // Only the book owning an active/paused/finished timer hides Start.
+            views.setViewVisibility(R.id.widget_start,
+                hasBook && (showingAlternate || "none".equals(sessionMode)) ? View.VISIBLE : View.GONE);
             // Active-session controls stay inside Inkbound. The widget remains a
             // glanceable mirror; tapping it opens the canonical timer UI.
             views.setViewVisibility(R.id.widget_resume, View.GONE);
