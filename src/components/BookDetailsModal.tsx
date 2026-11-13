@@ -15,7 +15,7 @@ import { readSeriesOverrides } from '../features/series/seriesOverrides';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 import type { Edition, UserBookRecord } from '../types';
-import { usesEmbeddedBookDetailsToolbar } from '../platform/bookDetailsLayoutCapability';
+import { useEmbeddedBookDetailsToolbar } from '../platform/bookDetailsLayoutCapability';
 import './bookDetailsResponsive.css';
 
 function normalizeStoredIsbn(value?: string): string | undefined {
@@ -205,17 +205,17 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
       )
     : null;
 
-  const nativeBookToolbar = usesEmbeddedBookDetailsToolbar();
+  const compactBookToolbar = useEmbeddedBookDetailsToolbar();
 
   return (
-    <div className={`book-details-modal-host${nativeBookToolbar ? " book-details-native" : ""}`}>
+    <div className={`book-details-modal-host${compactBookToolbar ? " book-details-compact" : ""}`}>
       <BookDetailsModalCore
         key={`${displayBook?.id ?? 'none'}:${displayBook?.privateTags?.join('|') ?? ''}`}
         {...props}
         book={displayBook}
         onUpdateBook={handleUpdateBook}
       />
-      {nativeBookToolbar ? (bottomToolbarTarget ? createPortal(<>
+      {compactBookToolbar ? (bottomToolbarTarget ? createPortal(<>
         {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
         {normalizedBook && <EditionLccnControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
         {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
