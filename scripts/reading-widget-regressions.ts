@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { ReadingSession, UserBookRecord } from '../src/types';
 import { selectReadingWidgetBook } from '../src/features/reading/readingWidgetSelection';
 
@@ -109,6 +110,20 @@ const session = (
   const newer = book('newer', 'Newer', '2026-10-05');
   const selected = selectReadingWidgetBook([older, newer], [], null);
   assert.equal(selected?.id, 'newer');
+}
+
+// A carousel's idle timer belongs only to its own selected book. Alternate
+// reading books (2 of 3, 3 of 3, etc.) must each have a Start action.
+{
+  const provider = readFileSync('android/app/src/main/java/com/inkydameinteractive/inkbound/ReadingWidgetProvider.java', 'utf8');
+  assert.match(provider,
+    /hasBook && \(showingAlternate \|\| "none"\.equals\(sessionMode\)\)/,
+    'Android widget must show Start for alternate carousel books.');
+  assert.match(provider,
+    /views\.setOnClickPendingIntent\(R\.id\.widget_start, launchIntent\(context, "start",/,
+    'Start must open the timer with the selected widget book.');
+  assert.match(provider, /intent\.putExtra\("widgetBookId",.*selectedWidgetBookId/,
+    'Start must carry the currently selected carousel book ID.');
 }
 
 console.log('Inkbound reading widget selection regressions passed.');
