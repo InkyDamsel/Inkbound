@@ -269,13 +269,10 @@ const normalizeHardcoverText = (value?: string): string =>
 
 const normalizeHardcoverSeries = (value?: string): string => {
   const tokens = normalizeHardcoverText(value).split(' ').filter(Boolean);
-  // Match the client-side, narrowly scoped Disney anthology aliases.
-  if (tokens[0] === 'disney' && tokens.includes('twisted') && tokens.includes('tale')) tokens.shift();
-  if (['twisted tales', 'a twisted tales', 'a twisted tale'].includes(tokens.join(' '))) return 'twisted tale';
-  while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
+  // Generic series qualifiers only; no franchise-specific aliases.\n  while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
   while (
     tokens.length > 1
-    && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections'].includes(tokens[tokens.length - 1])
+    && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections', 'trilogy', 'duology', 'duet', 'quartet', 'quintet', 'sextet', 'septet', 'octet'].includes(tokens[tokens.length - 1])
   ) tokens.pop();
   return tokens.filter((token) => token !== 'x' && token !== 'and').join(' ');
 };
