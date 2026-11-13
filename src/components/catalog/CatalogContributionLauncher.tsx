@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Database, X } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
 import { CatalogContributionPanel } from './CatalogContributionPanel';
-import { usesEmbeddedBookDetailsToolbar } from '../../platform/bookDetailsLayoutCapability';
+import { useEmbeddedBookDetailsToolbar } from '../../platform/bookDetailsLayoutCapability';
 
 interface CatalogContributionLauncherProps {
   book: UserBookRecord;
@@ -11,7 +11,7 @@ interface CatalogContributionLauncherProps {
 
 export const CatalogContributionLauncher: React.FC<CatalogContributionLauncherProps> = ({ book, onUpdateBook }) => {
   const [open, setOpen] = useState(false);
-  const nativeDialogLayout = usesEmbeddedBookDetailsToolbar();
+  const nativeDialogLayout = useEmbeddedBookDetailsToolbar();
 
   return (
     <>
