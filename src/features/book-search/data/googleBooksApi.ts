@@ -3,6 +3,7 @@ import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
 import { isNativeRuntime } from '../../../platform/runtimePlatform';
 import { getNativeAppCheckToken } from '../../../platform/runtimeNativeAppCheck';
+import { requireCatalogResponse } from './catalogRequestDeadline';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover, searchHardcoverAuthorBibliography } from './hardcoverApi';
@@ -87,28 +88,6 @@ const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
 const PRIMARY_SEARCH_DEADLINE_MS = 12000;
 const OPTIONAL_CATALOG_DEADLINE_MS = 4000;
-
-class CatalogRequestTimeout extends Error {
-  constructor(provider: string) {
-    super(provider + ' did not respond before the request deadline.');
-    this.name = 'CatalogRequestTimeout';
-  }
-}
-
-function requireCatalogResponse<T>(provider: string, request: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      reject(new CatalogRequestTimeout(provider));
-    }, ms);
-    request.then(
-      (value) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } },
-      (error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } },
-    );
-  });
-}
 
 // Slow providers cannot hold the Add Book spinner indefinitely.
 function boundedCatalogRequest<T>(
