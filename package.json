@@ -67,7 +67,9 @@
     "android:release:sync": "npm run build:android && npx cap sync android && npm run android:branding:sync && npm run android:version:sync && npm run verify:android-config && npm run verify:android-gradle && npm run verify:android-branding",
     "verify:ios-clean": "node scripts/verify-ios-clean.mjs",
     "ios:release:prepare": "npm run release:verify && npm run ios:sync",
-    "test:search:behavior": "tsx scripts/catalog-deadline-regressions.ts"
+    "test:search:behavior": "tsx scripts/catalog-deadline-regressions.ts",
+    "test:book-details:layout": "tsx scripts/book-details-layout-contracts.ts",
+    "test:series:native-gate": "node scripts/series-detective-native-release-gate.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",

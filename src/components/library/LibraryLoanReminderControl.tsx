@@ -1,3 +1,6 @@
+import { BookDetailsDialogActions } from '../BookDetailsDialogActions';
+import { createPortal } from 'react-dom';
+import { useBookDetailsDialogFocus } from '../bookDetailsDialogFocus';
 import React, { useEffect, useState } from 'react';
 import { CalendarClock, Save, X } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
@@ -9,6 +12,7 @@ interface LibraryLoanReminderControlProps {
 
 export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProps> = ({ book, onUpdateBook }) => {
   const [open, setOpen] = useState(false);
+  const dialogRef = useBookDetailsDialogFocus(open, () => setOpen(false));
   const [borrowedDate, setBorrowedDate] = useState(book.libraryLoan?.borrowedDate ?? '');
   const [dueDate, setDueDate] = useState(book.libraryLoan?.dueDate ?? '');
   const [error, setError] = useState('');
@@ -56,8 +60,8 @@ export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProp
         </span>
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[260] flex items-end justify-center bg-black/80 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
+      {open && createPortal(
+        <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[260] flex items-end justify-center bg-black/80 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
           <section className="w-full max-w-lg rounded-t-3xl border border-[var(--ink-gold)]/30 bg-[#17101b] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:p-6" role="dialog" aria-modal="true" aria-label="Library loan dates" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -76,13 +80,13 @@ export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProp
             {error && <p className="mt-3 text-sm text-rose-300">{error}</p>}
             <p className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs leading-5 text-[var(--ink-muted)]">Borrowed from a person is tracked separately and does not require a return date. On Android, library due reminders are device notifications. On the web, they appear under the notification bell.</p>
 
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button>
-              <button type="button" onClick={save} className="quiet-shelf-primary-action justify-center"><Save className="h-4 w-4" />Save loan dates</button>
-            </div>
+            <BookDetailsDialogActions>
+              <button type="button" onClick={() => setOpen(false)} className="book-details-dialog-secondary">Cancel</button>
+              <button type="button" onClick={save} className="book-details-dialog-primary"><Save className="h-4 w-4" />Save loan dates</button>
+            </BookDetailsDialogActions>
           </section>
         </div>
-      )}
+      , document.body)}
     </>
   );
 };

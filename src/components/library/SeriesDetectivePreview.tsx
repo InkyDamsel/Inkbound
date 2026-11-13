@@ -1,3 +1,4 @@
+import { isSeriesDetectiveAvailable } from '../../features/series/seriesDetectiveAvailability';
 import React, { useEffect, useMemo, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import {
@@ -72,6 +73,8 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
     const seriesBooks = books.filter((book) => scoped.has(book.id));
     return buildSeriesRoster(live, seriesBooks, (book) => resolveEffectiveSeriesMetadata(book, overrides ?? {}));
   }, [result, books, seriesBookIds, overrides]);
+
+  if (!isSeriesDetectiveAvailable()) return null;
 
   return (
     <section className="mb-4 rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-surface-soft)] p-4">

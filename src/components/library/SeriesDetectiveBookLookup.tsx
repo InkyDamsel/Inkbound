@@ -1,3 +1,4 @@
+import { isSeriesDetectiveAvailable } from '../../features/series/seriesDetectiveAvailability';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { resolveEffectiveSeriesMetadata } from '../../features/series/seriesLibrary';
@@ -97,6 +98,8 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
     });
     return buildSeriesRoster(live, seriesBooks, (entry) => resolveEffectiveSeriesMetadata(entry, overrides));
   }, [result, libraryBooks, overrides]);
+
+  if (!isSeriesDetectiveAvailable()) return null;
 
   return <div>
     <button type="button" className="inline-flex min-h-11 items-center rounded-full border border-[var(--ink-gold)]/35 bg-[#17101b]/85 px-4 py-2.5 text-xs font-semibold text-[#e5c158] shadow-lg transition hover:border-[var(--ink-gold)]/60 hover:text-[#f3dbad] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#e5c158]" aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open && !attempted) setRun((value) => value + 1); }}>

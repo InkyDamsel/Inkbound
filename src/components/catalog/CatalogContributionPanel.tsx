@@ -1,3 +1,4 @@
+import { BookDetailsDialogActions } from '../BookDetailsDialogActions';
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, Loader2, Send } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
@@ -116,10 +117,12 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
                 {fields.format && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.format}</span>}
               </div>
               {!nativeDialogLayout && (
-              <button type="button" onClick={() => void submit()} disabled={submitting || !asinIsValid} className="quiet-shelf-secondary-action mt-4 w-full justify-center disabled:opacity-40">
+              <BookDetailsDialogActions>
+                <button type="button" onClick={() => void submit()} disabled={submitting || !asinIsValid} className="book-details-dialog-primary">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 {submitting ? 'Sending…' : 'Share edition details for review'}
-              </button>
+                </button>
+              </BookDetailsDialogActions>
               )}
             </>
           ) : (
@@ -141,10 +144,12 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
       </div>
       {nativeDialogLayout && (
         <div className="mt-4 shrink-0 border-t border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pt-3">
-          <button type="button" onClick={() => void submit()} disabled={!fields || submitting || !asinIsValid} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--ink-mauve)]/50 bg-[#79566f] px-4 py-3 text-sm font-semibold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40">
+          <BookDetailsDialogActions className="!mt-0">
+            <button type="button" onClick={() => void submit()} disabled={!fields || submitting || !asinIsValid} className="book-details-dialog-primary">
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {submitting ? 'Sending…' : 'Share edition details for review'}
-          </button>
+            </button>
+          </BookDetailsDialogActions>
         </div>
       )}
     </section>
