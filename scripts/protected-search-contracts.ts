@@ -32,6 +32,11 @@ assert.match(catalog, /boundedCatalogRequest\('Hardcover'/, 'General search must
 assert.match(catalog, /boundedCatalogRequest\('Penguin Random House'/, 'General search must bound PRH.');
 assert.match(catalog, /boundedCatalogRequest\(\s*'Trusted catalog'/, 'Trusted fallback must not block indefinitely.');
 assert.match(catalog, /timeout: PRIMARY_SEARCH_DEADLINE_MS/, 'Protected Firebase callable must have a network timeout.');
+assert.match(catalog, /const deadline = Date\.now\(\) \+ 2000/, 'Administrative navigation guard must be bounded.');
+assert.match(catalog, /boundedCatalogRequest\(\s*'Google Books author page'/, 'Author Google lookup must be bounded.');
+for (const provider of ['Open Library author', 'Hardcover author', 'PRH author', 'Trusted catalog author']) {
+  assert.ok(catalog.includes("boundedCatalogRequest('" + provider + "'"), provider + ' must be bounded.');
+}
 
 const author = section(modal, 'const openAuthorPage = async', 'const loadMoreAuthorBooks = async');
 assert.match(author, /filterExactAuthorResults\(response\.groups, authorName\)/, 'Author catalog must filter credited authors.');
