@@ -57,7 +57,7 @@ assert.ok(sessionCss.includes('display: inline-flex !important;'),
 // narrow generic .quiet-shelf-primary-action pill in a portal.
 const companionCss = read('src/components/bookDetailsDialogActions.css');
 const companionFooter = read('src/components/BookDetailsDialogActions.tsx');
-assert.match(companionCss, /grid-template-columns: minmax\\(0, 1fr\\)/,
+assert.ok(companionCss.includes('grid-template-columns: minmax(0, 1fr)'),
   'Companion footer must have a full-width grid track.');
 assert.match(companionCss, /width: 100%/, 'Companion CTA must fill its dialog.');
 assert.match(companionCss, /min-width: 0/, 'Companion CTA must not overflow narrow phones.');
