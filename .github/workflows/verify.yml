@@ -56,6 +56,9 @@ jobs:
       - name: Critical reading regressions
         run: npm run test:critical
 
+      - name: Series Detective integration regressions
+        run: npm run test:series:integration
+
       - name: Verify source-of-truth boundaries
         run: npm run verify:source-of-truth
 
