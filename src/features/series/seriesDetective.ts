@@ -1001,6 +1001,22 @@ export async function findMissingSeriesBooks(
     // existing verification gates. Then reuse that structured identity for
     // sibling volumes carrying the exact same seriesId.
     const confirmedGoogleSeriesIds = new Set<string>();
+    // Resolve catalog series identities from an owned work, not just the
+    // reader's potentially custom series label. An exact title+author anchor
+    // must carry an actual Google volumeSeries ID; search text is insufficient.
+    catalogs.forEach((catalog) => {
+      catalog.items.forEach((volume) => {
+        const title = safeDetectiveTrim(volume.volumeInfo?.title);
+        const authors = volume.volumeInfo?.authors ?? [];
+        if (!title || !seriesBooks.some((book) =>
+          comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(title)
+          && authors.some((name) => detectiveAuthorsCompatible(book.work.author, name)))) return;
+        (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
+          const id = safeDetectiveTrim(membership.seriesId);
+          if (id) confirmedGoogleSeriesIds.add(id);
+        });
+      });
+    });
     catalogs.forEach((catalog) => {
       catalog.items.forEach((volume) => {
         const verified = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
@@ -1194,10 +1210,13 @@ export async function findMissingSeriesBooks(
         return;
       }
       const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
-      const matchingAuthor = candidate.work.authors.some((name) => detectiveAuthorsCompatible(author, name));
+      const ownedAuthors = seriesBooks.map((book) => book.work.author).filter(Boolean);
+      const matchingAuthor = candidate.work.authors.some((name) =>
+        (Boolean(canonicalDetectiveAuthor(author)) && detectiveAuthorsCompatible(author, name))
+        || ownedAuthors.some((ownedAuthor) => detectiveAuthorsCompatible(ownedAuthor, name)));
       // Cross-author anthologies are legitimate, but a shared title phrase
       // is not enough to admit a different author's unrelated work.
-      if (!matchingAuthor && !(verifiedMultiAuthorBrand && candidate.seriesStructured)) {
+      if (!matchingAuthor && !(candidate.seriesStructured && anchoredAlias)) {
         diagnostics.rejectedAuthor += 1;
         return;
       }
@@ -1211,7 +1230,7 @@ export async function findMissingSeriesBooks(
       // explicit structured series evidence as well as corroboration before
       // offering bulk addition. Brand-only discoveries remain reviewable.
       const verification: 'verified' | 'review' =
-        candidate.seriesStructured && independentlyCorroborated ? 'verified' : 'review';
+        candidate.seriesStructured && independentlyCorroborated && !anchoredAlias ? 'verified' : 'review';
 
       addCandidate({
         work: candidate.work,
