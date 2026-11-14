@@ -42,6 +42,7 @@ import {
 } from './seriesDetectiveMerge';
 import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
+import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
   seriesName?: string;
@@ -1001,26 +1002,13 @@ export async function findMissingSeriesBooks(
     // Resolve catalog series identities from an owned work, not just the
     // reader's potentially custom series label. An exact title+author anchor
     // must carry an actual Google volumeSeries ID; search text is insufficient.
-    // An owned title can belong to multiple unrelated series. Never promote
-    // every series ID on that volume into a roster-wide membership anchor.
-    // Named IDs must match the requested series; unnamed IDs are usable only
-    // when the volume has exactly one membership and matching structured evidence.
     const seedGoogleSeriesIds = (
       volume: DetectiveGoogleVolume,
       catalog: DetectiveGoogleCatalog,
       allowSingleUnnamed: boolean,
     ) => {
-      const memberships = (volume.volumeInfo?.seriesInfo?.volumeSeries ?? [])
-        .filter((membership) => Boolean(safeDetectiveTrim(membership.seriesId)));
-      for (const membership of memberships) {
-        const id = safeDetectiveTrim(membership.seriesId);
-        const namedSeries = catalog.seriesTitlesById[id];
-        if (namedSeries) {
-          if (detectiveSeriesNamesCompatible(namedSeries, seriesName)) confirmedGoogleSeriesIds.add(id);
-        } else if (allowSingleUnnamed && memberships.length === 1) {
-          confirmedGoogleSeriesIds.add(id);
-        }
-      }
+      confirmedGoogleMembershipIds(volume, catalog, seriesName, allowSingleUnnamed)
+        .forEach(id => confirmedGoogleSeriesIds.add(id));
     };
     catalogs.forEach((catalog) => {
       catalog.items.forEach((volume) => {
