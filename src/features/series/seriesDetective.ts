@@ -984,7 +984,7 @@ export async function findMissingSeriesBooks(
     // Never advertise them as healthy until all failure paths are instrumented.
     providerReports.push({
       provider: 'google-books',
-      status: googleFailures.length ? (googleFailures.length >= queries.length + (author.trim() ? 1 : 0) ? 'unavailable' : 'partial') : 'partial',
+      status: 'partial',
       errorCode: googleFailures.length ? 'query-failed' : 'pagination-not-verified',
       retrievedAt,
     });
