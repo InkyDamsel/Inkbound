@@ -1324,7 +1324,7 @@ async function detectivePrhAuthorCatalog(authorName: string) {
   const wanted = prhNormalize(authorName);
   const author = prhExtractAuthorCandidates(searchPayload)
     .find((candidate) => prhNormalize(candidate.name) === wanted);
-  if (!author) return { groups: [], totalItems: 0, providerStatus: 'unavailable' as const, providerErrorCode: 'upstream-failure' };
+  if (!author) return { groups: [], totalItems: 0 };
 
   const titlesPayload = await prhFetchJson(
     `/authors/${encodeURIComponent(author.authorId)}/titles`,
