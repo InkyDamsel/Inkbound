@@ -1169,7 +1169,23 @@ export async function findMissingSeriesBooks(
       });
     }
 
-    return [...seen.values()].sort((a, b) => {
+    // Conflicting claims to the same numbered slot are not proof of identical
+    // works. Preserve both records but require individual review of each.
+    const byPosition = new Map<number, SeriesDetectiveCandidate[]>();
+    for (const candidate of seen.values()) {
+      if (candidate.position === null) continue;
+      const siblings = byPosition.get(candidate.position) ?? [];
+      siblings.push(candidate);
+      byPosition.set(candidate.position, siblings);
+    }
+    const conflictedPositions = new Set([...byPosition.entries()]
+      .filter(([, siblings]) => new Set(siblings.map((candidate) =>
+        `${comparableDetectiveTitle(candidate.work.title, candidate.seriesName)}::${canonicalDetectiveAuthor(candidate.work.authors[0])}`)).size > 1)
+      .map(([position]) => position));
+    return [...seen.values()].map((candidate) =>
+      candidate.position !== null && conflictedPositions.has(candidate.position)
+        ? { ...candidate, verification: 'review' as const }
+        : candidate).sort((a, b) => {
       if (a.position !== null && b.position !== null) return a.position - b.position;
       if (a.position !== null) return -1;
       if (b.position !== null) return 1;
