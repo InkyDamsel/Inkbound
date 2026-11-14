@@ -1159,9 +1159,9 @@ export async function findMissingSeriesBooks(
     });
   };
 
-  // Catalog discovery is the expensive part and is independent of what the
-  // library currently holds, so it is cached briefly. Owned/missing is always
-  // recomputed against the live library below.
+  // Do not cache discovery until every provider exposes reliable health and
+  // pagination/completeness signals. Ownership is classified against the live
+  // library for each request.
   const candidates = await discoverCandidates();
   return classifySeriesCandidates(seriesName, candidates, libraryBooks);
 }
