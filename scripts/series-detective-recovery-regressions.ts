@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
+import { summarizeSeriesRoster, type SeriesRosterEntry } from '../src/features/series/seriesDetectiveRoster';
 // Discovery from search has no owned numbered anchor: probe opening volumes.
 const unanchoredPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [] });
 assert.deepEqual(unanchoredPlan.targetPositions, [1, 2, 3, 4, 5]);
@@ -71,6 +72,15 @@ assert.equal(hasExplicitDetectiveSeriesBrand(
   brandedFixture('Salt & Blood: A Hades and Persephone Romance', ''),
   'Hades x Persephone',
 ), false);
+
+// Unverified catalog records must not inflate the verified missing count.
+const rosterSummary = summarizeSeriesRoster([
+  { kind: 'owned', key: 'owned', candidate: { verification: 'verified' } },
+  { kind: 'library-only', key: 'library-only' },
+  { kind: 'missing', key: 'verified-missing', candidate: { verification: 'verified' } },
+  { kind: 'missing', key: 'review', candidate: { verification: 'review' } },
+] as SeriesRosterEntry[]);
+assert.deepEqual(rosterSummary, { inLibrary: 2, missing: 1, review: 1, libraryOnly: 1, total: 4 });
 
 // Shared library normalization must agree with Detective evidence on leading articles.
 for (const [label, expected] of [
