@@ -51,7 +51,7 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
       booksRef.current,
       controller.signal,
       seriesBookIds,
-      // The first run may reuse a recent catalog lookup; an explicit re-run is a retry.
+      // Every explicit lookup refreshes discovery; no roster cache is active.
       { forceRefresh: run > 1, overrides: overridesRef.current },
     )
       .then((next) => { if (!controller.signal.aborted) setResult(next); })
@@ -88,6 +88,13 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
         </button>
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-rose-300">{error}</p>}
+      {result?.providerReports && (
+        <div role="status" className="mt-3 rounded-xl border border-amber-400/30 p-3 text-xs text-amber-100">
+          <p className="font-semibold">Catalog coverage is incomplete. Missing entries are not proof that a book does not exist.</p>
+          <p className="mt-1">{result.providerReports.map((report) =>
+            `${report.provider}: ${report.status}${report.errorCode ? ` (${report.errorCode})` : ''}`).join(' · ')}</p>
+        </div>
+      )}
       {roster && (
         <SeriesDetectiveRoster
           entries={roster}
