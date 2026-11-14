@@ -360,32 +360,6 @@ export const classifySeriesCandidates = (
   return { seriesName, candidates, missing, owned, completeness: candidates.length ? 'partial' : 'unavailable' };
 };
 
-const SERIES_CANDIDATE_CACHE_TTL_MS = 15 * 60 * 1000;
-const SERIES_CANDIDATE_CACHE_MAX = 40;
-const seriesCandidateCache = new Map<string, { at: number; candidates: SeriesDetectiveCandidate[] }>();
-
-const readSeriesCandidateCache = (key: string): SeriesDetectiveCandidate[] | null => {
-  const entry = seriesCandidateCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.at > SERIES_CANDIDATE_CACHE_TTL_MS) {
-    seriesCandidateCache.delete(key);
-    return null;
-  }
-  return entry.candidates;
-};
-
-const writeSeriesCandidateCache = (key: string, candidates: SeriesDetectiveCandidate[]) => {
-  // An empty result can come from a transient provider outage (each provider
-  // call swallows its own errors), so only successful discoveries are cached.
-  if (!candidates.length) return;
-  seriesCandidateCache.set(key, { at: Date.now(), candidates });
-  while (seriesCandidateCache.size > SERIES_CANDIDATE_CACHE_MAX) {
-    const oldest = seriesCandidateCache.keys().next().value;
-    if (oldest === undefined) break;
-    seriesCandidateCache.delete(oldest);
-  }
-};
-
 const identifier = (volume: DetectiveGoogleVolume, type: 'ISBN_10' | 'ISBN_13'): string | undefined =>
   volume.volumeInfo?.industryIdentifiers?.find((item) => item.type === type)?.identifier;
 
@@ -913,13 +887,6 @@ export async function findMissingSeriesBooks(
       : [];
   });
   const { queries, targetPositions } = planSeriesDiscoveryQueries({ seriesName, author, knownPositions });
-
-  const cacheKey = [
-    canonicalDetectiveSeries(seriesName),
-    canonicalDetectiveAuthor(author),
-    targetPositions.join(','),
-    seriesBooks.map((book) => comparableDetectiveTitle(book.work.title)).sort().join('|'),
-  ].join('::');
 
   // Discovery does not yet carry reliable availability/completeness signals
   // from every provider. Until it does, do not reuse a roster that may have
