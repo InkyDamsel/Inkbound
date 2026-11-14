@@ -233,4 +233,4 @@ export { searchSeriesDetectiveHardcover, searchSeriesDetectiveGoogleBooks, searc
 
 export { fetchShareImage } from './shareMedia.js';
 
-export { inspectAdminPhotoMemories } from './adminPhotoMemories.js';
+export { inspectAdminPhotoMemories, restoreAdminPhotoMemory } from './adminPhotoMemories.js';
