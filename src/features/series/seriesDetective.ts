@@ -538,12 +538,14 @@ const evidenceForVolume = (
 const safeDetectiveSearch = async (
   query: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveGoogleCatalog> => {
   try {
     return await searchDetectiveGoogleBooks(query, signal);
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective catalog query failed.', error);
+    onFailure?.(error);
     return { items: [], seriesTitlesById: {} };
   }
 };
@@ -553,6 +555,7 @@ const SERIES_DISCOVERY_MAX_PAGES = 4;
 const collectGoogleAuthorCatalogs = async (
   author: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveGoogleCatalog[]> => {
   const catalogs: DetectiveGoogleCatalog[] = [];
   if (!author.trim()) return catalogs;
@@ -572,6 +575,7 @@ const collectGoogleAuthorCatalogs = async (
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn('Series Detective paged author discovery failed.', error);
+      onFailure?.(error);
       break;
     }
   }
@@ -912,6 +916,7 @@ export async function findMissingSeriesBooks(
   // from every provider. Until it does, do not reuse a roster that may have
   // silently omitted Google Books or Open Library results.
   const providerReports: SeriesDetectiveProviderReport[] = [];
+  const googleFailures: unknown[] = [];
   const discoverCandidates = async (): Promise<SeriesDetectiveCandidate[]> => {
     const [
       queryCatalogs,
@@ -929,8 +934,8 @@ export async function findMissingSeriesBooks(
     ] = await Promise.all([
       // Bounded fan-out: the planner may emit ~25 queries, and firing them all
       // at once alongside the other providers trips Google Books rate limits.
-      mapWithConcurrency(queries, 4, (query) => safeDetectiveSearch(query, signal)),
-      collectGoogleAuthorCatalogs(author, signal),
+      mapWithConcurrency(queries, 4, (query) => safeDetectiveSearch(query, signal, (error) => googleFailures.push(error))),
+      collectGoogleAuthorCatalogs(author, signal, (error) => googleFailures.push(error)),
       searchDetectiveOpenLibrarySeries(seriesName, author, signal),
       searchDetectiveOpenLibraryAuthor(author, signal),
       searchDetectiveOpenLibraryContext(seriesName, author, signal),
@@ -976,7 +981,12 @@ export async function findMissingSeriesBooks(
     summarizeProvider('penguin-random-house', [prhSeriesAndAuthor, prhSeriesOnly, prhAuthor]);
     // Google and Open Library currently swallow some individual lookup errors.
     // Never advertise them as healthy until all failure paths are instrumented.
-    providerReports.push({ provider: 'google-books', status: 'partial', errorCode: 'coverage-not-measured', retrievedAt });
+    providerReports.push({
+      provider: 'google-books',
+      status: googleFailures.length ? (googleFailures.length >= queries.length + (author.trim() ? 1 : 0) ? 'unavailable' : 'partial') : 'partial',
+      errorCode: googleFailures.length ? 'query-failed' : 'pagination-not-verified',
+      retrievedAt,
+    });
     providerReports.push({ provider: 'open-library', status: 'partial', errorCode: 'coverage-not-measured', retrievedAt });
     const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
     const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
