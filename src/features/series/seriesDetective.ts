@@ -503,19 +503,16 @@ const evidenceForVolume = (
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
   const exactAuthor = !wantedAuthor || (volume.volumeInfo?.authors ?? [])
     .some((author) => detectiveAuthorsCompatible(book.work.author, author));
-  const explicitDescriptionSeries = inferDetectiveSeriesFromDescription(volume.volumeInfo?.description);
-  // An explicit numbered series in the catalog title is bibliographic evidence,
-  // not a free-form subtitle guess. It still requires an exact work/author match.
-  const explicitTitleSeries = inferDetectiveSeriesFromTitle(volume.volumeInfo?.title)
-    ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
   const structured = Boolean(
     (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
       const id = safeDetectiveTrim(membership.seriesId);
       return Boolean(id && catalog.seriesTitlesById[id]);
     })
     || safeDetectiveTrim(volume.inkboundBibliographicSeries?.name)
-    || explicitDescriptionSeries
-    || (explicitTitleSeries && detectiveSeriesNamesCompatible(explicitTitleSeries.name, metadata.name)),
+    // Description and title branding are hints, not structured membership.
+    // They must never promote a work to verified series evidence.
+    || (volume.inkboundBibliographicSeries?.explicit === true
+      && Boolean(safeDetectiveTrim(volume.inkboundBibliographicSeries?.name))),
   );
 
   return scoreDetectiveEvidence({
@@ -984,7 +981,7 @@ export async function findMissingSeriesBooks(
     // Never advertise them as healthy until all failure paths are instrumented.
     providerReports.push({
       provider: 'google-books',
-      status: 'partial',
+      status: googleFailures.length >= queries.length + (author.trim() ? 1 : 0) ? 'unavailable' : 'partial',
       errorCode: googleFailures.length ? 'query-failed' : 'pagination-not-verified',
       retrievedAt,
     });
