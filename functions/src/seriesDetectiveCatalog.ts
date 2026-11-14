@@ -1137,6 +1137,7 @@ async function detectivePrhCatalog(
     anchorTitles?: string[];
   } = {},
 ) {
+  let providerPartial = false;
   const compactIsbn = query.replace(/[^0-9X]/gi, '').toUpperCase();
   if (/^(?:978|979)\d{10}$/.test(compactIsbn)) {
     try {
@@ -1197,7 +1198,6 @@ async function detectivePrhCatalog(
     }
   }
 
-  let providerPartial = false;
   const searchPayload = await prhFetchJson('/search/views/search-display', {
     q: query,
     docType: 'work',
