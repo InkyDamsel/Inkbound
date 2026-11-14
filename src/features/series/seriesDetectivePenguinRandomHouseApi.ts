@@ -1,5 +1,4 @@
 import { httpsCallable } from 'firebase/functions';
-import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 import type { SeriesDetectiveCatalogResponse } from './seriesDetectiveCatalogTypes';
 
