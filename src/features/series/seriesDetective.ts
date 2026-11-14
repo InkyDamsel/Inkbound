@@ -989,7 +989,7 @@ export async function findMissingSeriesBooks(
       errorCode: googleFailures.length ? 'query-failed' : 'pagination-not-verified',
       retrievedAt,
     });
-    providerReports.push({ provider: 'open-library', status: openLibraryFailures.length ? 'partial' : 'partial', errorCode: openLibraryFailures.length ? 'query-failed' : 'pagination-not-verified', retrievedAt });
+    providerReports.push({ provider: 'open-library', status: 'partial', errorCode: openLibraryFailures.length ? 'query-failed' : 'pagination-not-verified', retrievedAt });
     const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
     const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
     const seen = new Map<string, SeriesDetectiveCandidate>();
