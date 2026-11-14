@@ -1001,6 +1001,27 @@ export async function findMissingSeriesBooks(
     // Resolve catalog series identities from an owned work, not just the
     // reader's potentially custom series label. An exact title+author anchor
     // must carry an actual Google volumeSeries ID; search text is insufficient.
+    // An owned title can belong to multiple unrelated series. Never promote
+    // every series ID on that volume into a roster-wide membership anchor.
+    // Named IDs must match the requested series; unnamed IDs are usable only
+    // when the volume has exactly one membership and matching structured evidence.
+    const seedGoogleSeriesIds = (
+      volume: DetectiveGoogleVolume,
+      catalog: DetectiveGoogleCatalog,
+      allowSingleUnnamed: boolean,
+    ) => {
+      const memberships = (volume.volumeInfo?.seriesInfo?.volumeSeries ?? [])
+        .filter((membership) => Boolean(safeDetectiveTrim(membership.seriesId)));
+      for (const membership of memberships) {
+        const id = safeDetectiveTrim(membership.seriesId);
+        const namedSeries = catalog.seriesTitlesById[id];
+        if (namedSeries) {
+          if (detectiveSeriesNamesCompatible(namedSeries, seriesName)) confirmedGoogleSeriesIds.add(id);
+        } else if (allowSingleUnnamed && memberships.length === 1) {
+          confirmedGoogleSeriesIds.add(id);
+        }
+      }
+    };
     catalogs.forEach((catalog) => {
       catalog.items.forEach((volume) => {
         const title = safeDetectiveTrim(volume.volumeInfo?.title);
@@ -1008,10 +1029,11 @@ export async function findMissingSeriesBooks(
         if (!title || !seriesBooks.some((book) =>
           comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(title)
           && authors.some((name) => detectiveAuthorsCompatible(book.work.author, name)))) return;
-        (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
-          const id = safeDetectiveTrim(membership.seriesId);
-          if (id) confirmedGoogleSeriesIds.add(id);
-        });
+        const verified = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
+        // The user's custom label is not evidence that every Google membership
+        // on an owned book refers to the same series.
+        seedGoogleSeriesIds(volume, catalog, Boolean(verified?.seriesStructured && verified.seriesName
+          && detectiveSeriesNamesCompatible(verified.seriesName, seriesName)));
       });
     });
     catalogs.forEach((catalog) => {
@@ -1020,16 +1042,10 @@ export async function findMissingSeriesBooks(
         if (
           !verified?.seriesName
           || !detectiveSeriesNamesCompatible(verified.seriesName, seriesName)
-          // A loosely inferred label on an unrelated work must never seed
-          // a provider-wide series ID used to admit additional volumes.
           || !verified.work.authors.some((name) => detectiveAuthorsCompatible(author, name))
           || !verified.seriesStructured
         ) return;
-
-        (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
-          const id = safeDetectiveTrim(membership.seriesId);
-          if (id) confirmedGoogleSeriesIds.add(id);
-        });
+        seedGoogleSeriesIds(volume, catalog, true);
       });
     });
 
