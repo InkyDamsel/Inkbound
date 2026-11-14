@@ -1047,8 +1047,10 @@ export async function findMissingSeriesBooks(
         seriesName: candidate.seriesName,
         position: candidate.position,
         provider: 'open-library',
-        seriesProvider: 'open-library',
-        seriesStructured: true,
+        seriesProvider: candidate.seriesName ? 'open-library' : undefined,
+        // Search hits are not structured series evidence unless the provider
+        // supplied actual membership, rather than a query-text association.
+        seriesStructured: Boolean(candidate.seriesName),
       });
     });
 
