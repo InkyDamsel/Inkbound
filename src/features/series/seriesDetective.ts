@@ -909,7 +909,7 @@ export async function findMissingSeriesBooks(
       ? [resolved.position]
       : [];
   });
-  const { queries, targetPositions } = planSeriesDiscoveryQueries({ seriesName, author, knownPositions });
+  const { queries, targetPositions } = planSeriesDiscoveryQueries({ seriesName, author, knownPositions, anchorTitles: seriesBooks.map((book) => book.work.title) });
 
   // Discovery does not yet carry reliable availability/completeness signals
   // from every provider. Until it does, do not reuse a roster that may have
