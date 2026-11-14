@@ -39,6 +39,13 @@ export const detectiveCandidatesAreSameWork = (
   right: DetectiveMergeCandidate,
 ): boolean => {
   if (!sameAuthor(left.work.authors, right.work.authors)) return false;
+  // A provider's work identifier is stronger than its display title. Only
+  // compare identifiers within the same namespace; cross-provider IDs can
+  // collide accidentally. An edition ISBN is also exact shared evidence.
+  if (left.work.key && right.work.key && left.work.key === right.work.key
+    && left.work.key.startsWith(`${left.provider}:`)
+    && right.work.key.startsWith(`${right.provider}:`)) return true;
+  if (exactIsbnMatch(left.edition, right.edition)) return true;
   const leftTitle = comparableWorkTitle(left.work.title);
   const rightTitle = comparableWorkTitle(right.work.title);
   if (!leftTitle || !rightTitle) return false;
