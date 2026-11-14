@@ -921,6 +921,7 @@ export async function findMissingSeriesBooks(
     seriesBooks.map((book) => comparableDetectiveTitle(book.work.title)).sort().join('|'),
   ].join('::');
 
+  let providerResultsIncomplete = false;
   const discoverCandidates = async (): Promise<SeriesDetectiveCandidate[]> => {
     const [
       queryCatalogs,
@@ -968,6 +969,11 @@ export async function findMissingSeriesBooks(
       searchSeriesDetectivePenguinRandomHouse(seriesName),
       searchSeriesDetectivePenguinRandomHouse(author),
     ]);
+    // Do not preserve a partial roster in the successful-discovery cache.
+    providerResultsIncomplete = [
+      hardcoverSeriesAndAuthor, hardcoverSeriesOnly, hardcoverAuthor,
+      prhSeriesAndAuthor, prhSeriesOnly, prhAuthor,
+    ].some((response) => response.providerStatus !== 'ok');
     const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
     const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
     const seen = new Map<string, SeriesDetectiveCandidate>();
@@ -1179,7 +1185,7 @@ export async function findMissingSeriesBooks(
   let candidates = options.forceRefresh ? null : readSeriesCandidateCache(cacheKey);
   if (!candidates) {
     candidates = await discoverCandidates();
-    writeSeriesCandidateCache(cacheKey, candidates);
+    if (!providerResultsIncomplete) writeSeriesCandidateCache(cacheKey, candidates);
   }
 
   return classifySeriesCandidates(seriesName, candidates, libraryBooks);
