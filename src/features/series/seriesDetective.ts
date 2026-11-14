@@ -1092,7 +1092,9 @@ export async function findMissingSeriesBooks(
     const addCandidate = (candidate: SeriesDetectiveCandidate) => {
       const titleKey = comparableDetectiveTitle(candidate.work.title, candidate.seriesName);
       const authorKey = canonicalDetectiveAuthor(candidate.work.authors[0]);
-      const isbnKey = compactDetectiveIsbn(candidate.edition.isbn13 ?? candidate.edition.isbn10);
+      const candidateIsbns = [candidate.edition.isbn13, candidate.edition.isbn10]
+        .map(compactDetectiveIsbn).filter(Boolean);
+      const isbnKey = candidateIsbns[0];
       // Series position is ordering metadata, not work identity. Two catalog
       // records claiming the same slot must not cause one distinct work to be
       // silently discarded.
@@ -1105,8 +1107,10 @@ export async function findMissingSeriesBooks(
       // A shared ISBN is edition-level evidence that two differently titled
       // provider records refer to the same edition. Do not merge merely on
       // series position, and require compatible authors to guard bad metadata.
-      const isbnMatch = isbnKey ? [...seen.entries()].find(([, existing]) =>
-        compactDetectiveIsbn(existing.edition.isbn13 ?? existing.edition.isbn10) === isbnKey
+      const isbnMatch = candidateIsbns.length ? [...seen.entries()].find(([, existing]) =>
+        [existing.edition.isbn13, existing.edition.isbn10]
+          .map(compactDetectiveIsbn).filter(Boolean)
+          .some((isbn) => candidateIsbns.includes(isbn))
         && existing.work.authors.some((existingAuthor) =>
           candidate.work.authors.some((incomingAuthor) =>
             detectiveAuthorsCompatible(existingAuthor, incomingAuthor)))) : undefined;
