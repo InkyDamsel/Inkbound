@@ -1160,6 +1160,19 @@ export async function findMissingSeriesBooks(
       ),
     };
 
+    // The user's manually curated reading-order label may differ from the
+    // publisher's series name. Only an exact owned title + compatible author
+    // with structured provider membership can establish an external alias.
+    // This never rewrites the user's saved series or installment positions.
+    const anchoredSeriesAliases = new Set<string>();
+    for (const candidate of mergedProviderCandidates) {
+      if (!candidate.seriesStructured || !candidate.seriesName) continue;
+      const anchored = seriesBooks.some((book) =>
+        comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(candidate.work.title)
+        && candidate.work.authors.some((name) => detectiveAuthorsCompatible(book.work.author, name)));
+      if (anchored) anchoredSeriesAliases.add(canonicalDetectiveSeries(candidate.seriesName));
+    }
+
     mergedProviderCandidates.forEach((candidate) => {
       if (isSeriesMetadataRecord(candidate, seriesName)) {
         diagnostics.rejectedEvidence += 1;
@@ -1174,7 +1187,9 @@ export async function findMissingSeriesBooks(
         && (hasMergedKnownSeriesContext(candidate, seriesName)
           || explicitBrand);
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
-      if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) {
+      const anchoredAlias = Boolean(candidate.seriesStructured && resolvedSeriesName
+        && anchoredSeriesAliases.has(canonicalDetectiveSeries(resolvedSeriesName)));
+      if (!resolvedSeriesName || (!detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName) && !anchoredAlias)) {
         diagnostics.rejectedSeries += 1;
         return;
       }
@@ -1201,7 +1216,9 @@ export async function findMissingSeriesBooks(
       addCandidate({
         work: candidate.work,
         edition: candidate.edition,
-        seriesName: resolvedSeriesName,
+        // Present results under the reader's collection without modifying
+        // the original catalog evidence or saved reading order.
+        seriesName: anchoredAlias ? seriesName : resolvedSeriesName,
         position: candidate.position,
         verification,
       });
