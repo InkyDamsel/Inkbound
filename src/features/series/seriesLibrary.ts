@@ -49,7 +49,8 @@ export const canonicalSeriesIdentity = (value?: string): string => {
     .split(/\s+/)
     .filter(Boolean);
 
-  // No series-specific aliases: identity remains conservative.\n  while (tokens.length > 1 && SERIES_LEADING_ARTICLES.has(tokens[0])) tokens.shift();
+  // No series-specific aliases: identity remains conservative.
+  while (tokens.length > 1 && SERIES_LEADING_ARTICLES.has(tokens[0])) tokens.shift();
   while (tokens.length > 1 && SERIES_TRAILING_QUALIFIERS.has(tokens[tokens.length - 1])) tokens.pop();
   return tokens.filter((token) => !SERIES_CONNECTOR_TOKENS.has(token)).join(' ');
 };
