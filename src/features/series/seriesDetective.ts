@@ -880,7 +880,6 @@ const mergeCandidateFromGoogleVolume = (
           hasStructuredSeries
           || (safeDetectiveTrim(volume.inkboundBibliographicSeries?.name)
             && volume.inkboundBibliographicSeries.explicit === true)
-          || inferDetectiveSeriesFromDescription(info?.description)
         )
       : undefined,
   };
