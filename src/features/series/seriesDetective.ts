@@ -917,6 +917,8 @@ export async function findMissingSeriesBooks(
   // silently omitted Google Books or Open Library results.
   const providerReports: SeriesDetectiveProviderReport[] = [];
   const googleFailures: unknown[] = [];
+  const openLibraryFailures: unknown[] = [];
+  const recordOpenLibraryFailure = (error: unknown) => { openLibraryFailures.push(error); };
   const discoverCandidates = async (): Promise<SeriesDetectiveCandidate[]> => {
     const [
       queryCatalogs,
@@ -936,10 +938,10 @@ export async function findMissingSeriesBooks(
       // at once alongside the other providers trips Google Books rate limits.
       mapWithConcurrency(queries, 4, (query) => safeDetectiveSearch(query, signal, (error) => googleFailures.push(error))),
       collectGoogleAuthorCatalogs(author, signal, (error) => googleFailures.push(error)),
-      searchDetectiveOpenLibrarySeries(seriesName, author, signal),
-      searchDetectiveOpenLibraryAuthor(author, signal),
-      searchDetectiveOpenLibraryContext(seriesName, author, signal),
-      searchDetectiveOpenLibraryContext(seriesName, author, signal, true),
+      searchDetectiveOpenLibrarySeries(seriesName, author, signal, recordOpenLibraryFailure),
+      searchDetectiveOpenLibraryAuthor(author, signal, recordOpenLibraryFailure),
+      searchDetectiveOpenLibraryContext(seriesName, author, signal, false, recordOpenLibraryFailure),
+      searchDetectiveOpenLibraryContext(seriesName, author, signal, true, recordOpenLibraryFailure),
       // Only the series + author query may expand Hardcover's structured
       // series ID. A bare series name can collide across unrelated authors.
       searchSeriesDetectiveHardcover(
@@ -987,7 +989,7 @@ export async function findMissingSeriesBooks(
       errorCode: googleFailures.length ? 'query-failed' : 'pagination-not-verified',
       retrievedAt,
     });
-    providerReports.push({ provider: 'open-library', status: 'partial', errorCode: 'coverage-not-measured', retrievedAt });
+    providerReports.push({ provider: 'open-library', status: openLibraryFailures.length ? 'partial' : 'partial', errorCode: openLibraryFailures.length ? 'query-failed' : 'pagination-not-verified', retrievedAt });
     const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
     const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
     const seen = new Map<string, SeriesDetectiveCandidate>();
