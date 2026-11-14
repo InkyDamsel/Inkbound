@@ -1180,7 +1180,9 @@ export async function findMissingSeriesBooks(
       }
       const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
       const matchingAuthor = candidate.work.authors.some((name) => detectiveAuthorsCompatible(author, name));
-      if (!matchingAuthor && !(verifiedMultiAuthorBrand && (candidate.seriesStructured || explicitBrand))) {
+      // Cross-author anthologies are legitimate, but a shared title phrase
+      // is not enough to admit a different author's unrelated work.
+      if (!matchingAuthor && !(verifiedMultiAuthorBrand && candidate.seriesStructured)) {
         diagnostics.rejectedAuthor += 1;
         return;
       }
