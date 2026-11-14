@@ -47,6 +47,8 @@ interface GooglePayload {
   totalItems?: number;
   items?: DetectiveGoogleVolume[];
   seriesMetadataById?: Record<string, string>;
+  providerStatus?: 'ok' | 'partial' | 'unavailable' | 'rate-limited' | 'timed-out';
+  providerErrorCode?: string;
 }
 
 export interface DetectiveGoogleCatalog {
@@ -64,7 +66,7 @@ const directSearch = async (
   startIndex: number,
   maxResults: number,
 ): Promise<GooglePayload> => {
-  if (!functions) return { totalItems: 0, items: [], seriesMetadataById: {} };
+  if (!functions) throw new Error('Series Detective Google Books unavailable: firebase-unavailable');
   if (signal?.aborted) throw new DOMException('Series Detective search aborted.', 'AbortError');
 
   const callable = httpsCallable<
@@ -73,6 +75,9 @@ const directSearch = async (
   >(functions, 'searchSeriesDetectiveGoogleBooks');
   const response = await callable({ query, startIndex, maxResults });
   if (signal?.aborted) throw new DOMException('Series Detective search aborted.', 'AbortError');
+  if (response.data.providerStatus && response.data.providerStatus !== 'ok') {
+    throw new Error(`Series Detective Google Books ${response.data.providerStatus}: ${response.data.providerErrorCode ?? 'unknown'}`);
+  }
   return response.data;
 };
 
