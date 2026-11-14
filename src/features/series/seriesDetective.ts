@@ -184,7 +184,7 @@ const isSeriesMetadataRecord = (candidate: DetectiveMergeCandidate, seriesName: 
   const normalized = canonicalDetectiveSeries(title);
   const wanted = canonicalDetectiveSeries(seriesName);
   if (!normalized || !wanted) return false;
-  if (!/\\b(?:series|saga|books)\\s*$/i.test(title)) return false;
+  if (!/\b(?:series|saga|books)\s*$/i.test(title)) return false;
   return normalized === wanted;
 };
 
