@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
-import { buildSeriesLibrary } from '../src/features/series/seriesLibrary';
+import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
 // Discovery from search has no owned numbered anchor: probe opening volumes.
 const unanchoredPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [] });
 assert.deepEqual(unanchoredPlan.targetPositions, [1, 2, 3, 4, 5]);
@@ -71,6 +71,22 @@ assert.equal(hasExplicitDetectiveSeriesBrand(
   brandedFixture('Salt & Blood: A Hades and Persephone Romance', ''),
   'Hades x Persephone',
 ), false);
+
+// Shared library normalization must agree with Detective evidence on leading articles.
+for (const [label, expected] of [
+  ['The Selection', 'selection'],
+  ['Selection', 'selection'],
+  ['A Twisted Tale', 'twisted tale'],
+  ['Twisted Tale', 'twisted tale'],
+  ['The Unhinged Love Trilogy', 'unhinged love'],
+  ['Unhinged Love', 'unhinged love'],
+] as const) {
+  assert.equal(canonicalSeriesIdentity(label), expected);
+  assert.equal(detectiveSeriesNamesCompatible(label, expected), true);
+}
+assert.equal(seriesNamesAreCompatible('The Selection', 'Selection'), true);
+assert.equal(seriesNamesAreCompatible('A Twisted Tale', 'Twisted Tale'), true);
+assert.equal(seriesNamesAreCompatible('The Heart Duology', 'The Heart of Darkness'), false);
 
 // Never infer a franchise alias or singular/plural equivalence without bibliographic evidence.
 assert.equal(detectiveSeriesNamesCompatible('Disney: A Twisted Tale', 'Twisted Tales'), false);
