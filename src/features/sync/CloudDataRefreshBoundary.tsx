@@ -3,6 +3,7 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
+import { synchronizePhotoMemories } from '../memories/photoMemoryCloudSync';
 import { INKBOUND_CLOUD_DATA_EVENT, notifyCloudDataUpdated } from './cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from './storageKeys';
 import { hasEstablishedLocalWorkingCopy } from './syncReadiness';
@@ -44,12 +45,18 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
 
       if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
 
+      void synchronizePhotoMemories(uid).catch((error) => {
+        console.warn('Inkbound Photo Memories refresh failed; existing local and cloud records were preserved.', error);
+      });
       void synchronizeProfileMedia(uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
         // retry on the next foreground/online refresh without blocking the app.
       });
     };
 
+    void synchronizePhotoMemories(uid).catch((error) => {
+      console.warn('Inkbound Photo Memories initial restoration failed; retry on next refresh.', error);
+    });
     void synchronizeProfileMedia(uid).catch(() => undefined);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
     const unsubscribeResume = subscribeToRuntimeResume(refresh);
