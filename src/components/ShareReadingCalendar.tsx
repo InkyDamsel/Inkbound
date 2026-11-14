@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Download, Share2 } from 'lucide-react';
 import type { ReadingSession, UserBookRecord } from '../types';
-import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getSessionDurationMinutes, getSessionPagesRead, isRecordedReadingActivity } from '../features/reading/sessionAnalytics';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 import { fetchRuntimeMediaDataUrl } from '../platform/runtimeMedia';
@@ -63,7 +62,9 @@ const makePng = async (month: string, books: UserBookRecord[], sessions: Reading
   const allBooks = [...new Set(monthSessions.map(s => s.bookId))].map(id => bookMap.get(id)).filter((b): b is UserBookRecord => Boolean(b));
   const covers = new Map<string, HTMLImageElement | null>();
   await Promise.all(allBooks.map(async book => {
-    const url = getActiveEdition(book)?.coverUrl?.trim();
+    // Match Bookshelf Through Time: the canonical selected edition, then the first edition.
+    const edition = book.editions.find(item => item.id === book.activeEditionId) ?? book.editions[0];
+    const url = edition?.coverUrl?.trim();
     covers.set(book.id, url ? await coverImage(url) : null);
   }));
   const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
@@ -129,8 +130,11 @@ const makePng = async (month: string, books: UserBookRecord[], sessions: Reading
   ctx.textAlign = 'center'; write(ctx, stats.join('   •   '), width / 2, statsY, format === 'story' ? 24 : 22, '#f4e9ef', 'Arial, sans-serif');
   if (collectible) write(ctx, 'Every page is part of your story', width / 2, statsY + 40, 23, '#c9a97a');
   ctx.textAlign = 'center'; write(ctx, 'Created with Inkbound', width / 2, height - 48, 18, '#bca4b7', 'Arial, sans-serif');
-  const missingCovers = [...covers.values()].filter(image => !image).length;
-  if (missingCovers) throw new Error(`${missingCovers} covers could not be embedded. Export cancelled rather than saving incomplete artwork.`);
+  const missingBooks = allBooks.filter(book => !covers.get(book.id));
+  if (missingBooks.length) {
+    const names = missingBooks.slice(0, 3).map(book => `“${book.work.title}”`).join(', ');
+    throw new Error(`${missingBooks.length} cover(s) could not be embedded: ${names}${missingBooks.length > 3 ? ' and others' : ''}. Export cancelled rather than saving incomplete artwork.`);
+  }
   return new Promise<Blob>((resolve, reject) => {
     try { canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create calendar PNG.')), 'image/png'); }
     catch (error) { reject(error); }
