@@ -375,6 +375,7 @@ async function detectiveHardcoverCatalog(
   const searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
   const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
 
+  let providerPartial = false;
   let editions: HardcoverEdition[] = [];
   let books: HardcoverBook[] = [];
 
@@ -417,6 +418,7 @@ async function detectiveHardcoverCatalog(
         });
     } catch (error) {
       console.warn('Series Detective Hardcover exact-title lookup unavailable.', error);
+      providerPartial = true;
     }
   }
   if (ids.length > 0) {
@@ -588,6 +590,7 @@ async function detectiveHardcoverCatalog(
       }
     } catch (error) {
       console.warn('Series Detective Hardcover direct series lookup unavailable.', error);
+      providerPartial = true;
     }
   }
 
@@ -675,6 +678,7 @@ async function detectiveHardcoverCatalog(
         }
       } catch (error) {
         console.warn('Series Detective Hardcover series expansion unavailable.', error);
+      providerPartial = true;
       }
     }
   }
@@ -843,7 +847,7 @@ async function detectiveHardcoverCatalog(
     });
   });
 
-  return { groups, totalItems: groups.length };
+  return { groups, totalItems: groups.length, providerStatus: providerPartial ? 'partial' as const : 'ok' as const, providerErrorCode: providerPartial ? 'expansion-failed' : undefined };
 }
 
 export const searchSeriesDetectiveHardcover = onCall(
@@ -1189,9 +1193,11 @@ async function detectivePrhCatalog(
       }
     } catch (error) {
       console.warn('Penguin Random House exact-ISBN lookup unavailable; falling back to work search.', error);
+      providerPartial = true;
     }
   }
 
+  let providerPartial = false;
   const searchPayload = await prhFetchJson('/search/views/search-display', {
     q: query,
     docType: 'work',
@@ -1230,6 +1236,7 @@ async function detectivePrhCatalog(
       }
     } catch (error) {
       console.warn('Series Detective PRH series expansion unavailable.', error);
+      providerPartial = true;
     }
   }
 
@@ -1301,7 +1308,7 @@ async function detectivePrhCatalog(
     };
   }));
 
-  return { groups, totalItems: groups.length };
+  return { groups, totalItems: groups.length, providerStatus: providerPartial ? 'partial' as const : 'ok' as const, providerErrorCode: providerPartial ? 'expansion-failed' : undefined };
 }
 
 
