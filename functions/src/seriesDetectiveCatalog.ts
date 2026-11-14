@@ -269,7 +269,8 @@ const normalizeHardcoverText = (value?: string): string =>
 
 const normalizeHardcoverSeries = (value?: string): string => {
   const tokens = normalizeHardcoverText(value).split(' ').filter(Boolean);
-  // Generic series qualifiers only; no franchise-specific aliases.\n  while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
+  // Generic series qualifiers only; no franchise-specific aliases.
+  while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
   while (
     tokens.length > 1
     && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections', 'trilogy', 'duology', 'duet', 'quartet', 'quintet', 'sextet', 'septet', 'octet'].includes(tokens[tokens.length - 1])
