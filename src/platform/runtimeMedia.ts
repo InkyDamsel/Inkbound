@@ -17,21 +17,27 @@ const browserMediaAdapter: RuntimeMediaAdapter = {
     if (!url) return '';
     if (url.startsWith('data:')) return url;
 
+    let browserFailure = 'Browser request did not return an image.';
     try {
       const response = await fetch(url, { mode: 'cors', referrerPolicy: 'no-referrer' });
-      if (response.ok) return await blobToDataUrl(await response.blob());
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.type.startsWith('image/')) return await blobToDataUrl(blob);
+        browserFailure = 'Cover URL did not return image content.';
+      } else browserFailure = `Cover host returned HTTP ${response.status}.`;
     } catch {
-      // Many catalog cover hosts permit <img> display but block browser CORS.
-      // Signed-in exports can use the protected server proxy below.
+      browserFailure = 'Browser could not retrieve cover (possibly CORS or network).';
     }
 
-    if (!functions || !auth?.currentUser) return '';
+    if (!functions || !auth?.currentUser) throw new Error(`${browserFailure} Signed-in image proxy unavailable.`);
     try {
       const proxy = httpsCallable<{ url: string }, { dataUrl?: string }>(functions, 'fetchShareImage');
       const response = await proxy({ url });
-      return typeof response.data.dataUrl === 'string' ? response.data.dataUrl : '';
-    } catch {
-      return '';
+      if (typeof response.data.dataUrl === 'string' && response.data.dataUrl.startsWith('data:image/')) return response.data.dataUrl;
+      throw new Error('Image proxy returned no usable image.');
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Unknown proxy failure';
+      throw new Error(`${browserFailure} Image proxy: ${reason}`);
     }
   },
 };
