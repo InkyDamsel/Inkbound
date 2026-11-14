@@ -974,7 +974,7 @@ export async function findMissingSeriesBooks(
       const failed = results.filter((result) => result.providerStatus !== 'ok');
       providerReports.push({
         provider,
-        status: failed.length ? (failed.length === results.length ? 'unavailable' : 'partial') : 'ok',
+        status: failed.length ? (results.every((result) => result.providerStatus === 'unavailable' || result.providerStatus === 'rate-limited' || result.providerStatus === 'timed-out') ? 'unavailable' : 'partial') : 'ok',
         errorCode: failed.map((result) => result.providerErrorCode).find(Boolean),
         retrievedAt,
       });
