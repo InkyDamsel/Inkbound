@@ -45,7 +45,15 @@ export const detectiveCandidatesAreSameWork = (
   if (left.work.key && right.work.key && left.work.key === right.work.key
     && left.work.key.startsWith(`${left.provider}:`)
     && right.work.key.startsWith(`${right.provider}:`)) return true;
-  if (exactIsbnMatch(left.edition, right.edition)) return true;
+  // A recycled or incorrect ISBN must not merge unrelated works. For
+  // different titles, require compatible explicit series membership on both
+  // records before accepting shared edition identifiers as work identity.
+  if (exactIsbnMatch(left.edition, right.edition)) {
+    const sameTitle = comparableWorkTitle(left.work.title) === comparableWorkTitle(right.work.title);
+    if (sameTitle) return true;
+    if (left.seriesName && right.seriesName
+      && detectiveSeriesNamesCompatible(left.seriesName, right.seriesName)) return true;
+  }
   const leftTitle = comparableWorkTitle(left.work.title);
   const rightTitle = comparableWorkTitle(right.work.title);
   if (!leftTitle || !rightTitle) return false;
