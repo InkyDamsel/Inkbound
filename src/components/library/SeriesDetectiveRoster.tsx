@@ -91,7 +91,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
             <a href={directAmazonUrl ?? amazonSearchUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#e5c158] underline underline-offset-2 hover:text-[#f3dbad]">{directAmazonUrl ? 'View on Amazon ↗' : 'Find on Amazon ↗'}</a>
           </div>
           <p className="mt-2 text-[11px] text-stone-400">Opens the Amazon product page when the catalog supplies an ASIN; otherwise searches by ISBN or title and author. Amazon listings are research aids, not independent series verification.</p>
-          <p className="mt-3 text-amber-200">The catalog has not independently verified this membership. Confirm it using a trusted publisher or author source before adding. Accepting adds this book through Inkbound's normal library save path; it does not verify other candidates.</p>
+          <p className="mt-3 text-amber-200">The catalog has not independently verified this membership. Check a trusted publisher or author source. Continue to the normal Add Book search to select and save the correct edition; this does not automatically approve series membership.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={() => setReviewOpen(false)} className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold">Close / Reject</button>
             <button type="button" onClick={() => {
@@ -99,7 +99,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
               if (!candidate || !window.confirm(`I independently verified that "${entry.title}" belongs to "${candidate.seriesName}". Add this book to my library?`)) return;
               window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: [candidate] } }));
               setReviewOpen(false);
-            }} className="rounded-xl bg-[#c5a059] px-3 py-2 text-xs font-bold text-[#211128]">Confirm membership &amp; Add Book</button>
+            }} className="rounded-xl bg-[#c5a059] px-3 py-2 text-xs font-bold text-[#211128]">Continue to Add Book</button>
           </div>
         </div>
       )}
@@ -111,7 +111,7 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
 export const SeriesDetectiveRoster: React.FC<Props> = ({ entries, onOpenBook }) => {
   const summary = summarizeSeriesRoster(entries);
   const missingEntries = entries.filter((entry) => entry.kind === 'missing' && entry.candidate?.verification === 'verified');
-  const reviewCount = entries.filter((entry) => entry.kind === 'missing' && entry.candidate?.verification !== 'verified').length;
+  const reviewCount = summary.review;
   const disconnectedEntries = entries.filter((entry) => entry.kind === 'owned' && entry.book && entry.candidate?.verification === 'verified' && !entry.book.work.seriesName?.trim());
 
   if (!entries.length) {
@@ -122,7 +122,7 @@ export const SeriesDetectiveRoster: React.FC<Props> = ({ entries, onOpenBook }) 
     <div className="mt-3 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-stone-300">
-          {summary.total} book(s): {summary.inLibrary} in your library, {summary.missing} not found in your library.
+          {summary.total} candidate/owned record(s): {summary.inLibrary} in your library, {summary.missing} verified missing, {summary.review} need review{summary.libraryOnly ? `, including ${summary.libraryOnly} library-only` : ''}.
         </p>
         {reviewCount > 0 && <p className="text-xs text-amber-200">{reviewCount} candidate(s) need independent series verification before adding.</p>}
         {disconnectedEntries.length > 0 && <button type="button" onClick={() => {
