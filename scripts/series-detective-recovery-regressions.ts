@@ -502,6 +502,35 @@ assert.deepEqual(
   new Set(['google-books', 'open-library']),
 );
 
+// Provider work IDs and exact ISBNs are identity evidence even when catalog
+// display titles differ. Conflicting titles must remain review-only.
+const identityFixture = mergedProviders[0];
+const sameProviderAlternateTitle = mergeDetectiveCandidates([
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:work-42', title: 'Original Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-a', isbn13: undefined, isbn10: undefined },
+    seriesStructured: true },
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:work-42', title: 'Alternate Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-b', isbn13: undefined, isbn10: undefined },
+    seriesStructured: true },
+]);
+assert.equal(sameProviderAlternateTitle.length, 1);
+assert.equal(sameProviderAlternateTitle[0].seriesStructured, false);
+
+const sharedIsbnAlternateTitle = mergeDetectiveCandidates([
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:one', title: 'Original Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-c', isbn13: '9780991132379' },
+    seriesStructured: true },
+  { ...identityFixture, provider: 'open-library', providerSources: ['open-library'],
+    work: { ...identityFixture.work, key: 'open-library:two', title: 'Alternate Title' },
+    edition: { ...identityFixture.edition, source: 'open-library', externalEditionId: 'edition-d', isbn13: '9780991132379' },
+    seriesStructured: true },
+]);
+assert.equal(sharedIsbnAlternateTitle.length, 1);
+assert.equal(sharedIsbnAlternateTitle[0].seriesStructured, false);
+
 // Shared franchise prefixes are not work identity. Distinct installments by
 // the same author must never collapse just because one title starts with the
 // other's words.
