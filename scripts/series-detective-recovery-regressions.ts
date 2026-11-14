@@ -7,6 +7,15 @@ const unanchoredPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicl
 assert.deepEqual(unanchoredPlan.targetPositions, [1, 2, 3, 4, 5]);
 assert.ok(unanchoredPlan.queries.includes('Sample Chronicles book 1 A. Reader'));
 assert.ok(unanchoredPlan.queries.includes('"Sample Chronicles"'));
+// Custom reading-order labels must still search by exact owned book anchors.
+const anchoredPlan = planSeriesDiscoveryQueries({
+  seriesName: 'My Reading Order', author: 'Example Author', knownPositions: [3],
+  anchorTitles: ['A Touch of Ruin'],
+});
+assert.ok(anchoredPlan.queries.includes('intitle:"A Touch of Ruin" inauthor:"Example Author"'));
+assert.ok(anchoredPlan.targetPositions.includes(1));
+assert.ok(anchoredPlan.targetPositions.includes(2));
+
 // A malformed very high position must never allocate a massive gap array.
 const distantPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [1000000000] });
 assert.deepEqual(distantPlan.targetPositions.slice(0, MAX_GAP_QUERY_TARGETS), [1, 2, 3, 4, 5]);
