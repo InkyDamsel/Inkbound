@@ -95,9 +95,8 @@ const RosterRow: React.FC<{ entry: SeriesRosterEntry; onOpenBook?: Props['onOpen
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={() => setReviewOpen(false)} className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold">Close / Reject</button>
             <button type="button" onClick={() => {
-              const candidate = entry.candidate;
-              if (!candidate || !window.confirm(`I independently verified that "${entry.title}" belongs to "${candidate.seriesName}". Add this book to my library?`)) return;
-              window.dispatchEvent(new CustomEvent('inkbound:series-detective-save', { detail: { candidates: [candidate] } }));
+              if (!window.confirm(`Open Add Book to search for "${entry.title}"? You will choose the edition before saving; series membership is not automatically verified.`)) return;
+              window.dispatchEvent(new CustomEvent('inkbound:series-detective-add', { detail: { title: entry.title, author: entry.candidate?.work.authors[0] ?? '' } }));
               setReviewOpen(false);
             }} className="rounded-xl bg-[#c5a059] px-3 py-2 text-xs font-bold text-[#211128]">Continue to Add Book</button>
           </div>
