@@ -491,6 +491,7 @@ export async function searchDetectiveOpenLibraryBook(
   title: string,
   author: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveOpenLibraryCandidate[]> {
   const params = new URLSearchParams({ title: title.trim(), author: author.trim() });
   try {
