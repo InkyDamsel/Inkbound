@@ -176,6 +176,18 @@ const isDerivativeSeriesProduct = (candidate: DetectiveMergeCandidate): boolean 
   return values.some((value) => DERIVATIVE_SERIES_PRODUCT_PATTERN.test(value));
 };
 
+// A catalog entry naming the series itself is not evidence of a distinct book.
+// Restrict this guard to exact series-name metadata labels; never infer from
+// position or fuzzy title similarity, and leave ambiguous works reviewable.
+const isSeriesMetadataRecord = (candidate: DetectiveMergeCandidate, seriesName: string): boolean => {
+  const title = candidate.work.title.trim();
+  const normalized = canonicalDetectiveSeries(title);
+  const wanted = canonicalDetectiveSeries(seriesName);
+  if (!normalized || !wanted) return false;
+  if (!/\\b(?:series|saga|books)\\s*$/i.test(title)) return false;
+  return normalized === wanted;
+};
+
 const hasMergedKnownSeriesContext = (
   candidate: DetectiveMergeCandidate,
   wantedSeriesName: string,
@@ -1086,6 +1098,10 @@ export async function findMissingSeriesBooks(
     };
 
     mergedProviderCandidates.forEach((candidate) => {
+      if (isSeriesMetadataRecord(candidate, seriesName)) {
+        diagnostics.rejectedEvidence += 1;
+        return;
+      }
       // Fail closed at the final actionable-roster boundary. A matching series
       // phrase in a title, subtitle, or description is not proof of membership.
       // The catalog must supply structured membership or independent provider
