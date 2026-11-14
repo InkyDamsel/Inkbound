@@ -359,6 +359,7 @@ export async function searchDetectiveOpenLibraryContext(
   author: string,
   signal?: AbortSignal,
   allowOtherAuthors = false,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveOpenLibraryContextCandidate[]> {
   const params = new URLSearchParams({ q: allowOtherAuthors ? seriesName : `${seriesName} ${author}`.trim() });
   try {
@@ -421,6 +422,7 @@ export async function searchDetectiveOpenLibraryContext(
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective Open Library contextual lookup failed.', error);
+    onFailure?.(error);
     return [];
   }
 }
@@ -429,6 +431,7 @@ export async function searchDetectiveOpenLibrarySeries(
   seriesName: string,
   author?: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveOpenLibraryCandidate[]> {
   const escapedSeries = seriesName.replace(/"/g, '').trim();
   const queries = [
@@ -443,6 +446,7 @@ export async function searchDetectiveOpenLibrarySeries(
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn('Series Detective Open Library query failed.', error);
+    onFailure?.(error);
       return [];
     }
   }));
@@ -460,6 +464,7 @@ export async function searchDetectiveOpenLibrarySeries(
 export async function searchDetectiveOpenLibraryAuthor(
   author: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveOpenLibraryCandidate[]> {
   const trimmed = author.trim();
   if (!trimmed) return [];
@@ -477,6 +482,7 @@ export async function searchDetectiveOpenLibraryAuthor(
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective Open Library author lookup failed.', error);
+    onFailure?.(error);
     return [];
   }
 }
@@ -497,6 +503,7 @@ export async function searchDetectiveOpenLibraryBook(
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective Open Library book lookup failed.', error);
+    onFailure?.(error);
     return [];
   }
 }
