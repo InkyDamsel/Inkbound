@@ -873,7 +873,7 @@ export const searchSeriesDetectiveHardcover = onCall(
       });
     } catch (error) {
       console.warn('Series Detective Hardcover catalog unavailable.', error);
-      return { groups: [], totalItems: 0 };
+      return { groups: [], totalItems: 0, providerStatus: 'unavailable' as const, providerErrorCode: 'upstream-failure' };
     }
   },
 );
@@ -1324,7 +1324,7 @@ async function detectivePrhAuthorCatalog(authorName: string) {
   const wanted = prhNormalize(authorName);
   const author = prhExtractAuthorCandidates(searchPayload)
     .find((candidate) => prhNormalize(candidate.name) === wanted);
-  if (!author) return { groups: [], totalItems: 0 };
+  if (!author) return { groups: [], totalItems: 0, providerStatus: 'unavailable' as const, providerErrorCode: 'upstream-failure' };
 
   const titlesPayload = await prhFetchJson(
     `/authors/${encodeURIComponent(author.authorId)}/titles`,
@@ -1407,7 +1407,7 @@ export const searchSeriesDetectivePenguinRandomHouse = onCall(
       });
     } catch (error) {
       console.warn('Series Detective Penguin Random House catalog unavailable.', error);
-      return { groups: [], totalItems: 0 };
+      return { groups: [], totalItems: 0, providerStatus: 'unavailable' as const, providerErrorCode: 'upstream-failure' };
     }
   },
 );
@@ -1426,7 +1426,7 @@ export const searchSeriesDetectiveGoogleBooks = onCall(
       return await detectiveGoogleCatalog(query, startIndex, maxResults);
     } catch (error) {
       console.warn('Series Detective Google Books catalog unavailable.', error);
-      return { totalItems: 0, items: [], seriesMetadataById: {} };
+      return { totalItems: 0, items: [], seriesMetadataById: {}, providerStatus: 'unavailable' as const, providerErrorCode: 'upstream-failure' };
     }
   },
 );
