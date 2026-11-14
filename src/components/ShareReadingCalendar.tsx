@@ -61,11 +61,19 @@ const makePng = async (month: string, books: UserBookRecord[], sessions: Reading
   const bookMap = new Map(books.map(b => [b.id, b]));
   const allBooks = [...new Set(monthSessions.map(s => s.bookId))].map(id => bookMap.get(id)).filter((b): b is UserBookRecord => Boolean(b));
   const covers = new Map<string, HTMLImageElement | null>();
+  const coverFailures = new Map<string, string>();
   await Promise.all(allBooks.map(async book => {
     // Match Bookshelf Through Time: the canonical selected edition, then the first edition.
     const edition = book.editions.find(item => item.id === book.activeEditionId) ?? book.editions[0];
     const url = edition?.coverUrl?.trim();
-    covers.set(book.id, url ? await coverImage(url) : null);
+    try {
+      const image = url ? await coverImage(url) : null;
+      covers.set(book.id, image);
+      if (!image) coverFailures.set(book.id, url ? 'Image bytes could not be decoded.' : 'Selected edition has no cover URL.');
+    } catch (error) {
+      covers.set(book.id, null);
+      coverFailures.set(book.id, error instanceof Error ? error.message : 'Image retrieval failed.');
+    }
   }));
   const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
   const count = new Date(year, monthNumber, 0).getDate();
@@ -132,8 +140,8 @@ const makePng = async (month: string, books: UserBookRecord[], sessions: Reading
   ctx.textAlign = 'center'; write(ctx, 'Created with Inkbound', width / 2, height - 48, 18, '#bca4b7', 'Arial, sans-serif');
   const missingBooks = allBooks.filter(book => !covers.get(book.id));
   if (missingBooks.length) {
-    const names = missingBooks.slice(0, 3).map(book => `“${book.work.title}”`).join(', ');
-    throw new Error(`${missingBooks.length} cover(s) could not be embedded: ${names}${missingBooks.length > 3 ? ' and others' : ''}. Export cancelled rather than saving incomplete artwork.`);
+    const details = missingBooks.slice(0, 3).map(book => `“${book.work.title}”: ${coverFailures.get(book.id) ?? 'Unknown image error'}`).join('; ');
+    throw new Error(`${missingBooks.length} cover(s) could not be embedded. ${details}${missingBooks.length > 3 ? '; and others' : ''}. Export cancelled rather than saving incomplete artwork.`);
   }
   return new Promise<Blob>((resolve, reject) => {
     try { canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create calendar PNG.')), 'image/png'); }
