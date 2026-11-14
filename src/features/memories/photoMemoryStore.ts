@@ -79,6 +79,12 @@ export async function readPhotoMemoriesFromDevice(): Promise<PhotoMemoryRecord[]
       return { ...item, imageData: await blobToDataUrl(blob) };
     }),
   );
+  const missing = hydrated.filter((item) => !item).length;
+  if (missing > 0) {
+    // A missing device blob is not a deleted memory. Never hand a partial
+    // inventory to reconciliation, where absence could become destructive.
+    throw new Error(`${missing} saved photo memory image(s) are unavailable on this device; cloud originals must be restored.`);
+  }
   return hydrated.filter((item): item is PhotoMemoryRecord => Boolean(item));
 }
 
