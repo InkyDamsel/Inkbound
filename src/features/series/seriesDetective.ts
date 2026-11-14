@@ -921,7 +921,9 @@ export async function findMissingSeriesBooks(
     seriesBooks.map((book) => comparableDetectiveTitle(book.work.title)).sort().join('|'),
   ].join('::');
 
-  let providerResultsIncomplete = false;
+  // Discovery does not yet carry reliable availability/completeness signals
+  // from every provider. Until it does, do not reuse a roster that may have
+  // silently omitted Google Books or Open Library results.
   const discoverCandidates = async (): Promise<SeriesDetectiveCandidate[]> => {
     const [
       queryCatalogs,
@@ -969,11 +971,6 @@ export async function findMissingSeriesBooks(
       searchSeriesDetectivePenguinRandomHouse(seriesName),
       searchSeriesDetectivePenguinRandomHouse(author),
     ]);
-    // Do not preserve a partial roster in the successful-discovery cache.
-    providerResultsIncomplete = [
-      hardcoverSeriesAndAuthor, hardcoverSeriesOnly, hardcoverAuthor,
-      prhSeriesAndAuthor, prhSeriesOnly, prhAuthor,
-    ].some((response) => response.providerStatus !== 'ok');
     const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
     const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
     const seen = new Map<string, SeriesDetectiveCandidate>();
@@ -1182,11 +1179,6 @@ export async function findMissingSeriesBooks(
   // Catalog discovery is the expensive part and is independent of what the
   // library currently holds, so it is cached briefly. Owned/missing is always
   // recomputed against the live library below.
-  let candidates = options.forceRefresh ? null : readSeriesCandidateCache(cacheKey);
-  if (!candidates) {
-    candidates = await discoverCandidates();
-    if (!providerResultsIncomplete) writeSeriesCandidateCache(cacheKey, candidates);
-  }
-
+  const candidates = await discoverCandidates();
   return classifySeriesCandidates(seriesName, candidates, libraryBooks);
 }
