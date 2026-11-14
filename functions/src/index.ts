@@ -232,3 +232,5 @@ export { sendPasswordResetEmail } from './sendPasswordResetEmail.js';
 export { searchSeriesDetectiveHardcover, searchSeriesDetectiveGoogleBooks, searchSeriesDetectivePenguinRandomHouse } from './seriesDetectiveCatalog.js';
 
 export { fetchShareImage } from './shareMedia.js';
+
+export { inspectAdminPhotoMemories } from './adminPhotoMemories.js';
