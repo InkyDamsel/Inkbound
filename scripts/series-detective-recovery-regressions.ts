@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
-import { buildSeriesLibrary } from '../src/features/series/seriesLibrary';
+import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
+import { summarizeSeriesRoster, type SeriesRosterEntry } from '../src/features/series/seriesDetectiveRoster';
 // Discovery from search has no owned numbered anchor: probe opening volumes.
 const unanchoredPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [] });
 assert.deepEqual(unanchoredPlan.targetPositions, [1, 2, 3, 4, 5]);
 assert.ok(unanchoredPlan.queries.includes('Sample Chronicles book 1 A. Reader'));
 assert.ok(unanchoredPlan.queries.includes('"Sample Chronicles"'));
+// Custom reading-order labels must still search by exact owned book anchors.
+const anchoredPlan = planSeriesDiscoveryQueries({
+  seriesName: 'My Reading Order', author: 'Example Author', knownPositions: [3],
+  anchorTitles: ['A Touch of Ruin'],
+});
+assert.ok(anchoredPlan.queries.includes('intitle:"A Touch of Ruin" inauthor:"Example Author"'));
+assert.ok(anchoredPlan.targetPositions.includes(1));
+assert.ok(anchoredPlan.targetPositions.includes(2));
+
 // A malformed very high position must never allocate a massive gap array.
 const distantPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [1000000000] });
 assert.deepEqual(distantPlan.targetPositions.slice(0, MAX_GAP_QUERY_TARGETS), [1, 2, 3, 4, 5]);
@@ -71,6 +81,31 @@ assert.equal(hasExplicitDetectiveSeriesBrand(
   brandedFixture('Salt & Blood: A Hades and Persephone Romance', ''),
   'Hades x Persephone',
 ), false);
+
+// Unverified catalog records must not inflate the verified missing count.
+const rosterSummary = summarizeSeriesRoster([
+  { kind: 'owned', key: 'owned', candidate: { verification: 'verified' } },
+  { kind: 'library-only', key: 'library-only' },
+  { kind: 'missing', key: 'verified-missing', candidate: { verification: 'verified' } },
+  { kind: 'missing', key: 'review', candidate: { verification: 'review' } },
+] as SeriesRosterEntry[]);
+assert.deepEqual(rosterSummary, { inLibrary: 2, missing: 1, review: 1, libraryOnly: 1, total: 4 });
+
+// Shared library normalization must agree with Detective evidence on leading articles.
+for (const [label, expected] of [
+  ['The Selection', 'selection'],
+  ['Selection', 'selection'],
+  ['A Twisted Tale', 'twisted tale'],
+  ['Twisted Tale', 'twisted tale'],
+  ['The Unhinged Love Trilogy', 'unhinged love'],
+  ['Unhinged Love', 'unhinged love'],
+] as const) {
+  assert.equal(canonicalSeriesIdentity(label), expected);
+  assert.equal(detectiveSeriesNamesCompatible(label, expected), true);
+}
+assert.equal(seriesNamesAreCompatible('The Selection', 'Selection'), true);
+assert.equal(seriesNamesAreCompatible('A Twisted Tale', 'Twisted Tale'), true);
+assert.equal(seriesNamesAreCompatible('The Heart Duology', 'The Heart of Darkness'), false);
 
 // Never infer a franchise alias or singular/plural equivalence without bibliographic evidence.
 assert.equal(detectiveSeriesNamesCompatible('Disney: A Twisted Tale', 'Twisted Tales'), false);
@@ -475,6 +510,35 @@ assert.deepEqual(
   new Set(mergedProviders[0].providerSources),
   new Set(['google-books', 'open-library']),
 );
+
+// Provider work IDs and exact ISBNs are identity evidence even when catalog
+// display titles differ. Conflicting titles must remain review-only.
+const identityFixture = mergedProviders[0];
+const sameProviderAlternateTitle = mergeDetectiveCandidates([
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:work-42', title: 'Original Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-a', isbn13: undefined, isbn10: undefined },
+    seriesStructured: true },
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:work-42', title: 'Alternate Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-b', isbn13: undefined, isbn10: undefined },
+    seriesStructured: true },
+]);
+assert.equal(sameProviderAlternateTitle.length, 1);
+assert.equal(sameProviderAlternateTitle[0].seriesStructured, false);
+
+const sharedIsbnAlternateTitle = mergeDetectiveCandidates([
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:one', title: 'Original Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-c', isbn13: '9780991132379' },
+    seriesStructured: true },
+  { ...identityFixture, provider: 'open-library', providerSources: ['open-library'],
+    work: { ...identityFixture.work, key: 'open-library:two', title: 'Alternate Title' },
+    edition: { ...identityFixture.edition, source: 'open-library', externalEditionId: 'edition-d', isbn13: '9780991132379' },
+    seriesStructured: true },
+]);
+assert.equal(sharedIsbnAlternateTitle.length, 1);
+assert.equal(sharedIsbnAlternateTitle[0].seriesStructured, false);
 
 // Shared franchise prefixes are not work identity. Distinct installments by
 // the same author must never collapse just because one title starts with the

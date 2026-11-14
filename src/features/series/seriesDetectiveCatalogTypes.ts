@@ -50,6 +50,6 @@ export interface SeriesDetectiveCatalogResponse {
   groups: SeriesDetectiveWorkGroup[];
   totalItems: number;
   /** Empty results are not proof of an empty bibliography when a provider failed. */
-  providerStatus?: 'ok' | 'unavailable';
+  providerStatus?: 'ok' | 'partial' | 'unavailable' | 'rate-limited' | 'timed-out';
   providerErrorCode?: string;
 }

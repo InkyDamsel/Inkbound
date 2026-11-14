@@ -39,6 +39,21 @@ export const detectiveCandidatesAreSameWork = (
   right: DetectiveMergeCandidate,
 ): boolean => {
   if (!sameAuthor(left.work.authors, right.work.authors)) return false;
+  // A provider's work identifier is stronger than its display title. Only
+  // compare identifiers within the same namespace; cross-provider IDs can
+  // collide accidentally. An edition ISBN is also exact shared evidence.
+  if (left.work.key && right.work.key && left.work.key === right.work.key
+    && left.work.key.startsWith(`${left.provider}:`)
+    && right.work.key.startsWith(`${right.provider}:`)) return true;
+  // A recycled or incorrect ISBN must not merge unrelated works. For
+  // different titles, require compatible explicit series membership on both
+  // records before accepting shared edition identifiers as work identity.
+  if (exactIsbnMatch(left.edition, right.edition)) {
+    const sameTitle = comparableWorkTitle(left.work.title) === comparableWorkTitle(right.work.title);
+    if (sameTitle) return true;
+    if (left.seriesName && right.seriesName
+      && detectiveSeriesNamesCompatible(left.seriesName, right.seriesName)) return true;
+  }
   const leftTitle = comparableWorkTitle(left.work.title);
   const rightTitle = comparableWorkTitle(right.work.title);
   if (!leftTitle || !rightTitle) return false;
@@ -62,13 +77,11 @@ export const detectiveCandidatesAreSameWork = (
 };
 
 const exactIsbnMatch = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean => {
-  const left13 = compactDetectiveIsbn(left.isbn13);
-  const right13 = compactDetectiveIsbn(right.isbn13);
-  if (left13 && right13) return left13 === right13;
-
-  const left10 = compactDetectiveIsbn(left.isbn10);
-  const right10 = compactDetectiveIsbn(right.isbn10);
-  return Boolean(left10 && right10 && left10 === right10);
+  const leftIds = [left.isbn13, left.isbn10].map(compactDetectiveIsbn).filter(Boolean);
+  const rightIds = [right.isbn13, right.isbn10].map(compactDetectiveIsbn).filter(Boolean);
+  // ISBN-10 and ISBN-13 are different representations; only compare equal
+  // formats here. A shared identifier is edition evidence, never a position.
+  return leftIds.some((isbn) => rightIds.includes(isbn));
 };
 
 const sameProviderEdition = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean =>
@@ -271,7 +284,11 @@ export const mergeDetectiveCandidates = (
       position: series.position,
       provider: current.provider,
       seriesProvider: series.provider,
-      seriesStructured: series.structured,
+      // Divergent titles for an identical edition/work ID may be genuine
+      // alternate titles or bad catalog metadata. Preserve the merged work,
+      // but do not promote that disputed identity into automatic bulk-add.
+      seriesStructured: comparableWorkTitle(current.work.title) !== comparableWorkTitle(incoming.work.title)
+        ? false : series.structured,
       providerSources: [...new Set([
         ...(current.providerSources ?? [current.provider]),
         ...(incoming.providerSources ?? [incoming.provider]),

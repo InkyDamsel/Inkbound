@@ -248,7 +248,7 @@ export default function App() {
         eligible.push(candidate);
         pendingWorks.push(pending);
       }
-      if (!eligible.length) { showToast('These books are already in your library.'); return; }
+      if (!eligible.length) { showToast('No verified new books to add. Candidates may need review or may already be in your library.'); return; }
       const additions = eligible.map((candidate) => {
         const created = createBookFromSearchEdition({
           work: candidate.work,

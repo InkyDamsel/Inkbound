@@ -5,6 +5,8 @@ import type { SeriesDetectiveCatalogResponse } from './seriesDetectiveCatalogTyp
 interface SeriesDetectiveHardcoverPayload {
   groups?: SeriesDetectiveCatalogResponse['groups'];
   totalItems?: number;
+  providerStatus?: SeriesDetectiveCatalogResponse['providerStatus'];
+  providerErrorCode?: string;
 }
 
 export async function searchSeriesDetectiveHardcover(
@@ -44,7 +46,8 @@ export async function searchSeriesDetectiveHardcover(
     const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
     return {
       groups,
-      providerStatus: 'ok',
+      providerStatus: response.data.providerStatus ?? 'ok',
+      providerErrorCode: response.data.providerErrorCode,
       totalItems: typeof response.data.totalItems === 'number'
         ? response.data.totalItems
         : groups.length,
