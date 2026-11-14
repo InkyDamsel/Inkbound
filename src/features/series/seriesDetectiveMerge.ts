@@ -69,13 +69,11 @@ export const detectiveCandidatesAreSameWork = (
 };
 
 const exactIsbnMatch = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean => {
-  const left13 = compactDetectiveIsbn(left.isbn13);
-  const right13 = compactDetectiveIsbn(right.isbn13);
-  if (left13 && right13) return left13 === right13;
-
-  const left10 = compactDetectiveIsbn(left.isbn10);
-  const right10 = compactDetectiveIsbn(right.isbn10);
-  return Boolean(left10 && right10 && left10 === right10);
+  const leftIds = [left.isbn13, left.isbn10].map(compactDetectiveIsbn).filter(Boolean);
+  const rightIds = [right.isbn13, right.isbn10].map(compactDetectiveIsbn).filter(Boolean);
+  // ISBN-10 and ISBN-13 are different representations; only compare equal
+  // formats here. A shared identifier is edition evidence, never a position.
+  return leftIds.some((isbn) => rightIds.includes(isbn));
 };
 
 const sameProviderEdition = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean =>
