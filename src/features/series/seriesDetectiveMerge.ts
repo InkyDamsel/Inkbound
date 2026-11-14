@@ -278,7 +278,11 @@ export const mergeDetectiveCandidates = (
       position: series.position,
       provider: current.provider,
       seriesProvider: series.provider,
-      seriesStructured: series.structured,
+      // Divergent titles for an identical edition/work ID may be genuine
+      // alternate titles or bad catalog metadata. Preserve the merged work,
+      // but do not promote that disputed identity into automatic bulk-add.
+      seriesStructured: comparableWorkTitle(current.work.title) !== comparableWorkTitle(incoming.work.title)
+        ? false : series.structured,
       providerSources: [...new Set([
         ...(current.providerSources ?? [current.provider]),
         ...(incoming.providerSources ?? [incoming.provider]),
