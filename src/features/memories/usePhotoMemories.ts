@@ -17,11 +17,17 @@ function recordsMatch(left: PhotoMemoryRecord, right: PhotoMemoryRecord) {
 export function usePhotoMemories(): [
   PhotoMemoryRecord[],
   Dispatch<SetStateAction<PhotoMemoryRecord[]>>,
+  string | null,
 ] {
   const [memories, setMemoriesState] = useState<PhotoMemoryRecord[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    void readPhotoMemoriesFromDevice().then(setMemoriesState);
+    void readPhotoMemoriesFromDevice()
+      .then((records) => { setMemoriesState(records); setLoadError(null); })
+      .catch((error: unknown) => {
+        setLoadError(error instanceof Error ? error.message : 'Saved photo memories could not be loaded.');
+      });
   }, []);
 
   useEffect(() => {
@@ -51,5 +57,5 @@ export function usePhotoMemories(): [
     });
   }, []);
 
-  return [memories, setMemories];
+  return [memories, setMemories, loadError];
 }
