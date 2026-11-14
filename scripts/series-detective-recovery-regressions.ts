@@ -24,6 +24,7 @@ assert.ok(!distantPlan.targetPositions.includes(1000000000));
 
 import { planSeriesDiscoveryQueries, MAX_GAP_QUERY_TARGETS, FORWARD_QUERY_TARGETS } from '../src/features/series/seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand } from '../src/features/series/seriesDetectiveBranding';
+import { confirmedGoogleMembershipIds } from '../src/features/series/seriesDetectiveGoogleSeriesIds';
 import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
 import {
@@ -1113,5 +1114,21 @@ assert.deepEqual(parseDetectiveOpenLibrarySeries(['Will Trent, Book Three']), {
 // Catalog edition suffixes are stripped only when the requested series agrees.
 assert.equal(comparableDetectiveTitle('Tending to the Rot (High Crest Chronicles 1)', 'High Crest Chronicles'), comparableDetectiveTitle('Tending to the Rot'));
 assert.notEqual(comparableDetectiveTitle('Tending to the Rot (High Crest Chronicles 1)', 'Grant County'), comparableDetectiveTitle('Tending to the Rot'));
+
+// Multi-series Google volumes must not authorize unrelated sibling series IDs.
+const googleMembershipCatalog = { items: [], seriesTitlesById: { correct: 'Grant County', wrong: 'Will Trent' } };
+const googleMultiMembership = { volumeInfo: { seriesInfo: { volumeSeries: [
+  { seriesId: 'correct', orderNumber: 1 }, { seriesId: 'wrong', orderNumber: 2 },
+] } } };
+assert.deepEqual(confirmedGoogleMembershipIds(googleMultiMembership, googleMembershipCatalog, 'Grant County', true), ['correct']);
+assert.deepEqual(confirmedGoogleMembershipIds(googleMultiMembership, googleMembershipCatalog, 'Unrelated Series', true), []);
+const unnamedMulti = { items: [], seriesTitlesById: {} };
+assert.deepEqual(confirmedGoogleMembershipIds(googleMultiMembership, unnamedMulti, 'Grant County', true), []);
+assert.deepEqual(confirmedGoogleMembershipIds({ volumeInfo: { seriesInfo: { volumeSeries: [
+  { seriesId: 'single' }, { seriesId: 'single' },
+] } } }, unnamedMulti, 'Grant County', true), ['single']);
+assert.deepEqual(confirmedGoogleMembershipIds({ volumeInfo: { seriesInfo: { volumeSeries: [
+  { seriesId: 'single' },
+] } } }, unnamedMulti, 'Grant County', false), []);
 
 console.log('Inkbound Series Detective recovery regressions passed.');
