@@ -294,6 +294,13 @@ export interface SeriesDetectiveOwnedEntry {
   book: UserBookRecord;
 }
 
+export interface SeriesDetectiveProviderReport {
+  provider: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
+  status: 'ok' | 'partial' | 'unavailable' | 'rate-limited' | 'timed-out';
+  errorCode?: string;
+  retrievedAt: string;
+}
+
 export interface SeriesDetectiveResult {
   seriesName: string;
   candidates: SeriesDetectiveCandidate[];
@@ -301,6 +308,7 @@ export interface SeriesDetectiveResult {
   /** Catalog candidates already in the library (additive; `missing` is unchanged). */
   owned: SeriesDetectiveOwnedEntry[];
   completeness?: 'complete' | 'partial' | 'unavailable' | 'conflict';
+  providerReports?: SeriesDetectiveProviderReport[];
 }
 
 export interface FindMissingSeriesOptions {
@@ -903,6 +911,7 @@ export async function findMissingSeriesBooks(
   // Discovery does not yet carry reliable availability/completeness signals
   // from every provider. Until it does, do not reuse a roster that may have
   // silently omitted Google Books or Open Library results.
+  const providerReports: SeriesDetectiveProviderReport[] = [];
   const discoverCandidates = async (): Promise<SeriesDetectiveCandidate[]> => {
     const [
       queryCatalogs,
@@ -950,6 +959,25 @@ export async function findMissingSeriesBooks(
       searchSeriesDetectivePenguinRandomHouse(seriesName),
       searchSeriesDetectivePenguinRandomHouse(author),
     ]);
+    const retrievedAt = new Date().toISOString();
+    const summarizeProvider = (
+      provider: SeriesDetectiveProviderReport['provider'],
+      results: Array<{ providerStatus?: SeriesDetectiveProviderReport['status']; providerErrorCode?: string }>,
+    ) => {
+      const failed = results.filter((result) => result.providerStatus !== 'ok');
+      providerReports.push({
+        provider,
+        status: failed.length ? (failed.length === results.length ? 'unavailable' : 'partial') : 'ok',
+        errorCode: failed.map((result) => result.providerErrorCode).find(Boolean),
+        retrievedAt,
+      });
+    };
+    summarizeProvider('hardcover', [hardcoverSeriesAndAuthor, hardcoverSeriesOnly, hardcoverAuthor]);
+    summarizeProvider('penguin-random-house', [prhSeriesAndAuthor, prhSeriesOnly, prhAuthor]);
+    // Google and Open Library currently swallow some individual lookup errors.
+    // Never advertise them as healthy until all failure paths are instrumented.
+    providerReports.push({ provider: 'google-books', status: 'partial', errorCode: 'coverage-not-measured', retrievedAt });
+    providerReports.push({ provider: 'open-library', status: 'partial', errorCode: 'coverage-not-measured', retrievedAt });
     const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
     const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
     const seen = new Map<string, SeriesDetectiveCandidate>();
@@ -1197,5 +1225,9 @@ export async function findMissingSeriesBooks(
   // pagination/completeness signals. Ownership is classified against the live
   // library for each request.
   const candidates = await discoverCandidates();
-  return classifySeriesCandidates(seriesName, candidates, libraryBooks);
+  const result = classifySeriesCandidates(seriesName, candidates, libraryBooks);
+  result.providerReports = providerReports;
+  result.completeness = providerReports.every((report) => report.status === 'unavailable')
+    ? 'unavailable' : 'partial';
+  return result;
 }
