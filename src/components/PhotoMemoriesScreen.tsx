@@ -239,9 +239,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
             );
           })}
         </div>
-      )}
-
-      )}
+      ))}
 
       {selectedMemory && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/90 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label={selectedMemory.caption || 'Photo memory'} onClick={() => setSelectedMemory(null)}>
