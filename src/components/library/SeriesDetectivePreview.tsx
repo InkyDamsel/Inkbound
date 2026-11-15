@@ -95,6 +95,20 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
             `${report.provider}: ${report.status}${report.errorCode ? ` (${report.errorCode})` : ''}`).join(' · ')}</p>
         </div>
       )}
+      {result?.discoveryDiagnostics && (
+        <details className="mt-3 rounded-xl border border-[var(--ink-border-subtle)] p-3 text-xs text-[var(--ink-muted)]">
+          <summary className="cursor-pointer font-semibold">Discovery details</summary>
+          <p className="mt-2">
+            {result.discoveryDiagnostics.discovered} provider records · {result.discoveryDiagnostics.merged} merged candidates · {result.discoveryDiagnostics.admitted} admitted
+          </p>
+          <p className="mt-1">
+            Excluded: {result.discoveryDiagnostics.rejectedSeries} series mismatch, {result.discoveryDiagnostics.rejectedAuthor} author mismatch, {result.discoveryDiagnostics.rejectedEvidence} insufficient evidence.
+          </p>
+          {result.candidates.length === 0 && (
+            <p className="mt-2">No actionable roster was established. This does not prove that the series has no other books.</p>
+          )}
+        </details>
+      )}
       {roster && (
         <SeriesDetectiveRoster
           entries={roster}
