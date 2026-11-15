@@ -40,6 +40,8 @@ export interface DetectiveEvidenceClaim {
   readonly id: string;
   readonly provider: DetectiveProviderId;
   readonly sourceRecordId: string;
+  /** Operation that actually produced this claim; never borrow another operation's health. */
+  readonly sourceOperation?: string;
   readonly kind: DetectiveClaimKind;
   /** Source-native IDs stay source-native; do not conflate works and editions. */
   readonly subjectId: string;
@@ -92,6 +94,7 @@ export function assembleDetectiveEvidenceSnapshot(
     const existing = byId.get(claim.id);
     if (existing && (existing.provider !== claim.provider
       || existing.sourceRecordId !== claim.sourceRecordId
+      || existing.sourceOperation !== claim.sourceOperation
       || existing.kind !== claim.kind
       || existing.subjectId !== claim.subjectId
       || existing.objectId !== claim.objectId
