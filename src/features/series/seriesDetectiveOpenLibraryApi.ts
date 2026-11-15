@@ -326,8 +326,9 @@ const fetchWorkEditions = async (
         return editions;
       })
       .catch((error) => {
-        if (signal?.aborted) throw error;
-        return [];
+        // Do not cache failed edition lookups as successful empty responses.
+        // Propagate the failure so the caller can report incomplete discovery.
+        throw error;
       })
       .finally(() => workEditionInFlight.delete(path));
     workEditionInFlight.set(path, pending);
@@ -339,6 +340,7 @@ const hydrateWorksFromEditionDetails = async (
   works: OpenLibraryWork[],
   limit: number,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<OpenLibraryWork[]> => {
   // Cap concurrent edition lookups. The previous Promise.all fan-out could
   // launch 20-30 requests at once and trigger rate limits.
@@ -362,7 +364,14 @@ const hydrateWorksFromEditionDetails = async (
     parseDetectiveOpenLibrarySeries(safeSeriesValues(edition.series))?.position != null);
   if (hasSeries && hasPositionedEdition) return work;
 
-  const detailed = await fetchWorkEditions(work.key, signal);
+  let detailed: OpenLibraryEdition[];
+  try {
+    detailed = await fetchWorkEditions(work.key, signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    onFailure?.(error);
+    return work;
+  }
   if (!detailed.length) return work;
 
   const seen = new Set(existing.map((edition) => edition.key).filter(Boolean));
@@ -402,7 +411,7 @@ export async function searchDetectiveOpenLibraryContext(
 ): Promise<DetectiveOpenLibraryContextCandidate[]> {
   const params = new URLSearchParams({ q: allowOtherAuthors ? seriesName : `${seriesName} ${author}`.trim() });
   try {
-    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 12, signal);
+    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 12, signal, onFailure);
     const wantedAuthor = canonicalDetectiveAuthor(author);
 
     return works.flatMap((work) => {
@@ -491,7 +500,7 @@ export async function searchDetectiveOpenLibrarySeries(
   const results = await Promise.all(queries.map(async (params) => {
     try {
       const works = await fetchOpenLibrary(params, signal);
-      return hydrateWorksFromEditionDetails(works, 12, signal);
+      return hydrateWorksFromEditionDetails(works, 12, signal, onFailure);
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn('Series Detective Open Library query failed.', error);
