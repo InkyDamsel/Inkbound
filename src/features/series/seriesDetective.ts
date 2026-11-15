@@ -38,6 +38,7 @@ import {
 } from './seriesDetectiveOpenLibraryApi';
 import {
   mergeDetectiveCandidates,
+  detectiveCandidatesAreSameWork,
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
 import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiveQueryPlan';
@@ -1167,6 +1168,21 @@ export async function findMissingSeriesBooks(
       ),
     };
 
+    // Independently count explicit provider memberships BEFORE merge. A merged
+    // providerSources array may include title-only records; it is not proof
+    // that two sources actually asserted series membership.
+    const corroboratingMemberships = (candidate: DetectiveMergeCandidate) => {
+      const matching = providerCandidates.filter(source =>
+        source.seriesStructured === true
+        && source.seriesName
+        && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
+        && detectiveCandidatesAreSameWork(source, candidate));
+      const providers = new Set(matching.map(source => source.seriesProvider ?? source.provider));
+      const positions = new Set(matching.map(source => source.position)
+        .filter((position): position is number => typeof position === 'number' && Number.isFinite(position)));
+      return { providers: providers.size, conflictingOrder: positions.size > 1 };
+    };
+
     mergedProviderCandidates.forEach((candidate) => {
       if (isSeriesMetadataRecord(candidate, seriesName)) {
         diagnostics.rejectedEvidence += 1;
@@ -1218,9 +1234,11 @@ export async function findMissingSeriesBooks(
       // A single provider's numbered membership is discovery evidence, not
       // independent verification. Preserve the candidate for review instead
       // of silently granting bulk-add eligibility.
+      const membershipEvidence = corroboratingMemberships(candidate);
       const verification: 'verified' | 'review' =
         !anchoredAlias && candidate.seriesStructured && compatibleSeries
-        && independentlyCorroborated ? 'verified' : 'review';
+        && membershipEvidence.providers >= 2 && !membershipEvidence.conflictingOrder
+          ? 'verified' : 'review';
 
       addCandidate({
         work: candidate.work,
