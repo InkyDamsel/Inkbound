@@ -1,3 +1,4 @@
+import { classifyDetectiveSeriesLabel } from './seriesDetectiveLabelClassifier';
 import {
   assembleDetectiveEvidenceSnapshot,
   type DetectiveEvidenceClaim,
@@ -38,25 +39,29 @@ export function replayDetectiveEvidence(input: DetectiveReplayInput): DetectiveR
   const unavailable = snapshot.providerObservations.some(item => item.state !== 'ok');
   const decisions: DetectiveEvidenceDecision[] = [];
   for (const [subjectId, claims] of [...bySubject].sort(([a], [b]) => a.localeCompare(b))) {
-    const seriesIds = new Set(claims.filter(hasSeriesIdentity).map(claim => claim.objectId));
+    const qualifying = claims.filter(claim => hasSeriesIdentity(claim)
+      && classifyDetectiveSeriesLabel(claim.value) !== 'publisher-collection');
+    const excluded = claims.filter(claim => classifyDetectiveSeriesLabel(claim.value) === 'publisher-collection');
+    const seriesIds = new Set(qualifying.map(claim => claim.objectId));
     const conflicting = seriesIds.size > 1;
-    const structured = claims.filter(claim => claim.structured && hasSeriesIdentity(claim));
+    const structured = qualifying.filter(claim => claim.structured);
     const corroborated = new Set(structured.map(claim => claim.provider)).size >= 2;
     // This is a deliberately conservative first policy: a single structured
     // claim cannot verify without corroboration. Never count multiple records
     // from one provider as independent agreement.
     const verified = !conflicting && corroborated;
-    const supportingClaimIds = claims.filter(claim => !conflicting && hasSeriesIdentity(claim))
+    const supportingClaimIds = qualifying.filter(claim => !conflicting)
       .map(claim => claim.id).sort();
     const conflictingClaimIds = conflicting ? claims.map(claim => claim.id).sort() : [];
     const reasonCodes: DetectiveEvidenceDecision['reasonCodes'][number][] = [];
+    if (excluded.length) reasonCodes.push('publisher-collection');
     if (conflicting) reasonCodes.push('conflicting-evidence');
     else if (verified) reasonCodes.push('corroborated-membership');
     else reasonCodes.push('unverified-membership');
     if (!verified && unavailable) reasonCodes.push('provider-unavailable');
     decisions.push({
       subjectId,
-      status: verified ? 'verified' : 'review',
+      status: excluded.length && qualifying.length === 0 ? 'rejected' : verified ? 'verified' : 'review',
       reasonCodes,
       supportingClaimIds,
       conflictingClaimIds,
