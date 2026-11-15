@@ -61,7 +61,9 @@ export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplay
     const labels = new Set(claims.map(claim => claim.value.normalize('NFKC').trim().toLowerCase()));
     const positions = new Set(claims.map(claim => claim.position)
       .filter((position): position is number => typeof position === 'number' && Number.isFinite(position)));
-    const conflict = labels.size > 1 || positions.size > 1;
+    const invalidPositions = claims.some(claim => claim.position != null
+      && (!Number.isSafeInteger(claim.position) || claim.position <= 0));
+    const conflict = labels.size > 1 || positions.size > 1 || invalidPositions;
     const excluded = claims.every(claim => classifyDetectiveSeriesLabel(claim.value) === 'publisher-collection');
     const anchored = anchoredSeries.has(membership.canonicalSeriesId);
     // A source's identity claims are only useful when the same source has
@@ -80,7 +82,7 @@ export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplay
     const positionedProviders = new Set(claims.filter(claim =>
       typeof claim.position === 'number' && Number.isFinite(claim.position))
       .map(claim => claim.provider));
-    if ((positionedProviders.size < 2 || positions.size !== 1) && !excluded) reasonCodes.push('unverified-order');
+    if ((positionedProviders.size < 2 || positions.size !== 1 || invalidPositions) && !excluded) reasonCodes.push('unverified-order');
     decisions.push({
       subjectId: membership.canonicalWorkId + '::' + membership.canonicalSeriesId,
       status: excluded ? 'rejected' : verified ? 'verified' : 'review',
