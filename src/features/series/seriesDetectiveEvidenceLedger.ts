@@ -90,10 +90,24 @@ export function assembleDetectiveEvidenceSnapshot(
       throw new Error('Series Detective evidence claim is missing provenance.');
     }
     const existing = byId.get(claim.id);
-    if (existing && JSON.stringify(existing) !== JSON.stringify(claim)) {
+    if (existing && (existing.provider !== claim.provider
+      || existing.sourceRecordId !== claim.sourceRecordId
+      || existing.kind !== claim.kind
+      || existing.subjectId !== claim.subjectId
+      || existing.objectId !== claim.objectId
+      || existing.value !== claim.value
+      || existing.position !== claim.position
+      || existing.structured !== claim.structured
+      || existing.sourceField !== claim.sourceField)) {
       throw new Error(`Conflicting Series Detective evidence claim ID: ${claim.id}`);
     }
     byId.set(claim.id, claim);
+  }
+  for (const observation of observations) {
+    if (!observation.operation.trim() || !Number.isSafeInteger(observation.recordCount)
+      || observation.recordCount < 0) {
+      throw new Error('Series Detective provider observation is invalid.');
+    }
   }
   return {
     schemaVersion: 1,
