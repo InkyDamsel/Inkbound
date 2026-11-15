@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { resolveDetectiveMembershipIdentities } from '../src/features/series/seriesDetectiveIdentityResolution';
 import { replayDetectiveEvidence } from '../src/features/series/seriesDetectiveReplay';
 import { classifyDetectiveSeriesLabel } from '../src/features/series/seriesDetectiveLabelClassifier';
 import type { DetectiveEvidenceClaim, DetectiveProviderObservation } from '../src/features/series/seriesDetectiveEvidenceLedger';
@@ -51,3 +52,40 @@ for (let i = 0; i < 100; i++) {
   }));
 }
 console.log('Series Detective V2 isolated replay checks passed.');
+
+/**
+ * Identity resolution is intentionally NOT yet connected to the legacy
+ * verifier. These tests establish the canonicalization contract before cutover.
+ */
+const nativeOl = claim('ol-native', 'open-library', '/works/OL1W', 'ol:series:7', 'The Shining');
+const nativeHc = claim('hc-native', 'hardcover', 'hc:work:42', 'hc:series:99', 'The Shining');
+const identityMappings = [
+  {
+    provider: 'open-library' as const, nativeWorkId: '/works/OL1W', nativeSeriesId: 'ol:series:7',
+    canonicalWorkId: 'canonical:work:1', canonicalSeriesId: 'canonical:series:1',
+    identityEvidenceIds: ['identity:ol:1'],
+  },
+  {
+    provider: 'hardcover' as const, nativeWorkId: 'hc:work:42', nativeSeriesId: 'hc:series:99',
+    canonicalWorkId: 'canonical:work:1', canonicalSeriesId: 'canonical:series:1',
+    identityEvidenceIds: ['identity:hc:1'],
+  },
+];
+const resolvedNative = resolveDetectiveMembershipIdentities([nativeOl, nativeHc], identityMappings);
+assert.equal(resolvedNative.memberships.length, 1);
+assert.deepEqual(resolvedNative.memberships[0].claims.map(item => item.id), ['hc-native', 'ol-native']);
+assert.deepEqual(resolvedNative.unresolvedClaimIds, []);
+assert.deepEqual(resolveDetectiveMembershipIdentities([nativeOl, nativeHc], []).unresolvedClaimIds,
+  ['hc-native', 'ol-native'], 'Matching series labels alone must not canonicalize provider identities');
+assert.deepEqual(resolveDetectiveMembershipIdentities([nativeOl, nativeHc], [
+  ...identityMappings,
+  { ...identityMappings[1], canonicalSeriesId: 'canonical:series:other' },
+]).conflictingClaimIds, ['hc-native'], 'Contradictory identity mappings must fail closed');
+const multiSeries = resolveDetectiveMembershipIdentities([
+  nativeOl, { ...nativeOl, id: 'ol-second', objectId: 'ol:series:8', value: 'Related Series' },
+], [...identityMappings, {
+  ...identityMappings[0], nativeSeriesId: 'ol:series:8',
+  canonicalSeriesId: 'canonical:series:2', identityEvidenceIds: ['identity:ol:2'],
+}]);
+assert.equal(multiSeries.memberships.length, 2, 'Legitimate dual-series membership must not collapse');
+console.log('Series Detective provider-independent identity join checks passed.');
