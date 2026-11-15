@@ -728,12 +728,7 @@ export async function detectSeriesForBook(
       recordId: `merged:${normalizeDetectiveText(candidate.work.title)}:${canonicalDetectiveAuthor(candidate.work.authors[0])}`,
       providerId: candidate.seriesProvider ?? candidate.provider,
       providerCount: candidate.providerSources?.length ?? 1,
-      structured: candidate.seriesStructured === true
-        || [candidate.work.title, candidate.edition.title, candidate.work.subtitle, candidate.edition.subtitle]
-          .some((value) => {
-            const explicit = inferDetectiveSeriesFromTitle(value);
-            return Boolean(explicit && detectiveSeriesNamesCompatible(explicit.name, candidate.seriesName));
-          }),
+      structured: candidate.seriesStructured === true,
       exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
         .map(compactDetectiveIsbn)
         .filter(Boolean)
@@ -1187,7 +1182,9 @@ export async function findMissingSeriesBooks(
       const anchored = seriesBooks.some((book) =>
         comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(candidate.work.title)
         && candidate.work.authors.some((name) => detectiveAuthorsCompatible(book.work.author, name)));
-      if (anchored) anchoredSeriesAliases.add(canonicalDetectiveSeries(candidate.seriesName));
+      if (anchored && !detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)) {
+        anchoredSeriesAliases.add(canonicalDetectiveSeries(candidate.seriesName));
+      }
     }
 
     mergedProviderCandidates.forEach((candidate) => {
@@ -1217,7 +1214,9 @@ export async function findMissingSeriesBooks(
         || ownedAuthors.some((ownedAuthor) => detectiveAuthorsCompatible(ownedAuthor, name)));
       // Cross-author anthologies are legitimate, but a shared title phrase
       // is not enough to admit a different author's unrelated work.
-      if (!matchingAuthor && !(candidate.seriesStructured && anchoredAlias)) {
+      const compatibleSeries = detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName);
+      const crossAuthorMembership = candidate.seriesStructured && compatibleSeries && verifiedMultiAuthorBrand;
+      if (!matchingAuthor && !crossAuthorMembership && !(candidate.seriesStructured && anchoredAlias)) {
         diagnostics.rejectedAuthor += 1;
         return;
       }
@@ -1230,8 +1229,14 @@ export async function findMissingSeriesBooks(
       // providers may repeat the same title/description branding. Require
       // explicit structured series evidence as well as corroboration before
       // offering bulk addition. Brand-only discoveries remain reviewable.
+      // An authoritative structured membership with a real installment number
+      // can verify independently; weak/unnumbered metadata still needs corroboration.
+      // Aliases and title branding never grant automatic verification.
+      const strongStructured = candidate.seriesStructured && candidate.position !== null
+        && compatibleSeries && (matchingAuthor || crossAuthorMembership);
       const verification: 'verified' | 'review' =
-        candidate.seriesStructured && independentlyCorroborated && !anchoredAlias ? 'verified' : 'review';
+        !anchoredAlias && candidate.seriesStructured && compatibleSeries
+        && (strongStructured || independentlyCorroborated) ? 'verified' : 'review';
 
       addCandidate({
         work: candidate.work,
