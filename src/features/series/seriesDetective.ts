@@ -1175,21 +1175,6 @@ export async function findMissingSeriesBooks(
       ),
     };
 
-    // The user's manually curated reading-order label may differ from the
-    // publisher's series name. Only an exact owned title + compatible author
-    // with structured provider membership can establish an external alias.
-    // This never rewrites the user's saved series or installment positions.
-    const anchoredSeriesAliases = new Set<string>();
-    for (const candidate of mergedProviderCandidates) {
-      if (!candidate.seriesStructured || !candidate.seriesName) continue;
-      const anchored = seriesBooks.some((book) =>
-        comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(candidate.work.title)
-        && candidate.work.authors.some((name) => detectiveAuthorsCompatible(book.work.author, name)));
-      if (anchored && !detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)) {
-        anchoredSeriesAliases.add(canonicalDetectiveSeries(candidate.seriesName));
-      }
-    }
-
     mergedProviderCandidates.forEach((candidate) => {
       if (isSeriesMetadataRecord(candidate, seriesName)) {
         diagnostics.rejectedEvidence += 1;
@@ -1204,9 +1189,12 @@ export async function findMissingSeriesBooks(
         && (hasMergedKnownSeriesContext(candidate, seriesName)
           || explicitBrand);
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
-      const anchoredAlias = Boolean(candidate.seriesStructured && resolvedSeriesName
-        && anchoredSeriesAliases.has(canonicalDetectiveSeries(resolvedSeriesName)));
-      if (!resolvedSeriesName || (!detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName) && !anchoredAlias)) {
+      // A seed work may belong to multiple related series. Its membership in
+      // another series cannot authorize relabeling all sibling works into the
+      // requested roster. Preserve cross-series evidence for future review,
+      // but do not promote it to an actionable candidate.
+      const anchoredAlias = false;
+      if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) {
         diagnostics.rejectedSeries += 1;
         return;
       }
