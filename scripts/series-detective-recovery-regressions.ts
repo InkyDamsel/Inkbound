@@ -1131,4 +1131,19 @@ assert.deepEqual(confirmedGoogleMembershipIds({ volumeInfo: { seriesInfo: { volu
   { seriesId: 'single' },
 ] } } }, unnamedMulti, 'Grant County', false), []);
 
+// A reused provider edition ID with contradictory ISBNs must never create
+// a synthetic edition containing identifiers from two different books.
+const reusedProviderEditionId = mergeDetectiveCandidates([
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'reused-edition', isbn13: '9780000000001', isbn10: undefined } },
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'reused-edition', isbn13: '9780000000002', isbn10: undefined } },
+]);
+assert.equal(reusedProviderEditionId.length, 1);
+assert.equal(reusedProviderEditionId[0].work.editions.length, 2);
+assert.deepEqual(new Set(reusedProviderEditionId[0].work.editions.map(edition => edition.isbn13)),
+  new Set(['9780000000001', '9780000000002']));
+
 console.log('Inkbound Series Detective recovery regressions passed.');
