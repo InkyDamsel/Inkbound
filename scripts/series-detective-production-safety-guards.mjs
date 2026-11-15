@@ -12,6 +12,8 @@ const legacy = read('src/features/series/seriesDetective.ts');
 assert.match(ol, /const hasPositionedEdition = existing\.some/);
 assert.match(ol, /const concurrency = 4;/);
 assert.match(ol, /const fetchWithDeadline = async/);
+assert.match(ol, /const body = await response\.text\(\);/);
+assert.match(ol, /if \(!response\.ok\) throw new Error\(`Open Library edition lookup failed/);
 assert.match(ol, /setTimeout\(\(\) => controller\.abort\(\), 10000\)/);
 assert.match(ol, /fetchWithDeadline\(`\$\{ENDPOINT\}/);
 assert.match(ol, /fetchWithDeadline\(`https:\/\/openlibrary\.org/);
