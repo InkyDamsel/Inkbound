@@ -1,4 +1,5 @@
 import { isSeriesDetectiveAvailable } from '../../features/series/seriesDetectiveAvailability';
+import { allowProductionFirebaseFunctions } from '../../lib/firebase';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { resolveEffectiveSeriesMetadata } from '../../features/series/seriesLibrary';
