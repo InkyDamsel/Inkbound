@@ -34,4 +34,6 @@ assert.ok(legacy.includes('if (!resolvedSeriesName || !detectiveSeriesNamesCompa
 assert.doesNotMatch(merge, /if \(left\.seriesName && right\.seriesName\s*&& detectiveSeriesNamesCompatible\(left\.seriesName, right\.seriesName\)\) return true;/);
 assert.match(preview, /result\?\.discoveryDiagnostics/);
 assert.match(preview, /No actionable roster was established/);
+assert.match(legacy, /!titleKey \|\| !comparableDetectiveTitle\(existing\.work\.title, existing\.seriesName\)/);
+assert.match(legacy, /comparableDetectiveTitle\(existing\.work\.title, existing\.seriesName\) === titleKey/);
 console.log('Series Detective production safety source guards passed (not behavioral verification).');
