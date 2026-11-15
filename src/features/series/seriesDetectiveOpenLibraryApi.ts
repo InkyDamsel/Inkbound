@@ -535,7 +535,7 @@ export async function searchDetectiveOpenLibraryAuthor(
       works.push(...pageWorks);
       if (pageWorks.length < 100) break;
     }
-    const hydrated = await hydrateWorksFromEditionDetails(works, 20, signal);
+    const hydrated = await hydrateWorksFromEditionDetails(works, 20, signal, onFailure);
     return flattenCandidates(hydrated, undefined, author);
   } catch (error) {
     if (signal?.aborted) throw error;
@@ -553,7 +553,7 @@ export async function searchDetectiveOpenLibraryBook(
 ): Promise<DetectiveOpenLibraryCandidate[]> {
   const params = new URLSearchParams({ title: title.trim(), author: author.trim() });
   try {
-    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 8, signal);
+    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 8, signal, onFailure);
     return flattenCandidates(works, undefined, author)
       .filter((candidate) =>
         comparableDetectiveTitle(candidate.work.title) === comparableDetectiveTitle(title)
