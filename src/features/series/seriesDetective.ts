@@ -1022,18 +1022,10 @@ export async function findMissingSeriesBooks(
           && detectiveSeriesNamesCompatible(verified.seriesName, seriesName)));
       });
     });
-    catalogs.forEach((catalog) => {
-      catalog.items.forEach((volume) => {
-        const verified = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
-        if (
-          !verified?.seriesName
-          || !detectiveSeriesNamesCompatible(verified.seriesName, seriesName)
-          || !verified.work.authors.some((name) => detectiveAuthorsCompatible(author, name))
-          || !verified.seriesStructured
-        ) return;
-        seedGoogleSeriesIds(volume, catalog, true);
-      });
-    });
+    // Do not allow arbitrary search results to seed a series ID. Only an
+    // exact owned-work title/author anchor above can establish the ID;
+    // otherwise unrelated search hits could launder their siblings into
+    // verified membership.
 
     catalogs.forEach((catalog) => {
       catalog.items.forEach((volume) => {
