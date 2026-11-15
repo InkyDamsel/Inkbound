@@ -1134,13 +1134,17 @@ assert.deepEqual(confirmedGoogleMembershipIds({ volumeInfo: { seriesInfo: { volu
 
 // A reused provider edition ID with contradictory ISBNs must never create
 // a synthetic edition containing identifiers from two different books.
+const reusedEditionOne = { ...identityFixture.edition, source: 'google-books' as const,
+  externalEditionId: 'reused-edition', isbn13: '9780000000001', isbn10: undefined };
+const reusedEditionTwo = { ...identityFixture.edition, source: 'google-books' as const,
+  externalEditionId: 'reused-edition', isbn13: '9780000000002', isbn10: undefined };
 const reusedProviderEditionId = mergeDetectiveCandidates([
   { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
-    work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work' },
-    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'reused-edition', isbn13: '9780000000001', isbn10: undefined } },
+    work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work', editions: [reusedEditionOne] },
+    edition: reusedEditionOne },
   { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
-    work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work' },
-    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'reused-edition', isbn13: '9780000000002', isbn10: undefined } },
+    work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work', editions: [reusedEditionTwo] },
+    edition: reusedEditionTwo },
 ]);
 assert.equal(reusedProviderEditionId.length, 1);
 assert.equal(reusedProviderEditionId[0].work.editions.length, 2);
