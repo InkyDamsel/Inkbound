@@ -756,6 +756,7 @@ const conflictingOrder = mergeDetectiveCandidates([
 assert.equal(conflictingOrder.length, 1);
 assert.equal(detectiveSeriesNamesCompatible(conflictingOrder[0].seriesName, 'Example Saga'), true);
 assert.equal(conflictingOrder[0].position, null);
+assert.equal(conflictingOrder[0].seriesStructured, false, 'Conflicting structured installment numbers must remain review-only');
 
 // Bibliographic suffixes may vary by provider without splitting one work.
 const suffixMerge = mergeDetectiveCandidates([
