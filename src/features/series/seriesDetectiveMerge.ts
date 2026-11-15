@@ -51,8 +51,9 @@ export const detectiveCandidatesAreSameWork = (
   if (exactIsbnMatch(left.edition, right.edition)) {
     const sameTitle = comparableWorkTitle(left.work.title) === comparableWorkTitle(right.work.title);
     if (sameTitle) return true;
-    if (left.seriesName && right.seriesName
-      && detectiveSeriesNamesCompatible(left.seriesName, right.seriesName)) return true;
+    // An ISBN can be misassigned or reused in provider metadata. Two
+    // differently titled works must not collapse merely because they share
+    // a series label; this hides legitimate installments from discovery.
   }
   const leftTitle = comparableWorkTitle(left.work.title);
   const rightTitle = comparableWorkTitle(right.work.title);
