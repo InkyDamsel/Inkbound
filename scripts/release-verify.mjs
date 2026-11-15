@@ -6,6 +6,7 @@ const npmCommand = isWindows ? 'npm' : 'npm';
 const checks = [
   { id: 'lint', label: 'TypeScript / lint', script: 'lint' },
   { id: 'custom-library-order', label: 'Custom library ordering regressions', script: 'test:custom-library-order' },
+  { id: 'series-detective', label: 'Series Detective integration and V2 replay regressions', script: 'test:series:integration' },
   { id: 'critical-reading', label: 'Critical reading regressions', script: 'test:critical:reading' },
   { id: 'reporting-math', label: 'Reporting math regressions', script: 'test:critical:reporting' },
   { id: 'catalog', label: 'Catalog / ISBN regressions', script: 'test:critical:catalog' },
