@@ -47,8 +47,13 @@ export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplay
   const resolution = resolveDetectiveMembershipIdentities(provenance.admissibleClaims, evidencedMappings);
   const anchor = input.seedCanonicalWorkId.trim();
   // A seed is an identity anchor, not merely a book ID or a search query.
+  // A single provider cannot establish the seed's canonical series
+  // identity for the entire roster. Require independent structured evidence.
   const anchoredSeries = new Set(anchor ? resolution.memberships
-    .filter(membership => membership.canonicalWorkId === anchor)
+    .filter(membership => membership.canonicalWorkId === anchor
+      && new Set(membership.claims.filter(claim => claim.structured)
+        .map(claim => claim.provider)).size >= 2
+      && new Set(membership.claims.map(claim => claim.value.normalize('NFKC').trim().toLowerCase())).size === 1)
     .map(membership => membership.canonicalSeriesId) : []);
   const decisions: DetectiveEvidenceDecision[] = [];
   for (const membership of resolution.memberships) {
