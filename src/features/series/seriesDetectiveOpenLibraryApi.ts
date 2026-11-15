@@ -173,6 +173,14 @@ export const parseDetectiveOpenLibrarySeries = (
   };
 };
 
+// Publisher collection identifiers (e.g. "rororo 23230") are not literary series.
+export const plausibleOpenLibrarySeriesName = (name: string): boolean => {
+  const normalized = name.trim();
+  if (!normalized || /^\\d+[\\s./-]*\\d*$/.test(normalized)) return false;
+  if (/^(?:rororo|isbn|issn|penguin classics|harpercollins|random house)\\s*[#.: -]*\\d+$/i.test(normalized)) return false;
+  return !/^(?:volume|book|part|series)\\s*#?\\d+$/i.test(normalized);
+};
+
 const mapCandidate = (
   work: OpenLibraryWork,
   edition: OpenLibraryEdition,
@@ -192,10 +200,10 @@ const mapCandidate = (
   ].flatMap((value) => value.split(';').map((part) => part.trim()).filter(Boolean));
   const memberships = seriesValues
     .map((value) => parseDetectiveOpenLibrarySeries([value]))
-    .filter((value): value is NonNullable<typeof value> => value !== null);
+    .filter((value): value is NonNullable<typeof value> => value !== null && plausibleOpenLibrarySeriesName(value.name));
   const metadata = wantedSeriesName
     ? memberships.find((value) => detectiveSeriesNamesCompatible(value.name, wantedSeriesName))
-    : memberships[0];
+    : memberships.find((value) => value.position !== null) ?? memberships[0];
   if (!metadata) return null;
 
   const authors = work.author_name?.length ? work.author_name : ['Unknown author'];
