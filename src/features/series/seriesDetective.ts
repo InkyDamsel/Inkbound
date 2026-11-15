@@ -1187,6 +1187,7 @@ export async function findMissingSeriesBooks(
         providers: providers.size,
         conflictingOrder: positions.size > 1,
         corroboratedOrder: positions.size === 1 && positionedProviders.size >= 2,
+        agreedPosition: positions.size === 1 && positionedProviders.size >= 2 ? [...positions][0] : null,
       };
     };
 
@@ -1255,7 +1256,7 @@ export async function findMissingSeriesBooks(
         seriesName: anchoredAlias ? seriesName : resolvedSeriesName,
         // A single catalog's ordinal is not a verified reading order.
         // Retain unknown order instead of presenting a misleading number.
-        position: membershipEvidence.corroboratedOrder ? candidate.position : null,
+        position: membershipEvidence.agreedPosition,
         verification,
       });
     });
