@@ -272,7 +272,11 @@ const fetchWithDeadline = async (url: string, signal?: AbortSignal): Promise<Res
   else signal?.addEventListener('abort', onAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    return await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+    const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+    // Read the response body before releasing the deadline. A stalled JSON
+    // stream must not leave discovery waiting indefinitely.
+    const body = await response.text();
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener('abort', onAbort);
@@ -316,7 +320,7 @@ const fetchWorkEditions = async (
   if (!pending) {
     pending = fetchWithDeadline(`https://openlibrary.org${path}/editions.json?limit=30`, signal)
       .then(async (response) => {
-        if (!response.ok) return [];
+        if (!response.ok) throw new Error(`Open Library edition lookup failed (${response.status}).`);
         const payload = await response.json() as { entries?: OpenLibraryEdition[] };
         const editions = payload.entries ?? [];
         workEditionCache.set(path, {
@@ -324,11 +328,6 @@ const fetchWorkEditions = async (
           editions,
         });
         return editions;
-      })
-      .catch((error) => {
-        // Do not cache failed edition lookups as successful empty responses.
-        // Propagate the failure so the caller can report incomplete discovery.
-        throw error;
       })
       .finally(() => workEditionInFlight.delete(path));
     workEditionInFlight.set(path, pending);
