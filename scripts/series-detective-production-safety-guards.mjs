@@ -10,6 +10,8 @@ const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8'
 const ol = read('src/features/series/seriesDetectiveOpenLibraryApi.ts');
 const legacy = read('src/features/series/seriesDetective.ts');
 assert.match(ol, /const hasPositionedEdition = existing\.some/);
+assert.match(ol, /const concurrency = 4;/);
+assert.doesNotMatch(ol, /Promise\.all\(works\.map\(async \(work, index\)/);
 assert.match(ol, /if \(hasSeries && hasPositionedEdition\) return work;/);
 assert.doesNotMatch(ol, /if \(hasSeries && existing\.length > 0\) return work;/);
 assert.doesNotMatch(legacy, /anchoredSeriesAliases\.has\(/);
