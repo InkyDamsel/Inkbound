@@ -311,6 +311,17 @@ export interface SeriesDetectiveResult {
   owned: SeriesDetectiveOwnedEntry[];
   completeness?: 'complete' | 'partial' | 'unavailable' | 'conflict';
   providerReports?: SeriesDetectiveProviderReport[];
+  /** Read-only explanation of why discovery did or did not produce a roster. */
+  discoveryDiagnostics?: {
+    discovered: number;
+    merged: number;
+    rejectedSeries: number;
+    rejectedAuthor: number;
+    rejectedEvidence: number;
+    admitted: number;
+    uniqueWorks: number;
+    providerCounts: Record<string, number>;
+  };
 }
 
 export interface FindMissingSeriesOptions {
@@ -912,6 +923,7 @@ export async function findMissingSeriesBooks(
   // from every provider. Until it does, do not reuse a roster that may have
   // silently omitted Google Books or Open Library results.
   const providerReports: SeriesDetectiveProviderReport[] = [];
+  let discoveryDiagnostics: SeriesDetectiveResult['discoveryDiagnostics'];
   const googleFailures: unknown[] = [];
   const openLibraryFailures: unknown[] = [];
   const recordOpenLibraryFailure = (error: unknown) => { openLibraryFailures.push(error); };
@@ -1271,6 +1283,7 @@ export async function findMissingSeriesBooks(
       });
     });
 
+    discoveryDiagnostics = { ...diagnostics, uniqueWorks: seen.size };
     if (import.meta.env.DEV) {
       console.info('[Series Detective] discovery diagnostics', {
         seriesName,
@@ -1310,6 +1323,7 @@ export async function findMissingSeriesBooks(
   const candidates = await discoverCandidates();
   const result = classifySeriesCandidates(seriesName, candidates, libraryBooks);
   result.providerReports = providerReports;
+  result.discoveryDiagnostics = discoveryDiagnostics;
   result.completeness = providerReports.every((report) => report.status === 'unavailable')
     ? 'unavailable' : 'partial';
   return result;
