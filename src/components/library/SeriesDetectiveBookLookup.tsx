@@ -78,7 +78,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
           library,
           controller.signal,
           seriesBookIds,
-          { forceRefresh: run > 1, overrides: overridesRef.current },
+          { forceRefresh: run > 1, overrides: overridesRef.current, seedBookId: currentBook.id },
         );
         if (!controller.signal.aborted) setResult(missing);
       }
