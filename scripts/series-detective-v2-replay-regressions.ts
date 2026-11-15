@@ -126,3 +126,17 @@ const replayBadDuplicate = replayDetectiveEvidence({
 assert.deepEqual(replayBadDuplicate.quarantinedClaimIds, ['ol-1']);
 assert.equal(replayBadDuplicate.decisions[0].status, 'review');
 console.log('Series Detective replay provenance integration checks passed.');
+
+const mixedOperations: DetectiveProviderObservation[] = [
+  { provider: 'open-library', operation: 'series-search', state: 'ok', recordCount: 3 },
+  { provider: 'open-library', operation: 'edition-hydration', state: 'failed', recordCount: 0 },
+];
+assert.deepEqual(validateDetectiveClaimProvenance(mixedOperations, [
+  { ...ol, sourceOperation: 'edition-hydration' },
+]).quarantinedClaimIds, ['ol-1'], 'A successful search must not launder failed edition hydration');
+assert.deepEqual(validateDetectiveClaimProvenance(mixedOperations, [
+  { ...ol, sourceOperation: 'series-search' },
+]).quarantinedClaimIds, [], 'Claims with a successful exact operation remain admissible');
+assert.deepEqual(validateDetectiveClaimProvenance(mixedOperations, [ol]).quarantinedClaimIds,
+  ['ol-1'], 'Missing operation provenance fails closed when provider health is mixed');
+console.log('Series Detective per-operation provenance checks passed.');
