@@ -55,10 +55,14 @@ export function validateDetectiveClaimProvenance(
     } else {
       const providerObservations = (byProvider.get(claim.provider) ?? [])
         .filter(item => !claim.sourceOperation || item.operation === claim.sourceOperation);
-      if (!providerObservations?.length) reason = 'no-observation';
+      if (!providerObservations.length) reason = 'no-observation';
+      // An unscoped claim cannot borrow evidence from one of several
+      // operations, even when every operation reports success. Its source
+      // cannot be established. Fail closed until the adapter supplies it.
+      else if (!claim.sourceOperation && providerObservations.length !== 1)
+        reason = 'no-observation';
       else if (!providerObservations.some(item => successful.has(item.state) && item.recordCount > 0)
-        || (!claim.sourceOperation && providerObservations.some(item =>
-          !successful.has(item.state) || item.recordCount === 0)))
+        || providerObservations.some(item => !successful.has(item.state) || item.recordCount === 0))
         reason = 'provider-not-successful';
     }
     if (reason) {
