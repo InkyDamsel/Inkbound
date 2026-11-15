@@ -59,6 +59,11 @@ assert.equal(run({ identities: [] }).decisions.length, 0);
 assert.deepEqual(run({ identities: [] }).unresolvedClaimIds, membershipClaims.map(c => c.id).sort());
 assert.equal(run({ claims: membershipClaims }).decisions.length, 0,
   'Unaudited identity mappings cannot verify membership');
+const forgedMappings = identities.map(mapping => mapping.nativeWorkId === 'ol:sibling'
+  ? { ...mapping, nativeWorkId: 'ol:forged' } : mapping);
+assert.equal(run({ identities: forgedMappings }).decisions.find(d =>
+  d.subjectId === 'sibling::grant')?.status, 'review',
+  'A proof for one native work must not authorize a different work');
 const positionConflict = run({ claims: claims.map(c => c.id === 'hc-sibling' ? { ...c, position: 3 } : c) });
 assert.equal(positionConflict.decisions.find(d => d.subjectId === 'sibling::grant')?.status, 'review');
 const unnumbered = run({ claims: claims.map(c => c.id.includes('sibling') ? { ...c, position: null } : c) });
