@@ -75,4 +75,19 @@ assert.ok(unnumbered.decisions.find(d => d.subjectId === 'sibling::grant')?.reas
 const failed = run({ observations: [{ ...observations[0], state: 'failed' }, observations[1]] });
 assert.equal(failed.decisions.some(d => d.status === 'verified'), false);
 assert.deepEqual(result, run({ observations: [...observations].reverse(), claims: [...claims].reverse(), identities: [...identities].reverse() }));
+const multipleSuccessfulOperations = run({
+  observations: [
+    ...observations,
+    { provider: 'open-library', operation: 'author', state: 'ok', recordCount: 2 },
+  ],
+});
+assert.equal(multipleSuccessfulOperations.decisions.some(d => d.status === 'verified'), false,
+  'Unscoped claims must not borrow one of several successful provider operations');
+const operationScopedClaims = claims.map(c => c.provider === 'open-library'
+  ? { ...c, sourceOperation: 'seed' } : c);
+assert.equal(run({
+  claims: operationScopedClaims,
+  observations: [...observations, { provider: 'open-library', operation: 'author', state: 'ok', recordCount: 2 }],
+}).decisions.find(d => d.subjectId === 'sibling::grant')?.status, 'verified',
+'Explicitly scoped claims must remain admissible with multiple successful operations');
 console.log('Series Detective canonical replay contract checks passed.');
