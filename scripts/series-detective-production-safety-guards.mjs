@@ -25,6 +25,8 @@ assert.doesNotMatch(legacy, /seedGoogleSeriesIds\(volume, catalog, true\);/);
 assert.doesNotMatch(legacy, /strongStructured \|\| independentlyCorroborated/);
 assert.match(legacy, /seedCorroborated && membershipEvidence\.providers >= 2 && !membershipEvidence\.conflictingOrder/);
 assert.match(legacy, /const seedCorroborated = seedMembershipProviders\.size >= 2;/);
+assert.match(legacy, /result\.discoveryDiagnostics = discoveryDiagnostics;/);
+assert.match(legacy, /discoveryDiagnostics = \{ \.\.\.diagnostics, uniqueWorks: seen\.size \};/);
 assert.match(legacy, /detectiveCandidatesAreSameWork\(source, candidate\)/);
 assert.ok(legacy.includes('if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName))'));
 console.log('Series Detective production safety source guards passed (not behavioral verification).');
