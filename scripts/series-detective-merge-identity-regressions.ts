@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { detectiveCandidatesAreSameWork, mergeDetectiveCandidates, type DetectiveMergeCandidate } from '../src/features/series/seriesDetectiveMerge';
 
 const candidate = (title: string, provider: DetectiveMergeCandidate['provider']): DetectiveMergeCandidate => ({
-  work: { key: provider + ':' + title, title, authors: ['Example Author'], editions: [] },
-  edition: { source: provider, externalEditionId: provider + ':' + title, title, authors: ['Example Author'], isbn13: '9781234567897', format: 'paperback', specialFeatures: [] },
+  work: { key: provider + ':' + title, title, authors: ['Example Author'], genres: [], editions: [] },
+  edition: { source: provider, externalEditionId: provider + ':' + title, title, authors: ['Example Author'], genres: [], publicationYear: 2020, isbn13: '9781234567897', format: 'paperback', specialFeatures: [] },
   seriesName: 'Example Series', position: null, provider, seriesStructured: true,
 });
 const first = candidate('First Installment', 'open-library');
