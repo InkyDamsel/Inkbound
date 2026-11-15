@@ -1215,11 +1215,12 @@ export async function findMissingSeriesBooks(
       // An authoritative structured membership with a real installment number
       // can verify independently; weak/unnumbered metadata still needs corroboration.
       // Aliases and title branding never grant automatic verification.
-      const strongStructured = candidate.seriesStructured && candidate.position !== null
-        && compatibleSeries && (matchingAuthor || crossAuthorMembership);
+      // A single provider's numbered membership is discovery evidence, not
+      // independent verification. Preserve the candidate for review instead
+      // of silently granting bulk-add eligibility.
       const verification: 'verified' | 'review' =
         !anchoredAlias && candidate.seriesStructured && compatibleSeries
-        && (strongStructured || independentlyCorroborated) ? 'verified' : 'review';
+        && independentlyCorroborated ? 'verified' : 'review';
 
       addCandidate({
         work: candidate.work,
