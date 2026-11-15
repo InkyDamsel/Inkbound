@@ -49,12 +49,16 @@ export function validateDetectiveClaimProvenance(
       || other.kind !== claim.kind || other.subjectId !== claim.subjectId
       || other.objectId !== claim.objectId || other.value !== claim.value
       || other.position !== claim.position || other.structured !== claim.structured
-      || other.sourceField !== claim.sourceField)) {
+      || other.sourceField !== claim.sourceField
+      || other.sourceOperation !== claim.sourceOperation)) {
       reason = 'duplicate-conflict';
     } else {
-      const providerObservations = byProvider.get(claim.provider);
+      const providerObservations = (byProvider.get(claim.provider) ?? [])
+        .filter(item => !claim.sourceOperation || item.operation === claim.sourceOperation);
       if (!providerObservations?.length) reason = 'no-observation';
-      else if (!providerObservations.some(item => successful.has(item.state) && item.recordCount > 0))
+      else if (!providerObservations.some(item => successful.has(item.state) && item.recordCount > 0)
+        || (!claim.sourceOperation && providerObservations.some(item =>
+          !successful.has(item.state) || item.recordCount === 0)))
         reason = 'provider-not-successful';
     }
     if (reason) {
