@@ -84,10 +84,18 @@ const exactIsbnMatch = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdit
   return leftIds.some((isbn) => rightIds.includes(isbn));
 };
 
-const sameProviderEdition = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean =>
-  left.source === right.source
-  && Boolean(left.externalEditionId)
-  && left.externalEditionId === right.externalEditionId;
+const sameProviderEdition = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean => {
+  if (left.source !== right.source || !left.externalEditionId
+    || left.externalEditionId !== right.externalEditionId) return false;
+  // A provider ID can be reused or its metadata can change. Never combine
+  // incompatible identifiers into a synthetic edition.
+  for (const field of ['isbn13', 'isbn10'] as const) {
+    const a = compactDetectiveIsbn(left[field]);
+    const b = compactDetectiveIsbn(right[field]);
+    if (a && b && a !== b) return false;
+  }
+  return true;
+};
 
 const editionQuality = (edition: SeriesDetectiveEdition): number => {
   let score = 0;
