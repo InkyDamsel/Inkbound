@@ -1157,4 +1157,40 @@ assert.equal(plausibleOpenLibrarySeriesName('Sara Linton'), true);
 assert.equal(plausibleOpenLibrarySeriesName('The Shining'), true);
 assert.equal(parseDetectiveOpenLibrarySeries(['Sara Linton #1'])?.position, 1);
 
+// V2 offline replay: evidence is source-attributed, order-independent, and
+// never converts one provider's repeated assertions into corroboration.
+const { replayDetectiveEvidence } = await import('../src/features/series/seriesDetectiveReplay');
+const replayClaims = [
+  { id: 'google:work-1:membership', provider: 'google-books' as const,
+    sourceRecordId: 'g1', kind: 'series-membership' as const,
+    subjectId: 'work-1', objectId: 'series-1', value: 'Example Series',
+    structured: true, sourceField: 'volumeInfo.seriesInfo' },
+  { id: 'hardcover:work-1:membership', provider: 'hardcover' as const,
+    sourceRecordId: 'h1', kind: 'series-membership' as const,
+    subjectId: 'work-1', objectId: 'series-1', value: 'Example Series',
+    structured: true, sourceField: 'series.id' },
+];
+const replayObservations = [
+  { provider: 'google-books' as const, operation: 'seed', state: 'ok' as const, recordCount: 1 },
+  { provider: 'hardcover' as const, operation: 'seed', state: 'ok' as const, recordCount: 1 },
+];
+const replayInput = { seedBookId: 'seed-1', observations: replayObservations, claims: replayClaims };
+const replayA = replayDetectiveEvidence(replayInput);
+const replayB = replayDetectiveEvidence({ ...replayInput,
+  claims: [...replayClaims].reverse(), observations: [...replayObservations].reverse() });
+assert.deepEqual(replayA, replayB, 'Provider ordering must not change evidence replay');
+assert.equal(replayA.decisions[0].status, 'verified');
+assert.equal(replayDetectiveEvidence({ ...replayInput, claims: [replayClaims[0]] }).decisions[0].status, 'review');
+assert.equal(replayDetectiveEvidence({ ...replayInput, claims: [replayClaims[0],
+  { ...replayClaims[0], id: 'google:work-1:duplicate', sourceRecordId: 'g2' }] }).decisions[0].status, 'review');
+const conflictingReplay = replayDetectiveEvidence({ ...replayInput, claims: [replayClaims[0],
+  { ...replayClaims[1], objectId: 'unrelated-series' }] });
+assert.equal(conflictingReplay.decisions[0].status, 'review');
+assert.ok(conflictingReplay.decisions[0].reasonCodes.includes('conflicting-evidence'));
+const outageReplay = replayDetectiveEvidence({ ...replayInput,
+  observations: [{ provider: 'hardcover', operation: 'seed', state: 'unavailable', recordCount: 0 }],
+  claims: [replayClaims[0]] });
+assert.ok(outageReplay.decisions[0].reasonCodes.includes('provider-unavailable'));
+assert.equal(replayDetectiveEvidence({ ...replayInput, claims: [] }).decisions.length, 0);
+
 console.log('Inkbound Series Detective recovery regressions passed.');
