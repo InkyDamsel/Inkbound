@@ -69,6 +69,8 @@ assert.equal(uncorroboratedSeed.decisions.find(d => d.subjectId === 'sibling::gr
   'One-provider seed membership cannot authorize verified siblings');
 const positionConflict = run({ claims: claims.map(c => c.id === 'hc-sibling' ? { ...c, position: 3 } : c) });
 assert.equal(positionConflict.decisions.find(d => d.subjectId === 'sibling::grant')?.status, 'review');
+assert.ok(positionConflict.decisions.find(d => d.subjectId === 'sibling::grant')?.reasonCodes.includes('unverified-order'),
+  'Conflicting numbered positions must never be described as verified order');
 const unnumbered = run({ claims: claims.map(c => c.id.includes('sibling') ? { ...c, position: null } : c) });
 assert.equal(unnumbered.decisions.find(d => d.subjectId === 'sibling::grant')?.status, 'verified');
 assert.ok(unnumbered.decisions.find(d => d.subjectId === 'sibling::grant')?.reasonCodes.includes('unverified-order'));
