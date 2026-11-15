@@ -388,8 +388,18 @@ export async function searchDetectiveOpenLibraryContext(
       ) return [];
 
       const docs = work.editions?.docs?.length ? work.editions.docs : [{}];
-      const preferred = docs.find((edition) => parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series, seriesSubjects(work.subject))))
-        ?? docs[0];
+      // Prefer a positioned edition only when every explicit edition-level
+      // position agrees. Conflicting editions must not silently select the
+      // first numbered claim as authoritative.
+      const editionPositions = docs.map((edition) =>
+        parseDetectiveOpenLibrarySeries(safeSeriesValues(edition.series))?.position)
+        .filter((position): position is number => typeof position === 'number' && Number.isFinite(position));
+      const positionConflict = new Set(editionPositions).size > 1;
+      const preferred = !positionConflict
+        ? docs.find((edition) => parseDetectiveOpenLibrarySeries(safeSeriesValues(edition.series))?.position != null)
+          ?? docs.find((edition) => parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series, seriesSubjects(work.subject))))
+          ?? docs[0]
+        : docs[0];
       const title = (preferred.title ?? work.title)?.trim();
       if (!title) return [];
 
@@ -429,7 +439,7 @@ export async function searchDetectiveOpenLibraryContext(
         work: mappedWork,
         edition,
         seriesName: metadata?.name,
-        position: metadata?.position ?? null,
+        position: positionConflict ? null : metadata?.position ?? null,
       }];
     });
   } catch (error) {
