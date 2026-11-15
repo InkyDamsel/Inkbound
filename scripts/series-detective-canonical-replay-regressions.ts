@@ -64,6 +64,9 @@ const forgedMappings = identities.map(mapping => mapping.nativeWorkId === 'ol:si
 assert.equal(run({ identities: forgedMappings }).decisions.find(d =>
   d.subjectId === 'sibling::grant')?.status, 'review',
   'A proof for one native work must not authorize a different work');
+const uncorroboratedSeed = run({ claims: claims.filter(c => c.id !== 'ol-seed') });
+assert.equal(uncorroboratedSeed.decisions.find(d => d.subjectId === 'sibling::grant')?.status, 'review',
+  'One-provider seed membership cannot authorize verified siblings');
 const positionConflict = run({ claims: claims.map(c => c.id === 'hc-sibling' ? { ...c, position: 3 } : c) });
 assert.equal(positionConflict.decisions.find(d => d.subjectId === 'sibling::grant')?.status, 'review');
 const unnumbered = run({ claims: claims.map(c => c.id.includes('sibling') ? { ...c, position: null } : c) });
