@@ -71,6 +71,13 @@ const positionConflict = run({ claims: claims.map(c => c.id === 'hc-sibling' ? {
 assert.equal(positionConflict.decisions.find(d => d.subjectId === 'sibling::grant')?.status, 'review');
 assert.ok(positionConflict.decisions.find(d => d.subjectId === 'sibling::grant')?.reasonCodes.includes('unverified-order'),
   'Conflicting numbered positions must never be described as verified order');
+for (const invalidPosition of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+  const invalid = run({ claims: claims.map(c => c.id === 'hc-sibling'
+    ? { ...c, position: invalidPosition } : c) });
+  const sibling = invalid.decisions.find(d => d.subjectId === 'sibling::grant');
+  assert.equal(sibling?.status, 'review', 'Invalid installment numbers must fail closed');
+  assert.ok(sibling?.reasonCodes.includes('unverified-order'));
+}
 const unnumbered = run({ claims: claims.map(c => c.id.includes('sibling') ? { ...c, position: null } : c) });
 assert.equal(unnumbered.decisions.find(d => d.subjectId === 'sibling::grant')?.status, 'verified');
 assert.ok(unnumbered.decisions.find(d => d.subjectId === 'sibling::grant')?.reasonCodes.includes('unverified-order'));
