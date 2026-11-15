@@ -20,5 +20,7 @@ assert.match(ol, /if \(hasSeries && hasPositionedEdition\) return work;/);
 assert.doesNotMatch(ol, /if \(hasSeries && existing\.length > 0\) return work;/);
 assert.doesNotMatch(legacy, /anchoredSeriesAliases\.has\(/);
 assert.doesNotMatch(legacy, /seedGoogleSeriesIds\(volume, catalog, true\);/);
-assert.match(legacy, /if \(!resolvedSeriesName \|\| !detectiveSeriesNamesCompatible\(resolvedSeriesName, seriesName\)\)/);
+assert.doesNotMatch(legacy, /strongStructured \|\| independentlyCorroborated/);
+assert.match(legacy, /&& independentlyCorroborated \? 'verified' : 'review'/);
+assert.match(legacy, /if (!resolvedSeriesName \|\| !detectiveSeriesNamesCompatible\(resolvedSeriesName, seriesName\)\)/);
 console.log('Series Detective production safety source guards passed (not behavioral verification).');
