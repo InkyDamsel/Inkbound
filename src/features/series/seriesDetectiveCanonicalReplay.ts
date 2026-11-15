@@ -24,7 +24,20 @@ export interface DetectiveCanonicalReplayResult {
 
 export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplayInput): DetectiveCanonicalReplayResult {
   const provenance = validateDetectiveClaimProvenance(input.observations, input.claims);
-  const resolution = resolveDetectiveMembershipIdentities(provenance.admissibleClaims, input.identities);
+  // Identity mappings supplied by an adapter are not automatically proof.
+  // Each referenced identity evidence ID must exist as an admissible
+  // structured identity claim from that same provider. Otherwise quarantine
+  // the mapping and leave its membership unresolved.
+  const admissibleIdentityClaims = new Map(provenance.admissibleClaims
+    .filter(claim => claim.structured && (claim.kind === 'work-identity'
+      || claim.kind === 'edition-identity' || claim.kind === 'series-identity'))
+    .map(claim => [claim.id, claim]));
+  const evidencedMappings = input.identities.filter(mapping =>
+    mapping.identityEvidenceIds.length >= 2
+    && mapping.identityEvidenceIds.every(id => admissibleIdentityClaims.get(id)?.provider === mapping.provider)
+    && mapping.identityEvidenceIds.some(id => admissibleIdentityClaims.get(id)?.kind === 'work-identity')
+    && mapping.identityEvidenceIds.some(id => admissibleIdentityClaims.get(id)?.kind === 'series-identity'));
+  const resolution = resolveDetectiveMembershipIdentities(provenance.admissibleClaims, evidencedMappings);
   const anchor = input.seedCanonicalWorkId.trim();
   // A seed is an identity anchor, not merely a book ID or a search query.
   const anchoredSeries = new Set(anchor ? resolution.memberships
