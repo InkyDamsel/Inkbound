@@ -13,6 +13,7 @@ export function classifyDetectiveSeriesLabel(raw: string): DetectiveSeriesLabelK
   if (/^[\p{L}][\p{L}\s.-]*[\s;:/-]+\d{3,}(?:[\s./;-]+\d+)*$/u.test(label)) {
     return 'publisher-collection';
   }
+  if (/^[\p{L}][\p{L}\s.-]*\s+\d{2,}\/\d{2,}$/u.test(label)) return 'publisher-collection';
   // A short imprint name without a numbered installment is not enough.
   if (/^(?:penguin books(?: ltd)?|fischer taschenbuch|rowohlt taschenbuch)$/iu.test(label)) {
     return 'publisher-collection';
