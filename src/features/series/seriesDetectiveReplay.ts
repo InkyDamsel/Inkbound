@@ -48,7 +48,12 @@ export function replayDetectiveEvidence(input: DetectiveReplayInput): DetectiveR
       && classifyDetectiveSeriesLabel(claim.value) !== 'publisher-collection');
     const excluded = claims.filter(claim => classifyDetectiveSeriesLabel(claim.value) === 'publisher-collection');
     const seriesIds = new Set(qualifying.map(claim => claim.objectId));
-    const conflicting = seriesIds.size > 1;
+    const labels = new Set(qualifying.map(claim => claim.value.trim().toLowerCase()));
+    const positions = new Set(qualifying.map(claim => claim.position).filter(
+      (position): position is number => typeof position === 'number' && Number.isFinite(position),
+    ));
+    // Identity, literal label, and numbered order disagreement cannot verify.
+    const conflicting = seriesIds.size > 1 || labels.size > 1 || positions.size > 1;
     const structured = qualifying.filter(claim => claim.structured);
     const corroborated = new Set(structured.map(claim => claim.provider)).size >= 2;
     // This is a deliberately conservative first policy: a single structured
