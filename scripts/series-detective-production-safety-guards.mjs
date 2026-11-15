@@ -10,6 +10,7 @@ const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8'
 const ol = read('src/features/series/seriesDetectiveOpenLibraryApi.ts');
 const legacy = read('src/features/series/seriesDetective.ts');
 const merge = read('src/features/series/seriesDetectiveMerge.ts');
+const preview = read('src/components/library/SeriesDetectivePreview.tsx');
 assert.match(ol, /const hasPositionedEdition = existing\.some/);
 assert.match(ol, /const concurrency = 4;/);
 assert.match(ol, /const fetchWithDeadline = async/);
@@ -31,4 +32,6 @@ assert.match(legacy, /discoveryDiagnostics = \{ \.\.\.diagnostics, uniqueWorks: 
 assert.match(legacy, /detectiveCandidatesAreSameWork\(source, candidate\)/);
 assert.ok(legacy.includes('if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName))'));
 assert.doesNotMatch(merge, /if \(left\.seriesName && right\.seriesName\s*&& detectiveSeriesNamesCompatible\(left\.seriesName, right\.seriesName\)\) return true;/);
+assert.match(preview, /result\?\.discoveryDiagnostics/);
+assert.match(preview, /No actionable roster was established/);
 console.log('Series Detective production safety source guards passed (not behavioral verification).');
