@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { validateDetectiveClaimProvenance } from '../src/features/series/seriesDetectiveProvenance';
 import { resolveDetectiveMembershipIdentities } from '../src/features/series/seriesDetectiveIdentityResolution';
 import { replayDetectiveEvidence } from '../src/features/series/seriesDetectiveReplay';
 import { classifyDetectiveSeriesLabel } from '../src/features/series/seriesDetectiveLabelClassifier';
@@ -89,3 +90,19 @@ const multiSeries = resolveDetectiveMembershipIdentities([
 }]);
 assert.equal(multiSeries.memberships.length, 2, 'Legitimate dual-series membership must not collapse');
 console.log('Series Detective provider-independent identity join checks passed.');
+
+const provenanceGood = validateDetectiveClaimProvenance(observation, [ol, hc]);
+assert.deepEqual(provenanceGood.quarantinedClaimIds, []);
+assert.equal(provenanceGood.admissibleClaims.length, 2);
+const provenanceFailure = validateDetectiveClaimProvenance([
+  { ...observation[0], state: 'failed' }, observation[1],
+], [ol, hc]);
+assert.deepEqual(provenanceFailure.quarantinedClaimIds, ['ol-1']);
+assert.deepEqual(validateDetectiveClaimProvenance([], [ol, hc]).quarantinedClaimIds, ['hc-1', 'ol-1']);
+const provenanceDuplicate = validateDetectiveClaimProvenance(observation, [
+  ol, { ...ol, value: 'Conflicting Series' }, hc,
+]);
+assert.deepEqual(provenanceDuplicate.quarantinedClaimIds, ['ol-1']);
+assert.deepEqual(provenanceDuplicate.admissibleClaims.map(item => item.id), ['hc-1'],
+  'A bad duplicate must not discard valid independent evidence');
+console.log('Series Detective claim provenance quarantine checks passed.');
