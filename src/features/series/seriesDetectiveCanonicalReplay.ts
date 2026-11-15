@@ -32,11 +32,18 @@ export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplay
     .filter(claim => claim.structured && (claim.kind === 'work-identity'
       || claim.kind === 'edition-identity' || claim.kind === 'series-identity'))
     .map(claim => [claim.id, claim]));
-  const evidencedMappings = input.identities.filter(mapping =>
-    mapping.identityEvidenceIds.length >= 2
-    && mapping.identityEvidenceIds.every(id => admissibleIdentityClaims.get(id)?.provider === mapping.provider)
-    && mapping.identityEvidenceIds.some(id => admissibleIdentityClaims.get(id)?.kind === 'work-identity')
-    && mapping.identityEvidenceIds.some(id => admissibleIdentityClaims.get(id)?.kind === 'series-identity'));
+  const evidencedMappings = input.identities.filter(mapping => {
+    if (mapping.identityEvidenceIds.length < 2) return false;
+    const evidence = mapping.identityEvidenceIds.map(id => admissibleIdentityClaims.get(id));
+    if (evidence.some(claim => !claim || claim.provider !== mapping.provider)) return false;
+    // Proof must bind THIS native work and THIS native series to the stated
+    // canonical IDs. Arbitrary valid identity records cannot authorize an
+    // unrelated mapping.
+    return evidence.some(claim => claim?.kind === 'work-identity'
+      && claim.subjectId === mapping.nativeWorkId && claim.value === mapping.canonicalWorkId)
+      && evidence.some(claim => claim?.kind === 'series-identity'
+        && claim.subjectId === mapping.nativeSeriesId && claim.value === mapping.canonicalSeriesId);
+  });
   const resolution = resolveDetectiveMembershipIdentities(provenance.admissibleClaims, evidencedMappings);
   const anchor = input.seedCanonicalWorkId.trim();
   // A seed is an identity anchor, not merely a book ID or a search query.
