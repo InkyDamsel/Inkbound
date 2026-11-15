@@ -106,3 +106,23 @@ assert.deepEqual(provenanceDuplicate.quarantinedClaimIds, ['ol-1']);
 assert.deepEqual(provenanceDuplicate.admissibleClaims.map(item => item.id), ['hc-1'],
   'A bad duplicate must not discard valid independent evidence');
 console.log('Series Detective claim provenance quarantine checks passed.');
+
+const replayFailedProvider = replayDetectiveEvidence({
+  seedBookId: 'seed', observations: [{ ...observation[0], state: 'failed' }, observation[1]],
+  claims: [ol, hc],
+});
+assert.deepEqual(replayFailedProvider.quarantinedClaimIds, ['ol-1']);
+assert.equal(replayFailedProvider.decisions[0].status, 'review',
+  'Failed-provider claims must not corroborate successful claims');
+const replayNoObservation = replayDetectiveEvidence({
+  seedBookId: 'seed', observations: [], claims: [ol, hc],
+});
+assert.deepEqual(replayNoObservation.quarantinedClaimIds, ['hc-1', 'ol-1']);
+assert.equal(replayNoObservation.decisions.length, 0);
+const replayBadDuplicate = replayDetectiveEvidence({
+  seedBookId: 'seed', observations: observation,
+  claims: [ol, { ...ol, value: 'Different Series' }, hc],
+});
+assert.deepEqual(replayBadDuplicate.quarantinedClaimIds, ['ol-1']);
+assert.equal(replayBadDuplicate.decisions[0].status, 'review');
+console.log('Series Detective replay provenance integration checks passed.');
