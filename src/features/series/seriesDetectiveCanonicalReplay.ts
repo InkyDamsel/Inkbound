@@ -1,0 +1,65 @@
+import { classifyDetectiveSeriesLabel } from './seriesDetectiveLabelClassifier';
+import { validateDetectiveClaimProvenance } from './seriesDetectiveProvenance';
+import { resolveDetectiveMembershipIdentities, type DetectiveResolvedIdentity } from './seriesDetectiveIdentityResolution';
+import type { DetectiveEvidenceClaim, DetectiveEvidenceDecision, DetectiveProviderObservation } from './seriesDetectiveEvidenceLedger';
+
+/**
+ * Strict, offline V2 verifier. The caller MUST establish a canonical seed
+ * work from independent bibliographic evidence. No seed mapping = no verified
+ * memberships. This does not replace the legacy production entry point yet.
+ */
+export interface DetectiveCanonicalReplayInput {
+  readonly seedCanonicalWorkId: string;
+  readonly observations: readonly DetectiveProviderObservation[];
+  readonly claims: readonly DetectiveEvidenceClaim[];
+  readonly identities: readonly DetectiveResolvedIdentity[];
+}
+
+export interface DetectiveCanonicalReplayResult {
+  readonly decisions: readonly DetectiveEvidenceDecision[];
+  readonly quarantinedClaimIds: readonly string[];
+  readonly unresolvedClaimIds: readonly string[];
+  readonly conflictingClaimIds: readonly string[];
+}
+
+export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplayInput): DetectiveCanonicalReplayResult {
+  const provenance = validateDetectiveClaimProvenance(input.observations, input.claims);
+  const resolution = resolveDetectiveMembershipIdentities(provenance.admissibleClaims, input.identities);
+  const anchor = input.seedCanonicalWorkId.trim();
+  // A seed is an identity anchor, not merely a book ID or a search query.
+  const anchoredSeries = new Set(anchor ? resolution.memberships
+    .filter(membership => membership.canonicalWorkId === anchor)
+    .map(membership => membership.canonicalSeriesId) : []);
+  const decisions: DetectiveEvidenceDecision[] = [];
+  for (const membership of resolution.memberships) {
+    const claims = membership.claims;
+    const labels = new Set(claims.map(claim => claim.value.normalize('NFKC').trim().toLowerCase()));
+    const positions = new Set(claims.map(claim => claim.position)
+      .filter((position): position is number => typeof position === 'number' && Number.isFinite(position)));
+    const conflict = labels.size > 1 || positions.size > 1;
+    const excluded = claims.every(claim => classifyDetectiveSeriesLabel(claim.value) === 'publisher-collection');
+    const anchored = anchoredSeries.has(membership.canonicalSeriesId);
+    const structuredProviders = new Set(claims.filter(claim => claim.structured).map(claim => claim.provider));
+    const verified = !conflict && !excluded && anchored && structuredProviders.size >= 2;
+    const reasonCodes: DetectiveEvidenceDecision['reasonCodes'][number][] = [];
+    if (excluded) reasonCodes.push('publisher-collection');
+    if (conflict) reasonCodes.push('conflicting-evidence');
+    if (!anchored) reasonCodes.push('work-identity-conflict');
+    if (verified) reasonCodes.push('corroborated-membership');
+    else if (!excluded) reasonCodes.push('unverified-membership');
+    if (positions.size === 0 && !excluded) reasonCodes.push('unverified-order');
+    decisions.push({
+      subjectId: membership.canonicalWorkId + '::' + membership.canonicalSeriesId,
+      status: excluded ? 'rejected' : verified ? 'verified' : 'review',
+      reasonCodes,
+      supportingClaimIds: conflict ? [] : claims.map(claim => claim.id).sort(),
+      conflictingClaimIds: conflict ? claims.map(claim => claim.id).sort() : [],
+    });
+  }
+  return {
+    decisions: decisions.sort((a, b) => a.subjectId.localeCompare(b.subjectId)),
+    quarantinedClaimIds: provenance.quarantinedClaimIds,
+    unresolvedClaimIds: resolution.unresolvedClaimIds,
+    conflictingClaimIds: resolution.conflictingClaimIds,
+  };
+}
