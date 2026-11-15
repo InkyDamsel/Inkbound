@@ -315,6 +315,8 @@ export interface SeriesDetectiveResult {
 export interface FindMissingSeriesOptions {
   /** Skip the short-lived in-memory catalog cache (used by explicit Retry). */
   forceRefresh?: boolean;
+  /** Seed work that initiated discovery, even if it has no saved series. */
+  seedBookId?: string;
   /**
    * The reader's manual series corrections. The canonical resolver applies
    * these first, so gap/next-book planning must see them too.
@@ -888,6 +890,7 @@ export async function findMissingSeriesBooks(
 ): Promise<SeriesDetectiveResult> {
   const overrides = options.overrides ?? {};
   const scopedSeriesBookIds = new Set(seriesBookIds ?? []);
+  if (options.seedBookId) scopedSeriesBookIds.add(options.seedBookId);
   // An entry point is a hint, not a limit on discovery. Include every owned
   // installment carrying the same verified series identity as additional
   // anchors, even when the library grouped authors into separate clusters.
