@@ -64,6 +64,9 @@ export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplay
     const conflict = labels.size > 1 || positions.size > 1;
     const excluded = claims.every(claim => classifyDetectiveSeriesLabel(claim.value) === 'publisher-collection');
     const anchored = anchoredSeries.has(membership.canonicalSeriesId);
+    // A source's identity claims are only useful when the same source has
+    // admissible structured membership evidence for this exact work/series.
+    // Do not allow an unstructured claim to manufacture a second vote.
     const structuredProviders = new Set(claims.filter(claim => claim.structured).map(claim => claim.provider));
     const verified = !conflict && !excluded && anchored && structuredProviders.size >= 2;
     const reasonCodes: DetectiveEvidenceDecision['reasonCodes'][number][] = [];
@@ -77,7 +80,7 @@ export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplay
     const positionedProviders = new Set(claims.filter(claim =>
       typeof claim.position === 'number' && Number.isFinite(claim.position))
       .map(claim => claim.provider));
-    if (positionedProviders.size < 2 && !excluded) reasonCodes.push('unverified-order');
+    if ((positionedProviders.size < 2 || positions.size !== 1) && !excluded) reasonCodes.push('unverified-order');
     decisions.push({
       subjectId: membership.canonicalWorkId + '::' + membership.canonicalSeriesId,
       status: excluded ? 'rejected' : verified ? 'verified' : 'review',
