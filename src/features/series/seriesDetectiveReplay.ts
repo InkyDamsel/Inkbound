@@ -1,4 +1,5 @@
 import { classifyDetectiveSeriesLabel } from './seriesDetectiveLabelClassifier';
+import { validateDetectiveClaimProvenance } from './seriesDetectiveProvenance';
 import {
   assembleDetectiveEvidenceSnapshot,
   type DetectiveEvidenceClaim,
@@ -20,6 +21,7 @@ export interface DetectiveReplayInput {
 export interface DetectiveReplayResult {
   readonly snapshot: DetectiveEvidenceSnapshot;
   readonly decisions: readonly DetectiveEvidenceDecision[];
+  readonly quarantinedClaimIds: readonly string[];
 }
 
 /** A structured provider claim is only useful if it identifies the series. */
@@ -27,7 +29,10 @@ const hasSeriesIdentity = (claim: DetectiveEvidenceClaim): boolean =>
   Boolean(claim.objectId?.trim() && claim.subjectId.trim() && claim.value.trim());
 
 export function replayDetectiveEvidence(input: DetectiveReplayInput): DetectiveReplayResult {
-  const snapshot = assembleDetectiveEvidenceSnapshot(input.seedBookId, input.observations, input.claims);
+  // Quarantine invalid and failed-provider claims before snapshot assembly;
+  // one contradictory duplicate must not abort otherwise valid replay.
+  const provenance = validateDetectiveClaimProvenance(input.observations, input.claims);
+  const snapshot = assembleDetectiveEvidenceSnapshot(input.seedBookId, input.observations, provenance.admissibleClaims);
   const membershipClaims = snapshot.claims.filter(claim => claim.kind === 'series-membership');
   const bySubject = new Map<string, DetectiveEvidenceClaim[]>();
   for (const claim of membershipClaims) {
@@ -67,5 +72,5 @@ export function replayDetectiveEvidence(input: DetectiveReplayInput): DetectiveR
       conflictingClaimIds,
     });
   }
-  return { snapshot, decisions };
+  return { snapshot, decisions, quarantinedClaimIds: provenance.quarantinedClaimIds };
 }
