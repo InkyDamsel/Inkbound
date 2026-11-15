@@ -60,7 +60,12 @@ export function replayCanonicalDetectiveEvidence(input: DetectiveCanonicalReplay
     if (!anchored) reasonCodes.push('work-identity-conflict');
     if (verified) reasonCodes.push('corroborated-membership');
     else if (!excluded) reasonCodes.push('unverified-membership');
-    if (positions.size === 0 && !excluded) reasonCodes.push('unverified-order');
+    // Membership and order are independent: one provider's position is not
+    // a corroborated installment number, even if membership is verified.
+    const positionedProviders = new Set(claims.filter(claim =>
+      typeof claim.position === 'number' && Number.isFinite(claim.position))
+      .map(claim => claim.provider));
+    if (positionedProviders.size < 2 && !excluded) reasonCodes.push('unverified-order');
     decisions.push({
       subjectId: membership.canonicalWorkId + '::' + membership.canonicalSeriesId,
       status: excluded ? 'rejected' : verified ? 'verified' : 'review',
