@@ -10,6 +10,10 @@ export function classifyDetectiveSeriesLabel(raw: string): DetectiveSeriesLabelK
   // Numeric publisher catalog identifiers, including common separators.
   // This is intentionally not a list of publisher-specific book exceptions.
   if (/^\d{3,}(?:[\s./;-]+\d+)*$/u.test(label)) return 'publisher-collection';
+  // A four-digit year-like suffix can be part of a genuine series title
+  // (for example, Goosebumps 2000). Do not classify it as a publisher
+  // identifier without separate imprint evidence.
+  if (/^[\p{L}][\p{L}\s.-]*\s+(?:19|20)\d{2}$/u.test(label)) return 'literary-candidate';
   if (/^[\p{L}][\p{L}\s.-]*[\s;:/-]+\d{3,}(?:[\s./;-]+\d+)*$/u.test(label)) {
     return 'publisher-collection';
   }
