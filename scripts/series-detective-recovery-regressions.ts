@@ -25,7 +25,7 @@ assert.ok(!distantPlan.targetPositions.includes(1000000000));
 import { planSeriesDiscoveryQueries, MAX_GAP_QUERY_TARGETS, FORWARD_QUERY_TARGETS } from '../src/features/series/seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand } from '../src/features/series/seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from '../src/features/series/seriesDetectiveGoogleSeriesIds';
-import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
+import { parseDetectiveOpenLibrarySeries, plausibleOpenLibrarySeriesName } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
 import {
   buildSeriesDetectionQueries,
@@ -1150,5 +1150,11 @@ assert.equal(reusedProviderEditionId.length, 1);
 assert.equal(reusedProviderEditionId[0].work.editions.length, 2);
 assert.deepEqual(new Set(reusedProviderEditionId[0].work.editions.map(edition => edition.isbn13)),
   new Set(['9780000000001', '9780000000002']));
+
+// Open Library publisher collection numbers must not masquerade as literary series.
+assert.equal(plausibleOpenLibrarySeriesName('rororo 23230'), false);
+assert.equal(plausibleOpenLibrarySeriesName('Sara Linton'), true);
+assert.equal(plausibleOpenLibrarySeriesName('The Shining'), true);
+assert.equal(parseDetectiveOpenLibrarySeries(['Sara Linton #1'])?.position, 1);
 
 console.log('Inkbound Series Detective recovery regressions passed.');
