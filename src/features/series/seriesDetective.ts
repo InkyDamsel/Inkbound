@@ -1126,16 +1126,18 @@ export async function findMissingSeriesBooks(
       const key = titleKey && authorKey
         ? `work:${titleKey}::${authorKey}`
         : isbnKey ? `isbn:${isbnKey}` : `unidentified:${seen.size}`;
-      // A shared ISBN is edition-level evidence that two differently titled
-      // provider records refer to the same edition. Do not merge merely on
-      // series position, and require compatible authors to guard bad metadata.
+      // ISBN identifies an edition, not a work. Catalogs sometimes reuse an
+      // ISBN across different installments; never discard a distinct title
+      // because its edition metadata collides with another candidate.
       const isbnMatch = candidateIsbns.length ? [...seen.entries()].find(([, existing]) =>
         [existing.edition.isbn13, existing.edition.isbn10]
           .map(compactDetectiveIsbn).filter(Boolean)
           .some((isbn) => candidateIsbns.includes(isbn))
         && existing.work.authors.some((existingAuthor) =>
           candidate.work.authors.some((incomingAuthor) =>
-            detectiveAuthorsCompatible(existingAuthor, incomingAuthor)))) : undefined;
+            detectiveAuthorsCompatible(existingAuthor, incomingAuthor)))
+        && (!titleKey || !comparableDetectiveTitle(existing.work.title, existing.seriesName)
+          || comparableDetectiveTitle(existing.work.title, existing.seriesName) === titleKey)) : undefined;
       const targetKey = isbnMatch?.[0] ?? key;
       const current = seen.get(targetKey);
       const conflictingTitles = Boolean(current
