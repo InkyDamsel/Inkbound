@@ -1,3 +1,4 @@
+import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import assert from 'node:assert/strict';
 import { validateDetectiveClaimProvenance } from '../src/features/series/seriesDetectiveProvenance';
 import { resolveDetectiveMembershipIdentities } from '../src/features/series/seriesDetectiveIdentityResolution';
@@ -140,3 +141,6 @@ assert.deepEqual(validateDetectiveClaimProvenance(mixedOperations, [
 assert.deepEqual(validateDetectiveClaimProvenance(mixedOperations, [ol]).quarantinedClaimIds,
   ['ol-1'], 'Missing operation provenance fails closed when provider health is mixed');
 console.log('Series Detective per-operation provenance checks passed.');
+
+assert.deepEqual(parseDetectiveOpenLibrarySeries(['Goosebumps 2000']), { name: 'Goosebumps 2000', position: null });
+assert.deepEqual(parseDetectiveOpenLibrarySeries(['Grant County #2']), { name: 'Grant County', position: 2 });
