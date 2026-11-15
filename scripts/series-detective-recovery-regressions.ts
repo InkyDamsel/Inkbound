@@ -1193,4 +1193,16 @@ const outageReplay = replayDetectiveEvidence({ ...replayInput,
 assert.ok(outageReplay.decisions[0].reasonCodes.includes('provider-unavailable'));
 assert.equal(replayDetectiveEvidence({ ...replayInput, claims: [] }).decisions.length, 0);
 
+const { classifyDetectiveSeriesLabel } = await import('../src/features/series/seriesDetectiveLabelClassifier');
+for (const label of ['rororo 23230', 'rororo ; 23230', 'Fischer Taschenbuch 12345', 'Heyne 43/123', 'Penguin Books Ltd']) {
+  assert.equal(classifyDetectiveSeriesLabel(label), 'publisher-collection', label);
+}
+for (const label of ['Grant County', 'Hades x Persephone', 'A Twisted Tale', 'The Shining']) {
+  assert.equal(classifyDetectiveSeriesLabel(label), 'literary-candidate', label);
+}
+const publisherReplay = replayDetectiveEvidence({ ...replayInput,
+  claims: replayClaims.map(claim => ({ ...claim, value: 'rororo 23230' })) });
+assert.equal(publisherReplay.decisions[0].status, 'rejected');
+assert.ok(publisherReplay.decisions[0].reasonCodes.includes('publisher-collection'));
+
 console.log('Inkbound Series Detective recovery regressions passed.');
