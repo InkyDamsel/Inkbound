@@ -1180,7 +1180,14 @@ export async function findMissingSeriesBooks(
       const providers = new Set(matching.map(source => source.seriesProvider ?? source.provider));
       const positions = new Set(matching.map(source => source.position)
         .filter((position): position is number => typeof position === 'number' && Number.isFinite(position)));
-      return { providers: providers.size, conflictingOrder: positions.size > 1 };
+      const positionedProviders = new Set(matching
+        .filter(source => typeof source.position === 'number' && Number.isFinite(source.position))
+        .map(source => source.seriesProvider ?? source.provider));
+      return {
+        providers: providers.size,
+        conflictingOrder: positions.size > 1,
+        corroboratedOrder: positions.size === 1 && positionedProviders.size >= 2,
+      };
     };
 
     mergedProviderCandidates.forEach((candidate) => {
@@ -1246,7 +1253,9 @@ export async function findMissingSeriesBooks(
         // Present results under the reader's collection without modifying
         // the original catalog evidence or saved reading order.
         seriesName: anchoredAlias ? seriesName : resolvedSeriesName,
-        position: candidate.position,
+        // A single catalog's ordinal is not a verified reading order.
+        // Retain unknown order instead of presenting a misleading number.
+        position: membershipEvidence.corroboratedOrder ? candidate.position : null,
         verification,
       });
     });
