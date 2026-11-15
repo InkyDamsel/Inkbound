@@ -330,7 +330,15 @@ const hydrateWorksFromEditionDetails = async (
   works: OpenLibraryWork[],
   limit: number,
   signal?: AbortSignal,
-): Promise<OpenLibraryWork[]> => Promise.all(works.map(async (work, index) => {
+): Promise<OpenLibraryWork[]> => {
+  // Cap concurrent edition lookups. The previous Promise.all fan-out could
+  // launch 20-30 requests at once and trigger rate limits.
+  const hydrated: OpenLibraryWork[] = [];
+  const concurrency = 4;
+  for (let offset = 0; offset < works.length; offset += concurrency) {
+    if (signal?.aborted) throw signal.reason ?? new Error('Open Library lookup aborted');
+    const batch = await Promise.all(works.slice(offset, offset + concurrency).map(async (work, batchIndex) => {
+      const index = offset + batchIndex;
   if (index >= limit || !work.key) return work;
   const existing = work.editions?.docs ?? [];
   const hasSeries = Boolean(
@@ -358,7 +366,11 @@ const hydrateWorksFromEditionDetails = async (
       ],
     },
   };
-}));
+    }));
+    hydrated.push(...batch);
+  }
+  return hydrated;
+};
 
 const flattenCandidates = (
   works: OpenLibraryWork[],
