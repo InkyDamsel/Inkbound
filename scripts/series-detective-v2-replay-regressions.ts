@@ -42,7 +42,7 @@ assert.equal(replayDetectiveEvidence({ ...input, claims: [], observations: [
 for (const name of ['rororo 23230', 'rororo ; 23230', 'Fischer Taschenbuch 12345', 'Heyne 43/123', 'Penguin Books Ltd']) {
   assert.equal(classifyDetectiveSeriesLabel(name), 'publisher-collection', name);
 }
-for (const name of ['Grant County', 'The Shining', 'A Twisted Tale', 'Hades x Persephone']) {
+for (const name of ['Grant County', 'The Shining', 'A Twisted Tale', 'Hades x Persephone', 'Goosebumps 2000']) {
   assert.equal(classifyDetectiveSeriesLabel(name), 'literary-candidate', name);
 }
 for (let i = 0; i < 100; i++) {
