@@ -264,6 +264,21 @@ const mapCandidate = (
   };
 };
 
+// Every provider request has a finite deadline; caller cancellation remains authoritative.
+const fetchWithDeadline = async (url: string, signal?: AbortSignal): Promise<Response> => {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener('abort', onAbort, { once: true });
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    return await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', onAbort);
+  }
+};
+
 const fetchOpenLibrary = async (
   params: URLSearchParams,
   signal?: AbortSignal,
@@ -272,10 +287,7 @@ const fetchOpenLibrary = async (
   params.set('limit', '100');
   params.set('page', String(Math.max(1, page)));
   params.set('fields', FIELDS);
-  const response = await fetch(`${ENDPOINT}?${params.toString()}`, {
-    signal,
-    headers: { Accept: 'application/json' },
-  });
+  const response = await fetchWithDeadline(`${ENDPOINT}?${params.toString()}`, signal);
   if (!response.ok) throw new Error(`Open Library Series Detective search failed (${response.status}).`);
   const payload = await response.json() as OpenLibraryResponse;
   return payload.docs ?? [];
@@ -302,10 +314,7 @@ const fetchWorkEditions = async (
 
   let pending = workEditionInFlight.get(path);
   if (!pending) {
-    pending = fetch(`https://openlibrary.org${path}/editions.json?limit=30`, {
-      signal,
-      headers: { Accept: 'application/json' },
-    })
+    pending = fetchWithDeadline(`https://openlibrary.org${path}/editions.json?limit=30`, signal)
       .then(async (response) => {
         if (!response.ok) return [];
         const payload = await response.json() as { entries?: OpenLibraryEdition[] };
