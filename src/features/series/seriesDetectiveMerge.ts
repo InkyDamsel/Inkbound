@@ -296,6 +296,9 @@ export const mergeDetectiveCandidates = (
       // alternate titles or bad catalog metadata. Preserve the merged work,
       // but do not promote that disputed identity into automatic bulk-add.
       seriesStructured: comparableWorkTitle(current.work.title) !== comparableWorkTitle(incoming.work.title)
+        || (current.seriesName && incoming.seriesName
+          && current.position !== null && incoming.position !== null
+          && current.position !== incoming.position)
         ? false : series.structured,
       providerSources: [...new Set([
         ...(current.providerSources ?? [current.provider]),
