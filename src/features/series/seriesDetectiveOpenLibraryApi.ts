@@ -333,7 +333,12 @@ const hydrateWorksFromEditionDetails = async (
     || existing.some((edition) => safeSeriesValues(edition.series).length > 0)
     || seriesSubjects(work.subject).length > 0,
   );
-  if (hasSeries && existing.length > 0) return work;
+  // A search result may carry an unnumbered series label while the edition
+  // endpoint carries its actual installment number. Do not skip hydration
+  // merely because a series name exists in the search payload.
+  const hasPositionedEdition = existing.some((edition) =>
+    parseDetectiveOpenLibrarySeries(safeSeriesValues(edition.series))?.position != null);
+  if (hasSeries && hasPositionedEdition) return work;
 
   const detailed = await fetchWorkEditions(work.key, signal);
   if (!detailed.length) return work;
