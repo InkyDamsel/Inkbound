@@ -1168,9 +1168,20 @@ export async function findMissingSeriesBooks(
       ),
     };
 
-    // Independently count explicit provider memberships BEFORE merge. A merged
-    // providerSources array may include title-only records; it is not proof
-    // that two sources actually asserted series membership.
+    // Keep verification anchored to the requested series and to an actual
+    // owned work. A text label by itself cannot establish series identity.
+    const seedMembershipProviders = new Set(providerCandidates.filter(source =>
+      source.seriesStructured === true
+      && source.seriesName
+      && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
+      && seriesBooks.some(book =>
+        comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(source.work.title)
+        && source.work.authors.some(name => detectiveAuthorsCompatible(book.work.author, name))))
+      .map(source => source.seriesProvider ?? source.provider));
+    const seedCorroborated = seedMembershipProviders.size >= 2;
+
+    // Independent structured membership, not mere title overlap, establishes
+    // candidate eligibility. Compare against raw provider records before merge.
     const corroboratingMemberships = (candidate: DetectiveMergeCandidate) => {
       const matching = providerCandidates.filter(source =>
         source.seriesStructured === true
@@ -1186,7 +1197,6 @@ export async function findMissingSeriesBooks(
       return {
         providers: providers.size,
         conflictingOrder: positions.size > 1,
-        corroboratedOrder: positions.size === 1 && positionedProviders.size >= 2,
         agreedPosition: positions.size === 1 && positionedProviders.size >= 2 ? [...positions][0] : null,
       };
     };
@@ -1245,7 +1255,7 @@ export async function findMissingSeriesBooks(
       const membershipEvidence = corroboratingMemberships(candidate);
       const verification: 'verified' | 'review' =
         !anchoredAlias && candidate.seriesStructured && compatibleSeries
-        && membershipEvidence.providers >= 2 && !membershipEvidence.conflictingOrder
+        && seedCorroborated && membershipEvidence.providers >= 2 && !membershipEvidence.conflictingOrder
           ? 'verified' : 'review';
 
       addCandidate({
