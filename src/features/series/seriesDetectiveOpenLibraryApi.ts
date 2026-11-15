@@ -162,6 +162,11 @@ export const parseDetectiveOpenLibrarySeries = (
     'first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth',
     'eleventh','twelfth','thirteenth','fourteenth','fifteenth','sixteenth','seventeenth','eighteenth','nineteenth','twentieth',
   ].join('|');
+  // Year-like suffixes can be part of the actual series name, not an
+  // installment ordinal (e.g. Goosebumps 2000).
+  if (/\\s(?:19|20)\\d{2}$/u.test(primary)) {
+    return { name: primary, position: null };
+  }
   const match = primary.match(new RegExp(
     `^(.*?)(?:\\s*,?\\s*)(?:#\\s*|book\\s*#?\\s*|vol(?:ume)?\\.?\\s*#?\\s*|part\\s*#?\\s*|,\\s*)(\\d+(?:\\.\\d+)?|${positionWords})\\s*$`,
     'i',
