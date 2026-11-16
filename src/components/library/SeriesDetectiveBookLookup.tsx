@@ -129,16 +129,6 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
           }}>Use this series</button>}
         {applied && <p role="status" className="text-xs text-[#e5c158]">Series update requested. Check Book Details for the saved metadata.</p>}
       </div>}
-      {result?.providerReports && <div className="mt-4 rounded-lg border border-white/15 bg-black/20 p-3" aria-label="Catalog provider coverage">
-        <p className="font-semibold text-[#f3dbad]">Catalog coverage (beta diagnostics)</p>
-        <p className="mt-1 text-xs text-stone-300">Partial or unavailable providers may hide valid series. These statuses describe the roster request, not the earlier book-identification request.</p>
-        <ul className="mt-2 space-y-1 text-xs text-stone-300">
-          {result.providerReports.map((report) => <li key={report.provider}>
-            <span className="font-semibold">{report.provider}</span>: {report.status}
-            {report.errorCode ? ` (${report.errorCode})` : ''}
-          </li>)}
-        </ul>
-      </div>}
       {roster && <SeriesDetectiveRoster entries={roster} />}
       </section>
     </div>}
