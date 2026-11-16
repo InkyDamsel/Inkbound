@@ -12,6 +12,7 @@ const legacy = read('src/features/series/seriesDetective.ts');
 const merge = read('src/features/series/seriesDetectiveMerge.ts');
 const preview = read('src/components/library/SeriesDetectivePreview.tsx');
 const corroboration = read('src/features/series/seriesDetectiveCorroboration.ts');
+const canonicalAdapter = read('src/features/series/seriesDetectiveCanonicalAdapter.ts');
 assert.match(ol, /const hasPositionedEdition = existing\.some/);
 assert.match(ol, /const concurrency = 4;/);
 assert.match(ol, /const fetchWithDeadline = async/);
@@ -42,4 +43,9 @@ assert.match(corroboration, /const invalidPosition = matching\.some\(candidate =
 assert.match(corroboration, /conflictingOrder: invalidPosition \|\| positions\.size > 1/);
 assert.match(legacy, /const targetKey = isbnMatch && titleKey && authorKey \? isbnMatch\[0\] : key;/);
 assert.match(corroboration, /comparableDetectiveTitle\(candidate\.work\.title\) === comparableDetectiveTitle\(target\.work\.title\)/);
+assert.match(legacy, /const canonicalEvidence = verifyCanonicalProductionMembership\(/);
+assert.match(legacy, /&& canonicalEvidence\.verified && !canonicalEvidence\.conflicting/);
+assert.match(canonicalAdapter, /replayCanonicalDetectiveEvidence\(/);
+assert.match(canonicalAdapter, /seedCanonicalWorkId: seedKey/);
+assert.match(canonicalAdapter, /sourceOperation: prefix/);
 console.log('Series Detective production safety source guards passed (not behavioral verification).');
