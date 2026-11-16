@@ -51,6 +51,7 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
       if (response.data?.role === 'owner' || response.data?.role === 'admin') {
         setAdminAuthorized(true);
         setAdminDiagnosticsOpen(true);
+        setRun(value => value + 1);
       }
     } catch {
       // Fail closed: no diagnostics when server authorization fails.
@@ -85,7 +86,7 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
       controller.signal,
       seriesBookIds,
       // Every explicit lookup refreshes discovery; no roster cache is active.
-      { forceRefresh: run > 1, overrides: overridesRef.current },
+      { forceRefresh: run > 1, overrides: overridesRef.current, includeAdminDiagnostics: adminAuthorized },
     )
       .then((next) => { if (!controller.signal.aborted) setResult(next); })
       .catch((reason: unknown) => {
