@@ -18,7 +18,8 @@ const owned = [{ title: 'Blindsighted', author: 'Karin Slaughter' }];
 const run = (sources: DetectiveMergeCandidate[], target = sibling) =>
   verifyCanonicalProductionMembership(sources, target, owned, 'Grant County');
 assert.deepEqual(run([seed, seed2, sibling, sibling2]),
-  { verified: true, agreedPosition: 2, conflicting: false, providerCount: 2 });
+  { verified: false, agreedPosition: null, conflicting: false, providerCount: 2 },
+  'Title and author agreement alone cannot establish provider-independent series identity');
 assert.equal(run([seed, sibling, sibling2]).verified, false,
   'One-provider seed must never authorize sibling verification');
 assert.equal(run([seed, seed2, sibling]).verified, false,
