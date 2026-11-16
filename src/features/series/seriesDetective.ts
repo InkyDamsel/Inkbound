@@ -45,6 +45,7 @@ import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiv
 import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
 import { decideDetectiveMembership } from './seriesDetectiveDecision';
+import { inspectDetectiveEvidence, type DetectiveEvidenceInspection } from './seriesDetectiveEvidenceInspector';
 import { discoverDetectiveWikidata } from './seriesDetectiveWikidataApi';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
@@ -289,6 +290,8 @@ export interface SeriesDetectiveCandidate {
   seriesName: string;
   position: number | null;
   verification?: 'verified' | 'review';
+  /** Read-only catalog evidence; never used to authorize library writes. */
+  evidenceInspection?: DetectiveEvidenceInspection;
 }
 
 export interface SeriesDetectiveOwnedEntry {
@@ -1273,6 +1276,11 @@ export async function findMissingSeriesBooks(
         // Retain unknown order instead of presenting a misleading number.
         position: decision.position,
         verification: decision.verification,
+        evidenceInspection: inspectDetectiveEvidence(
+          providerCandidates, candidate,
+          seriesBooks.map(book => ({ title: book.work.title, author: book.work.author })),
+          seriesName,
+        ),
       });
     });
 
