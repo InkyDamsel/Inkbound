@@ -44,8 +44,7 @@ import {
 import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
-import { corroborateDetectiveMembership, hasCorroboratedOwnedSeed } from './seriesDetectiveCorroboration';
-import { verifyCanonicalProductionMembership } from './seriesDetectiveCanonicalAdapter';
+import { decideDetectiveMembership } from './seriesDetectiveDecision';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
   seriesName?: string;
@@ -1191,14 +1190,6 @@ export async function findMissingSeriesBooks(
     // Require two independent providers to identify the SAME owned work.
     // A vote for owned book A and a vote for owned book B must not combine
     // into a fictitious corroborated seed.
-    const seedCorroborated = hasCorroboratedOwnedSeed(
-      providerCandidates,
-      seriesBooks.map(book => ({ title: book.work.title, author: book.work.author })),
-      seriesName,
-    );
-    const corroboratingMemberships = (candidate: DetectiveMergeCandidate) =>
-      corroborateDetectiveMembership(providerCandidates, candidate, seriesName);
-
     mergedProviderCandidates.forEach((candidate) => {
       if (isSeriesMetadataRecord(candidate, seriesName)) {
         diagnostics.rejectedEvidence += 1;
@@ -1250,19 +1241,11 @@ export async function findMissingSeriesBooks(
       // A single provider's numbered membership is discovery evidence, not
       // independent verification. Preserve the candidate for review instead
       // of silently granting bulk-add eligibility.
-      const membershipEvidence = corroboratingMemberships(candidate);
-      const canonicalEvidence = verifyCanonicalProductionMembership(
-        providerCandidates,
-        candidate,
+      const decision = decideDetectiveMembership(
+        providerCandidates, candidate,
         seriesBooks.map(book => ({ title: book.work.title, author: book.work.author })),
         seriesName,
       );
-      const verification: 'verified' | 'review' =
-        !anchoredAlias && candidate.seriesStructured && compatibleSeries
-        && seedCorroborated && membershipEvidence.providers >= 2
-        && canonicalEvidence.verified
-          ? 'verified' : 'review';
-
       addCandidate({
         work: candidate.work,
         edition: candidate.edition,
@@ -1271,8 +1254,8 @@ export async function findMissingSeriesBooks(
         seriesName: anchoredAlias ? seriesName : resolvedSeriesName,
         // A single catalog's ordinal is not a verified reading order.
         // Retain unknown order instead of presenting a misleading number.
-        position: membershipEvidence.agreedPosition,
-        verification,
+        position: decision.position,
+        verification: decision.verification,
       });
     });
 
