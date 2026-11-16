@@ -34,7 +34,6 @@ export function verifyCanonicalProductionMembership(
   const workKey = (candidate: DetectiveMergeCandidate): string =>
     JSON.stringify([comparableDetectiveTitle(candidate.work.title),
       canonicalDetectiveAuthor(candidate.work.authors[0])]);
-  const seriesKey = comparableDetectiveTitle(seriesName);
   const targetKey = workKey(target);
   const ownedKeys = new Set(owned.map(book => JSON.stringify([
     comparableDetectiveTitle(book.title), canonicalDetectiveAuthor(book.author),
@@ -47,12 +46,8 @@ export function verifyCanonicalProductionMembership(
   const seedSources = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
     && ownedKeys.has(workKey(source)));
-  const relevant = [...new Set([...matching, ...seedSources])];
-  // The existing catalog adapter does not expose trustworthy cross-provider
-  // series IDs. Do not manufacture identity records from array indexes and
-  // normalized titles and then call them independently verified.
-  // Until provider-native identity evidence is available, V2 cannot grant
-  // verification. Preserve results as review-only in the production caller.
+  // A matching ISBN corroborates edition identity across catalogs. It does
+  // not by itself prove membership; only structured series claims count.
   const independentWorkEvidence = (group: readonly DetectiveMergeCandidate[]): boolean => {
     const byIsbn = new Map<string, Set<Provider>>();
     for (const source of group) {
@@ -83,9 +78,8 @@ export function verifyCanonicalProductionMembership(
   const agreedPosition = !conflicting && positions.length > 0
     && new Set(positions.map(item => item.provider)).size >= 2
     ? positions[0].position : null;
-  // Independent structured memberships for both seed and target provide a
-  // narrow production liveness path. Do not require position agreement for
-  // membership: position is a separate claim, and conflicts remain review.
+  // Membership and ordering are distinct evidence. The final decision engine
+  // must keep disputed ordering review-only for safe bulk operations.
   return { verified: anchored && providers.size >= 2,
     agreedPosition, conflicting, providerCount: providers.size };
 }
