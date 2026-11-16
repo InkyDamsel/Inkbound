@@ -25,6 +25,9 @@ for (const invalid of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
   assert.equal(result.conflictingOrder, true);
   assert.equal(result.agreedPosition, null);
 }
+const ambiguousAlias = candidate('First: A Different Book', 'hardcover', 1);
+assert.equal(corroborateDetectiveMembership([first, ambiguousAlias], first, 'Example Series').providers, 1,
+  'A loosely matched title must not manufacture independent verification');
 assert.equal(corroborateDetectiveMembership([first, second], first, 'Example Series').providers, 1,
   'Evidence from another installment cannot vote for this work');
 console.log('Series Detective production corroboration regressions passed.');
