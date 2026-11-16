@@ -5,6 +5,7 @@ import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionListeningMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { BookPicker } from './BookPicker';
 
 interface ReadingMemoryEntry {
   feeling: string;
@@ -118,15 +119,7 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
             Return to the story, the season of life around it, and the thoughts you want your future self to remember.
           </p>
         </div>
-        <select
-          value={selectedBook.id}
-          onChange={(event) => setSelectedBookId(event.target.value)}
-          className="min-h-12 w-full min-w-0 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 text-sm text-[var(--ink-ivory)] sm:w-auto sm:max-w-sm"
-        >
-          {eligibleBooks.map((book) => (
-            <option key={book.id} value={book.id}>{book.work.title}</option>
-          ))}
-        </select>
+        <BookPicker books={eligibleBooks} value={selectedBook.id} onChange={setSelectedBookId} label="Reading memory book" className="w-full sm:max-w-sm" />
       </header>
 
       <section className="inkbound-artwork-hero inkbound-panel overflow-hidden rounded-3xl">
