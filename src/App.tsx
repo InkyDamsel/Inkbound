@@ -231,7 +231,17 @@ export default function App() {
       // A display-title suffix must not bypass duplicate protection on save.
       // Recheck the trust boundary at the mutation handler. UI verification
       // controls are not authorization: custom events can be dispatched directly.
-      const eligible: SeriesDetectiveCandidate[] = [];
+      // Wikidata provides series evidence, not a bibliographic edition that can
+      // be saved through protected Search. Never forge a Search provider.
+      type SaveableEdition = SeriesDetectiveCandidate['edition'] & {
+        source: Exclude<SeriesDetectiveCandidate['edition']['source'], 'wikidata'>;
+      };
+      type SaveableCandidate = Omit<SeriesDetectiveCandidate, 'edition'> & { edition: SaveableEdition };
+      const searchWork = (work: SeriesDetectiveCandidate['work']) => ({
+        ...work,
+        editions: work.editions.filter((edition): edition is SaveableEdition => edition.source !== 'wikidata'),
+      });
+      const eligible: SaveableCandidate[] = [];
       const pendingWorks: UserBookRecord[] = [];
       for (const candidate of candidates) {
         if (candidate?.verification !== 'verified'
@@ -239,19 +249,20 @@ export default function App() {
           || !candidate.work.authors?.[0]?.trim()
           || !candidate.edition
           || !candidate.seriesName?.trim()) continue;
+        if (candidate.edition.source === 'wikidata') continue;
         if (findLibraryBookForCandidate(candidate, [...current, ...pendingWorks])) continue;
         const pending = createBookFromSearchEdition({
-          work: candidate.work,
+          work: searchWork(candidate.work),
           edition: candidate.edition,
           status: 'tbr',
         });
-        eligible.push(candidate);
+        eligible.push({ ...candidate, edition: candidate.edition });
         pendingWorks.push(pending);
       }
       if (!eligible.length) { showToast('No verified new books to add. Candidates may need review or may already be in your library.'); return; }
       const additions = eligible.map((candidate) => {
         const created = createBookFromSearchEdition({
-          work: candidate.work,
+          work: searchWork(candidate.work),
           edition: {
             ...candidate.edition,
             seriesName: candidate.seriesName,
