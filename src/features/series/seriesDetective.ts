@@ -45,6 +45,7 @@ import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiv
 import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
 import { corroborateDetectiveMembership, hasCorroboratedOwnedSeed } from './seriesDetectiveCorroboration';
+import { verifyCanonicalProductionMembership } from './seriesDetectiveCanonicalAdapter';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
   seriesName?: string;
@@ -1250,9 +1251,16 @@ export async function findMissingSeriesBooks(
       // independent verification. Preserve the candidate for review instead
       // of silently granting bulk-add eligibility.
       const membershipEvidence = corroboratingMemberships(candidate);
+      const canonicalEvidence = verifyCanonicalProductionMembership(
+        providerCandidates,
+        candidate,
+        seriesBooks.map(book => ({ title: book.work.title, author: book.work.author })),
+        seriesName,
+      );
       const verification: 'verified' | 'review' =
         !anchoredAlias && candidate.seriesStructured && compatibleSeries
         && seedCorroborated && membershipEvidence.providers >= 2 && !membershipEvidence.conflictingOrder
+        && canonicalEvidence.verified && !canonicalEvidence.conflicting
           ? 'verified' : 'review';
 
       addCandidate({
