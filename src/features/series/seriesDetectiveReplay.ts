@@ -43,6 +43,13 @@ export function replayDetectiveEvidence(input: DetectiveReplayInput): DetectiveR
 
   const unavailable = snapshot.providerObservations.some(item => item.state !== 'ok');
   const decisions: DetectiveEvidenceDecision[] = [];
+  // A failed lookup may quarantine every membership claim. Preserve an
+  // explicitly non-actionable review decision for that requested subject,
+  // rather than silently returning no decision and hiding the outage.
+  const quarantinedMemberships = input.claims.filter(claim =>
+    claim.kind === 'series-membership' && provenance.quarantinedClaimIds.includes(claim.id));
+  const quarantinedSubjects = new Set(quarantinedMemberships.map(claim => claim.subjectId)
+    .filter(Boolean));
   for (const [subjectId, claims] of [...bySubject].sort(([a], [b]) => a.localeCompare(b))) {
     const qualifying = claims.filter(claim => hasSeriesIdentity(claim)
       && classifyDetectiveSeriesLabel(claim.value) !== 'publisher-collection');
@@ -77,5 +84,18 @@ export function replayDetectiveEvidence(input: DetectiveReplayInput): DetectiveR
       conflictingClaimIds,
     });
   }
+  if (unavailable) {
+    for (const subjectId of quarantinedSubjects) {
+      if (decisions.some(decision => decision.subjectId === subjectId)) continue;
+      decisions.push({
+        subjectId,
+        status: 'review',
+        reasonCodes: ['unverified-membership', 'provider-unavailable'],
+        supportingClaimIds: [],
+        conflictingClaimIds: [],
+      });
+    }
+  }
+  decisions.sort((left, right) => left.subjectId.localeCompare(right.subjectId));
   return { snapshot, decisions, quarantinedClaimIds: provenance.quarantinedClaimIds };
 }
