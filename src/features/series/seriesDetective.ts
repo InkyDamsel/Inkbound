@@ -1207,15 +1207,20 @@ export async function findMissingSeriesBooks(
         && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
         && detectiveCandidatesAreSameWork(source, candidate));
       const providers = new Set(matching.map(source => source.seriesProvider ?? source.provider));
+      const invalidPosition = matching.some(source => source.position != null
+        && (!Number.isSafeInteger(source.position) || source.position <= 0));
       const positions = new Set(matching.map(source => source.position)
-        .filter((position): position is number => typeof position === 'number' && Number.isFinite(position)));
+        .filter((position): position is number => typeof position === 'number'
+          && Number.isSafeInteger(position) && position > 0));
       const positionedProviders = new Set(matching
-        .filter(source => typeof source.position === 'number' && Number.isFinite(source.position))
+        .filter(source => typeof source.position === 'number'
+          && Number.isSafeInteger(source.position) && source.position > 0)
         .map(source => source.seriesProvider ?? source.provider));
       return {
         providers: providers.size,
-        conflictingOrder: positions.size > 1,
-        agreedPosition: positions.size === 1 && positionedProviders.size >= 2 ? [...positions][0] : null,
+        conflictingOrder: invalidPosition || positions.size > 1,
+        agreedPosition: !invalidPosition && positions.size === 1 && positionedProviders.size >= 2
+          ? [...positions][0] : null,
       };
     };
 
