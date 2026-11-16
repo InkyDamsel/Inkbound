@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { OWNER_EMAILS } from '../features/admin/approvedOwners';
 import { AlertTriangle, Crown, Gift, RefreshCw, Search, ShieldCheck, Star, Trash2, Users, X } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { auth } from '../lib/firebase';
@@ -46,7 +47,6 @@ interface DashboardData {
   audit: AuditEntry[];
 }
 
-const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
 const READER_PAGE_SIZE = 10;
 const AUDIT_PAGE_SIZE = 10;
 
