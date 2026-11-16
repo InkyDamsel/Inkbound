@@ -1,9 +1,6 @@
 import type { DetectiveMergeCandidate } from './seriesDetectiveMerge';
 import { detectiveCandidatesAreSameWork } from './seriesDetectiveMerge';
-import { comparableDetectiveTitle, canonicalDetectiveAuthor, detectiveSeriesNamesCompatible } from './seriesDetectiveEvidence';
-import { replayCanonicalDetectiveEvidence } from './seriesDetectiveCanonicalReplay';
-import type { DetectiveEvidenceClaim, DetectiveProviderObservation } from './seriesDetectiveEvidenceLedger';
-import type { DetectiveResolvedIdentity } from './seriesDetectiveIdentityResolution';
+import { comparableDetectiveTitle, canonicalDetectiveAuthor, detectiveSeriesNamesCompatible, compactDetectiveIsbn } from './seriesDetectiveEvidence';
 
 type Provider = DetectiveMergeCandidate['provider'];
 
@@ -26,6 +23,14 @@ export function verifyCanonicalProductionMembership(
   owned: readonly { title: string; author: string }[],
   seriesName: string,
 ): DetectiveCanonicalProductionEvidence {
+  // An ISBN is independently assigned edition evidence. Display title and
+  // author are useful for discovery, but must never be forged into a
+  // provider-independent identity proof.
+  const isbnOf = (candidate: DetectiveMergeCandidate): string | null => {
+    const isbn13 = compactDetectiveIsbn(candidate.edition.isbn13);
+    const isbn10 = compactDetectiveIsbn(candidate.edition.isbn10);
+    return isbn13 || isbn10 || null;
+  };
   const workKey = (candidate: DetectiveMergeCandidate): string =>
     JSON.stringify([comparableDetectiveTitle(candidate.work.title),
       canonicalDetectiveAuthor(candidate.work.authors[0])]);
@@ -43,57 +48,30 @@ export function verifyCanonicalProductionMembership(
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
     && ownedKeys.has(workKey(source)));
   const relevant = [...new Set([...matching, ...seedSources])];
-  const observations: DetectiveProviderObservation[] = [];
-  const claims: DetectiveEvidenceClaim[] = [];
-  const identities: DetectiveResolvedIdentity[] = [];
-  for (const [index, source] of relevant.entries()) {
-    const provider: Provider = source.seriesProvider ?? source.provider;
-    const nativeWorkId = JSON.stringify([provider, 'work', index]);
-    const nativeSeriesId = JSON.stringify([provider, 'series', index]);
-    const canonicalWorkId = workKey(source);
-    const prefix = provider + ':' + index;
-    observations.push({ provider, operation: prefix, state: 'ok', recordCount: 1 });
-    const workProof = prefix + ':work';
-    const seriesProof = prefix + ':series';
-    claims.push(
-      { id: workProof, provider, sourceOperation: prefix, sourceRecordId: nativeWorkId,
-        sourceField: 'catalog.work.title+authors', kind: 'work-identity',
-        subjectId: nativeWorkId, value: canonicalWorkId, structured: true },
-      { id: seriesProof, provider, sourceOperation: prefix, sourceRecordId: nativeSeriesId,
-        sourceField: 'catalog.seriesName', kind: 'series-identity',
-        subjectId: nativeSeriesId, value: seriesKey, structured: true },
-      { id: prefix + ':membership', provider, sourceOperation: prefix,
-        sourceRecordId: nativeWorkId, sourceField: 'catalog.structuredMembership',
-        kind: 'series-membership', subjectId: nativeWorkId, objectId: nativeSeriesId,
-        value: source.seriesName!, position: source.position, structured: true },
-    );
-    identities.push({ provider, nativeWorkId, nativeSeriesId, canonicalWorkId,
-      canonicalSeriesId: seriesKey, identityEvidenceIds: [workProof, seriesProof] });
-  }
-  // A shared normalized seed key must be corroborated by two independent
-  // sources. Selecting one deterministic owned key avoids combining votes
-  // for different books.
-  const seedKey = [...ownedKeys].find(key => new Set(seedSources
-    .filter(source => workKey(source) === key)
-    .map(source => source.seriesProvider ?? source.provider)).size >= 2);
-  if (!seedKey) return { verified: false, agreedPosition: null, conflicting: false, providerCount: 0 };
-  const replay = replayCanonicalDetectiveEvidence({
-    seedCanonicalWorkId: seedKey, observations, claims, identities,
-  });
-  const decision = replay.decisions.find(item => item.subjectId === targetKey + '::' + seriesKey);
-  const positions = matching.map(source => source.position);
-  const invalid = positions.some(position => position != null
-    && (!Number.isSafeInteger(position) || position <= 0));
-  const valid = new Set(positions.filter((position): position is number =>
-    typeof position === 'number' && Number.isSafeInteger(position) && position > 0));
-  const positionedProviders = new Set(matching.filter(source => source.position != null
-    && Number.isSafeInteger(source.position) && source.position > 0)
-    .map(source => source.seriesProvider ?? source.provider));
-  const providerCount = new Set(matching.map(source => source.seriesProvider ?? source.provider)).size;
-  const conflicting = invalid || valid.size > 1 || Boolean(decision?.reasonCodes.includes('conflicting-evidence'));
-  return {
-    verified: decision?.status === 'verified' && !conflicting && providerCount >= 2,
-    agreedPosition: !conflicting && valid.size === 1 && positionedProviders.size >= 2 ? [...valid][0] : null,
-    conflicting, providerCount,
+  // The existing catalog adapter does not expose trustworthy cross-provider
+  // series IDs. Do not manufacture identity records from array indexes and
+  // normalized titles and then call them independently verified.
+  // Until provider-native identity evidence is available, V2 cannot grant
+  // verification. Preserve results as review-only in the production caller.
+  const independentWorkEvidence = (group: readonly DetectiveMergeCandidate[]): boolean => {
+    const byIsbn = new Map<string, Set<Provider>>();
+    for (const source of group) {
+      const isbn = isbnOf(source);
+      if (!isbn) continue;
+      const providers = byIsbn.get(isbn) ?? new Set<Provider>();
+      providers.add(source.seriesProvider ?? source.provider);
+      byIsbn.set(isbn, providers);
+    }
+    return [...byIsbn.values()].some(providers => providers.size >= 2);
   };
+  if (!independentWorkEvidence(matching)
+    || ![...ownedKeys].some(key => independentWorkEvidence(seedSources.filter(source => workKey(source) === key)))) {
+    return { verified: false, agreedPosition: null, conflicting: false,
+      providerCount: new Set(matching.map(source => source.seriesProvider ?? source.provider)).size };
+  }
+  // Even matching ISBNs establish an edition/work, NOT a cross-provider
+  // series identity. Keep this boundary closed until native series identifiers
+  // and their operation-scoped provenance can be passed through the adapters.
+  return { verified: false, agreedPosition: null, conflicting: false,
+    providerCount: new Set(matching.map(source => source.seriesProvider ?? source.provider)).size };
 }
