@@ -151,6 +151,37 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
           )}
         </details>
       )}
+          {result?.candidates && (
+            <details className="mt-3 rounded-xl border border-[var(--ink-border-subtle)] p-3 text-xs text-[var(--ink-muted)]">
+              <summary className="cursor-pointer font-semibold">Per-book evidence inspector ({result.candidates.length})</summary>
+              <div className="mt-3 max-h-96 space-y-2 overflow-y-auto">
+                {result.candidates.map((candidate, index) => {
+                  const evidence = candidate.evidenceInspection;
+                  return (
+                    <details key={candidate.work.key + ':' + index} className="rounded-lg border border-[var(--ink-border-subtle)] p-2">
+                      <summary className="cursor-pointer font-medium text-[var(--ink-ivory)]">
+                        {candidate.work.title} — {candidate.verification === 'verified' ? 'Verified' : 'Needs Review'}
+                      </summary>
+                      {evidence ? (
+                        <div className="mt-2 space-y-1">
+                          <p>Order: {evidence.position ?? 'Unconfirmed'} · Conflicting order: {evidence.conflictingOrder ? 'Yes' : 'No'}</p>
+                          <p>Owned seed corroborated: {evidence.ownedSeedCorroborated ? 'Yes' : 'No'}</p>
+                          <p>Providers: {evidence.candidateProviders.join(', ') || 'None'}</p>
+                          {evidence.reasons.map((reason, reasonIndex) => <p key={reasonIndex}>• {reason}</p>)}
+                          {evidence.providerClaims.map((claim, claimIndex) => (
+                            <p key={claimIndex} className="break-words">
+                              {claim.provider}: {claim.origin} · series ID {claim.nativeSeriesId ?? 'not supplied'} ·
+                              position {claim.position ?? 'unknown'} · {claim.structured ? 'structured' : 'context only'}
+                            </p>
+                          ))}
+                        </div>
+                      ) : <p className="mt-2">No detailed provider evidence was retained for this result.</p>}
+                    </details>
+                  );
+                })}
+              </div>
+            </details>
+          )}
         </div>
       )}
       {roster && (
