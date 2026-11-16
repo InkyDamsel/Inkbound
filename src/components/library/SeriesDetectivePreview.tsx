@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { OWNER_EMAILS } from '../../features/admin/approvedOwners';
 import type { UserBookRecord } from '../../types';
 import {
   classifySeriesCandidates,
@@ -120,7 +121,7 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
         </button>
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-rose-300">{error}</p>}
-      {result && user && (
+      {result && user?.email && OWNER_EMAILS.has(user.email.toLowerCase()) && (
         <button type="button" disabled={adminChecking}
           onClick={() => { if (adminAuthorized) setAdminDiagnosticsOpen(value => !value); else void requestAdminDiagnostics(); }}
           className="mt-3 text-xs text-[var(--ink-muted)] underline">
