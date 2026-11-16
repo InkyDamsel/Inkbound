@@ -237,6 +237,8 @@ export default function App() {
         source: Exclude<SeriesDetectiveCandidate['edition']['source'], 'wikidata'>;
       };
       type SaveableCandidate = Omit<SeriesDetectiveCandidate, 'edition'> & { edition: SaveableEdition };
+      const isSaveableCandidate = (candidate: SeriesDetectiveCandidate): candidate is SaveableCandidate =>
+        candidate.edition != null && candidate.edition.source !== 'wikidata';
       const searchWork = (work: SeriesDetectiveCandidate['work']) => ({
         ...work,
         editions: work.editions.filter((edition): edition is SaveableEdition => edition.source !== 'wikidata'),
@@ -249,14 +251,14 @@ export default function App() {
           || !candidate.work.authors?.[0]?.trim()
           || !candidate.edition
           || !candidate.seriesName?.trim()) continue;
-        if (candidate.edition.source === 'wikidata') continue;
+        if (!isSaveableCandidate(candidate)) continue;
         if (findLibraryBookForCandidate(candidate, [...current, ...pendingWorks])) continue;
         const pending = createBookFromSearchEdition({
           work: searchWork(candidate.work),
           edition: candidate.edition,
           status: 'tbr',
         });
-        eligible.push({ ...candidate, edition: candidate.edition });
+        eligible.push(candidate);
         pendingWorks.push(pending);
       }
       if (!eligible.length) { showToast('No verified new books to add. Candidates may need review or may already be in your library.'); return; }
