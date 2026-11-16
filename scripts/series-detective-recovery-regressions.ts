@@ -1220,6 +1220,7 @@ console.log('Inkbound Series Detective recovery regressions passed.');
 // Production canonical gate: corroborated membership must remain distinct
 // from disputed reading order. Never promote a single-provider claim.
 import { verifyCanonicalProductionMembership } from '../src/features/series/seriesDetectiveCanonicalAdapter';
+import { decideDetectiveMembership } from '../src/features/series/seriesDetectiveDecision';
 import { corroborateDetectiveMembership } from '../src/features/series/seriesDetectiveCorroboration';
 import type { DetectiveMergeCandidate } from '../src/features/series/seriesDetectiveMerge';
 const nativeSeriesFixture = (
@@ -1264,3 +1265,17 @@ assert.equal(verifyCanonicalProductionMembership(
   structuredSeriesEvidence[2], [{ title: 'Icebreaker', author: 'Hannah Grace' }],
   'Maple Hills',
 ).verified, false);
+
+const unifiedDecision = decideDetectiveMembership(
+  structuredSeriesEvidence, structuredSeriesEvidence[2],
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+);
+assert.deepEqual(unifiedDecision, {
+  verification: 'verified', position: null, conflictingOrder: true,
+});
+const singleProviderDecision = decideDetectiveMembership(
+  structuredSeriesEvidence.filter(candidate => candidate.provider === 'open-library'),
+  structuredSeriesEvidence[2], [{ title: 'Icebreaker', author: 'Hannah Grace' }],
+  'Maple Hills',
+);
+assert.equal(singleProviderDecision.verification, 'review');
