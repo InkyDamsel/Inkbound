@@ -232,3 +232,60 @@ export { sendPasswordResetEmail } from './sendPasswordResetEmail.js';
 export { searchSeriesDetectiveHardcover, searchSeriesDetectiveGoogleBooks, searchSeriesDetectivePenguinRandomHouse } from './seriesDetectiveCatalog.js';
 
 export { fetchShareImage } from './shareMedia.js';
+
+
+/**
+ * Owner-only, server-side Wikidata evidence lookup. The client never receives
+ * raw catalog provenance unless Firestore's admin record authorizes the call.
+ * This endpoint is read-only and does not update a reader's library.
+ */
+export const inspectSeriesWikidataEvidence = onCall(
+  { enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, maxInstances: 5 },
+  async (request: CallableRequest<{ title?: string; author?: string; seriesName?: string }>) => {
+    const identity = requireAuthenticated(request);
+    await requireAdmin(identity.uid, ['owner']);
+    const title = requireString(request.data?.title, 'title', 180);
+    const author = requireString(request.data?.author, 'author', 120);
+    const seriesName = requireString(request.data?.seriesName, 'seriesName', 160);
+    const query = `SELECT DISTINCT ?work ?workLabel ?authorLabel ?series ?seriesLabel ?ordinal WHERE {
+      ?work p:P179 ?statement .
+      ?statement ps:P179 ?series .
+      OPTIONAL { ?statement pq:P1545 ?ordinal . }
+      ?work wdt:P50 ?author .
+      ?work rdfs:label ?workLabel .
+      ?author rdfs:label ?authorLabel .
+      ?series rdfs:label ?seriesLabel .
+      FILTER(LANG(?workLabel) = "en" && LANG(?authorLabel) = "en" && LANG(?seriesLabel) = "en")
+      FILTER(LCASE(STR(?workLabel)) = LCASE(${JSON.stringify(title)}))
+    } LIMIT 50`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(query), {
+        headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'InkboundSeriesDetective/1.0 (admin diagnostic)' },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error('Wikidata HTTP ' + response.status);
+      const payload = await response.json() as { results?: { bindings?: Array<Record<string, { value: string }>> } };
+      const normalized = (value: string) => value.trim().toLocaleLowerCase('en').replace(/[^a-z0-9]+/g, ' ');
+      const claims = (payload.results?.bindings ?? [])
+        .filter(row => normalized(row.authorLabel?.value ?? '') === normalized(author)
+          && normalized(row.seriesLabel?.value ?? '') === normalized(seriesName))
+        .slice(0, 30)
+        .map(row => ({
+          workId: row.work?.value?.match(/Q\d+$/)?.[0] ?? '',
+          seriesId: row.series?.value?.match(/Q\d+$/)?.[0] ?? '',
+          workTitle: row.workLabel?.value ?? '',
+          author: row.authorLabel?.value ?? '',
+          series: row.seriesLabel?.value ?? '',
+          ordinal: row.ordinal?.value ?? null,
+          origin: 'wikidata:P179',
+        }));
+      return { status: claims.length ? 'matched' : 'no-matching-claim', claims };
+    } catch {
+      return { status: 'provider-unavailable', claims: [] };
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+);
