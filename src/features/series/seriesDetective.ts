@@ -45,6 +45,7 @@ import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiv
 import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
 import { decideDetectiveMembership } from './seriesDetectiveDecision';
+import { discoverDetectiveWikidata } from './seriesDetectiveWikidataApi';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
   seriesName?: string;
@@ -1106,6 +1107,22 @@ export async function findMissingSeriesBooks(
       author,
     ));
 
+    // Wikidata is a distinct, structured series graph. Only query series IDs
+    // anchored to an owned work; failures must never imply absence.
+    // Keep a bounded one-seed lookup instead of multiplying calls by book.
+    const wikidataSeed = seriesBooks.find(book => book.work.title && book.work.author);
+    if (wikidataSeed) {
+      const wikidata = await discoverDetectiveWikidata(
+        { title: wikidataSeed.work.title, author: wikidataSeed.work.author }, seriesName,
+      );
+      providerReports.push({
+        provider: 'wikidata',
+        status: wikidata.status === 'ok' ? 'ok' : wikidata.status === 'empty' ? 'partial' : 'unavailable',
+        errorCode: wikidata.error, retrievedAt,
+      });
+      providerCandidates.push(...wikidata.candidates);
+    }
+
     // Position is ordering metadata, never work identity. Providers frequently
     // omit or misreport it, so pruning to one candidate per position can delete
     // legitimate sibling works. Merge/dedupe by work identity and ISBN only.
@@ -1180,7 +1197,7 @@ export async function findMissingSeriesBooks(
       rejectedEvidence: 0,
       admitted: 0,
       providerCounts: Object.fromEntries(
-        ['google-books', 'open-library', 'hardcover', 'penguin-random-house']
+        ['google-books', 'open-library', 'hardcover', 'penguin-random-house', 'wikidata']
           .map((provider) => [provider, providerCandidates.filter((candidate) => candidate.provider === provider).length]),
       ),
     };
