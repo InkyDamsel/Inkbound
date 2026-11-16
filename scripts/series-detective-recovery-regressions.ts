@@ -512,8 +512,9 @@ assert.deepEqual(
   new Set(['google-books', 'open-library']),
 );
 
-// Provider work IDs and exact ISBNs are identity evidence even when catalog
-// display titles differ. Conflicting titles must remain review-only.
+// Provider-native work IDs can identify alternate titles within the same
+// namespace. A shared ISBN across providers is edition evidence, not proof
+// that differently titled literary works are the same installment.
 const identityFixture = mergedProviders[0];
 const sameProviderAlternateTitle = mergeDetectiveCandidates([
   { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
@@ -538,8 +539,12 @@ const sharedIsbnAlternateTitle = mergeDetectiveCandidates([
     edition: { ...identityFixture.edition, source: 'open-library', externalEditionId: 'edition-d', isbn13: '9780991132379' },
     seriesStructured: true },
 ]);
-assert.equal(sharedIsbnAlternateTitle.length, 1);
-assert.equal(sharedIsbnAlternateTitle[0].seriesStructured, false);
+assert.equal(sharedIsbnAlternateTitle.length, 2,
+  'Different titles sharing an ISBN must remain separate works');
+assert.deepEqual(
+  new Set(sharedIsbnAlternateTitle.map(candidate => candidate.work.title)),
+  new Set(['Original Title', 'Alternate Title']),
+);
 
 // Shared franchise prefixes are not work identity. Distinct installments by
 // the same author must never collapse just because one title starts with the
