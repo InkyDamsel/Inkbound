@@ -86,6 +86,6 @@ export function verifyCanonicalProductionMembership(
   // Independent structured memberships for both seed and target provide a
   // narrow production liveness path. Do not require position agreement for
   // membership: position is a separate claim, and conflicts remain review.
-  return { verified: anchored && providers.size >= 2 && !conflicting,
+  return { verified: anchored && providers.size >= 2,
     agreedPosition, conflicting, providerCount: providers.size };
 }
