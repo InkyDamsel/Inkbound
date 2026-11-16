@@ -1,6 +1,6 @@
 import type { Format } from '../../types';
 
-export type SeriesDetectiveSource = 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
+export type SeriesDetectiveSource = 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house' | 'wikidata';
 
 export interface SeriesDetectiveMembership {
   name: string;
