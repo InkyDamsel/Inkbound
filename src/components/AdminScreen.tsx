@@ -8,6 +8,7 @@ import { useAccountSync } from '../context/AccountSyncContext';
 import { AdminDataSafetyPanel } from './admin/AdminDataSafetyPanel';
 import { AdminCatalogContributionsPanel } from './admin/AdminCatalogContributionsPanel';
 import { AdminSupportConsole } from './admin/AdminSupportConsole';
+import { AdminSeriesEvidencePanel } from './admin/AdminSeriesEvidencePanel';
 
 interface AdminUser {
   uid: string;
@@ -467,6 +468,7 @@ export const AdminScreen: React.FC = () => {
       />
 
       <AdminCatalogContributionsPanel />
+      <AdminSeriesEvidencePanel />
 
       <section className="inkbound-panel min-w-0 p-5">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
