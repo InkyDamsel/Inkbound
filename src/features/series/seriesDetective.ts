@@ -44,6 +44,7 @@ import {
 import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
+import { corroborateDetectiveMembership, hasCorroboratedOwnedSeed } from './seriesDetectiveCorroboration';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
   seriesName?: string;
@@ -1187,42 +1188,13 @@ export async function findMissingSeriesBooks(
     // Require two independent providers to identify the SAME owned work.
     // A vote for owned book A and a vote for owned book B must not combine
     // into a fictitious corroborated seed.
-    const seedCorroborated = seriesBooks.some(book => {
-      const matchingProviders = new Set(providerCandidates.filter(source =>
-        source.seriesStructured === true
-        && source.seriesName
-        && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
-        && comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(source.work.title)
-        && source.work.authors.some(name => detectiveAuthorsCompatible(book.work.author, name)))
-        .map(source => source.seriesProvider ?? source.provider));
-      return matchingProviders.size >= 2;
-    });
-
-    // Independent structured membership, not mere title overlap, establishes
-    // candidate eligibility. Compare against raw provider records before merge.
-    const corroboratingMemberships = (candidate: DetectiveMergeCandidate) => {
-      const matching = providerCandidates.filter(source =>
-        source.seriesStructured === true
-        && source.seriesName
-        && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
-        && detectiveCandidatesAreSameWork(source, candidate));
-      const providers = new Set(matching.map(source => source.seriesProvider ?? source.provider));
-      const invalidPosition = matching.some(source => source.position != null
-        && (!Number.isSafeInteger(source.position) || source.position <= 0));
-      const positions = new Set(matching.map(source => source.position)
-        .filter((position): position is number => typeof position === 'number'
-          && Number.isSafeInteger(position) && position > 0));
-      const positionedProviders = new Set(matching
-        .filter(source => typeof source.position === 'number'
-          && Number.isSafeInteger(source.position) && source.position > 0)
-        .map(source => source.seriesProvider ?? source.provider));
-      return {
-        providers: providers.size,
-        conflictingOrder: invalidPosition || positions.size > 1,
-        agreedPosition: !invalidPosition && positions.size === 1 && positionedProviders.size >= 2
-          ? [...positions][0] : null,
-      };
-    };
+    const seedCorroborated = hasCorroboratedOwnedSeed(
+      providerCandidates,
+      seriesBooks.map(book => ({ title: book.work.title, author: book.work.author })),
+      seriesName,
+    );
+    const corroboratingMemberships = (candidate: DetectiveMergeCandidate) =>
+      corroborateDetectiveMembership(providerCandidates, candidate, seriesName);
 
     mergedProviderCandidates.forEach((candidate) => {
       if (isSeriesMetadataRecord(candidate, seriesName)) {
