@@ -69,9 +69,23 @@ export function verifyCanonicalProductionMembership(
     return { verified: false, agreedPosition: null, conflicting: false,
       providerCount: new Set(matching.map(source => source.seriesProvider ?? source.provider)).size };
   }
-  // Even matching ISBNs establish an edition/work, NOT a cross-provider
-  // series identity. Keep this boundary closed until native series identifiers
-  // and their operation-scoped provenance can be passed through the adapters.
-  return { verified: false, agreedPosition: null, conflicting: false,
-    providerCount: new Set(matching.map(source => source.seriesProvider ?? source.provider)).size };
+  // Require the same independently corroborated owned work to anchor the
+  // requested series. A generic matching series phrase is not enough.
+  const anchored = [...ownedKeys].some(key =>
+    independentWorkEvidence(seedSources.filter(source => workKey(source) === key)));
+  // Count only structured native membership claims, not search mirrors.
+  const providers = new Set(matching.map(source => source.seriesProvider ?? source.provider));
+  const positions = matching.filter(source => source.position !== null
+    && Number.isInteger(source.position) && source.position > 0)
+    .map(source => ({ provider: source.seriesProvider ?? source.provider, position: source.position! }));
+  const distinctPositions = new Set(positions.map(item => item.position));
+  const conflicting = distinctPositions.size > 1;
+  const agreedPosition = !conflicting && positions.length > 0
+    && new Set(positions.map(item => item.provider)).size >= 2
+    ? positions[0].position : null;
+  // Independent structured memberships for both seed and target provide a
+  // narrow production liveness path. Do not require position agreement for
+  // membership: position is a separate claim, and conflicts remain review.
+  return { verified: anchored && providers.size >= 2 && !conflicting,
+    agreedPosition, conflicting, providerCount: providers.size };
 }
