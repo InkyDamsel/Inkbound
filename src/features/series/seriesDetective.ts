@@ -1116,7 +1116,7 @@ export async function findMissingSeriesBooks(
     const wikidataSeed = seriesBooks.find(book => book.work.title && book.work.author);
     if (wikidataSeed) {
       const wikidata = await discoverDetectiveWikidata(
-        { title: wikidataSeed.work.title, author: wikidataSeed.work.author }, seriesName,
+        { title: wikidataSeed.work.title, author: wikidataSeed.work.author }, seriesName, signal,
       );
       providerReports.push({
         provider: 'wikidata',
