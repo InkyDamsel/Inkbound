@@ -45,7 +45,10 @@ export function corroborateDetectiveMembership(
 ): DetectiveMembershipCorroboration {
   const matching = candidates.filter(candidate =>
     structuredForSeries(candidate, seriesName)
-    && detectiveCandidatesAreSameWork(candidate, target));
+    && detectiveCandidatesAreSameWork(candidate, target)
+    // Never allow a record whose work identity is ambiguous to provide a
+    // second independent vote merely because a reused ISBN matches.
+    && comparableDetectiveTitle(candidate.work.title) === comparableDetectiveTitle(target.work.title));
   const providers = new Set(matching.map(providerOf));
   const invalidPosition = matching.some(candidate => candidate.position != null
     && (!Number.isSafeInteger(candidate.position) || candidate.position <= 0));
