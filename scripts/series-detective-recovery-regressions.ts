@@ -1195,7 +1195,11 @@ assert.ok(conflictingReplay.decisions[0].reasonCodes.includes('conflicting-evide
 const outageReplay = replayDetectiveEvidence({ ...replayInput,
   observations: [{ provider: 'hardcover', operation: 'seed', state: 'unavailable', recordCount: 0 }],
   claims: [replayClaims[0]] });
+assert.equal(outageReplay.decisions.length, 1);
+assert.equal(outageReplay.decisions[0].status, 'review');
+assert.deepEqual(outageReplay.decisions[0].supportingClaimIds, []);
 assert.ok(outageReplay.decisions[0].reasonCodes.includes('provider-unavailable'));
+assert.deepEqual(outageReplay.quarantinedClaimIds, ['google:work-1:membership']);
 assert.equal(replayDetectiveEvidence({ ...replayInput, claims: [] }).decisions.length, 0);
 
 const { classifyDetectiveSeriesLabel } = await import('../src/features/series/seriesDetectiveLabelClassifier');
