@@ -45,7 +45,8 @@ assert.match(legacy, /const targetKey = isbnMatch && titleKey && authorKey \? is
 assert.match(corroboration, /comparableDetectiveTitle\(candidate\.work\.title\) === comparableDetectiveTitle\(target\.work\.title\)/);
 assert.match(legacy, /const canonicalEvidence = verifyCanonicalProductionMembership\(/);
 assert.match(legacy, /&& canonicalEvidence\.verified && !canonicalEvidence\.conflicting/);
-assert.match(canonicalAdapter, /replayCanonicalDetectiveEvidence\(/);
-assert.match(canonicalAdapter, /seedCanonicalWorkId: seedKey/);
-assert.match(canonicalAdapter, /sourceOperation: prefix/);
+assert.match(canonicalAdapter, /return \{ verified: false, agreedPosition: null, conflicting: false,/);
+
+
+
 console.log('Series Detective production safety source guards passed (not behavioral verification).');
