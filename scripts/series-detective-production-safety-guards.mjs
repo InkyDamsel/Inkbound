@@ -44,7 +44,7 @@ assert.match(corroboration, /detectiveCandidatesAreSameWork\(candidate, target\)
 assert.ok(legacy.includes('if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName))'));
 assert.doesNotMatch(merge, /if \(left\.seriesName && right\.seriesName\s*&& detectiveSeriesNamesCompatible\(left\.seriesName, right\.seriesName\)\) return true;/);
 assert.doesNotMatch(preview, /result\?\.discoveryDiagnostics/);
-assert.match(preview, /No actionable roster was established|No verified|Needs Review|needs review/i);
+assert.match(preview, /<SeriesDetectiveRoster/);
 assert.match(legacy, /!titleKey \|\| !comparableDetectiveTitle\(existing\.work\.title, existing\.seriesName\)/);
 assert.match(legacy, /comparableDetectiveTitle\(existing\.work\.title, existing\.seriesName\) === titleKey/);
 assert.match(corroboration, /const invalidPosition = matching\.some\(candidate => candidate\.position != null/);
