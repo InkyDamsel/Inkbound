@@ -1286,3 +1286,24 @@ assert.deepEqual(decideDetectiveMembership(
   agreeingSeriesEvidence, agreeingSeriesEvidence[2],
   [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
 ), { verification: 'verified', position: 2, conflictingOrder: false });
+
+ 
+// Wikidata is an independent provider namespace, not a duplicate vote for
+// multiple rows from one P179 statement. The inspector must not mutate data.
+import { inspectDetectiveEvidence } from '../src/features/series/seriesDetectiveEvidenceInspector';
+const wikidataClaim = {
+  ...structuredSeriesEvidence[2],
+  provider: 'wikidata' as const,
+  seriesProvider: 'wikidata' as const,
+  nativeSeriesId: 'Q123456',
+  evidenceOrigin: 'wikidata:P179',
+};
+const wikidataInspection = inspectDetectiveEvidence(
+  [structuredSeriesEvidence[0], structuredSeriesEvidence[1], wikidataClaim],
+  wikidataClaim,
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+);
+assert.equal(wikidataInspection.verification, 'review');
+assert.equal(wikidataInspection.providerClaims.length, 1);
+assert.equal(wikidataInspection.providerClaims[0].nativeSeriesId, 'Q123456');
+assert.ok(wikidataInspection.reasons.some(reason => reason.includes('two structured')));
