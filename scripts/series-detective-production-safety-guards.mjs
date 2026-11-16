@@ -37,4 +37,6 @@ assert.match(preview, /result\?\.discoveryDiagnostics/);
 assert.match(preview, /No actionable roster was established/);
 assert.match(legacy, /!titleKey \|\| !comparableDetectiveTitle\(existing\.work\.title, existing\.seriesName\)/);
 assert.match(legacy, /comparableDetectiveTitle\(existing\.work\.title, existing\.seriesName\) === titleKey/);
+assert.match(legacy, /const invalidPosition = matching\.some\(source => source\.position != null/);
+assert.match(legacy, /conflictingOrder: invalidPosition \|\| positions\.size > 1/);
 console.log('Series Detective production safety source guards passed (not behavioral verification).');
