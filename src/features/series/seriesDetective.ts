@@ -1139,7 +1139,9 @@ export async function findMissingSeriesBooks(
             detectiveAuthorsCompatible(existingAuthor, incomingAuthor)))
         && (!titleKey || !comparableDetectiveTitle(existing.work.title, existing.seriesName)
           || comparableDetectiveTitle(existing.work.title, existing.seriesName) === titleKey)) : undefined;
-      const targetKey = isbnMatch?.[0] ?? key;
+      // A missing title must not overwrite an identified work merely because
+      // the provider supplied a colliding ISBN. Keep it reviewable separately.
+      const targetKey = isbnMatch && titleKey && authorKey ? isbnMatch[0] : key;
       const current = seen.get(targetKey);
       const conflictingTitles = Boolean(current
         && comparableDetectiveTitle(current.work.title, current.seriesName) !== titleKey);
