@@ -1259,8 +1259,8 @@ export async function findMissingSeriesBooks(
       );
       const verification: 'verified' | 'review' =
         !anchoredAlias && candidate.seriesStructured && compatibleSeries
-        && seedCorroborated && membershipEvidence.providers >= 2 && !membershipEvidence.conflictingOrder
-        && canonicalEvidence.verified && !canonicalEvidence.conflicting
+        && seedCorroborated && membershipEvidence.providers >= 2
+        && canonicalEvidence.verified
           ? 'verified' : 'review';
 
       addCandidate({
