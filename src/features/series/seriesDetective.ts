@@ -45,7 +45,7 @@ import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiv
 import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
 import { decideDetectiveMembership } from './seriesDetectiveDecision';
-import { inspectDetectiveEvidence, type DetectiveEvidenceInspection } from './seriesDetectiveEvidenceInspector';
+
 import { discoverDetectiveWikidata } from './seriesDetectiveWikidataApi';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
@@ -290,8 +290,6 @@ export interface SeriesDetectiveCandidate {
   seriesName: string;
   position: number | null;
   verification?: 'verified' | 'review';
-  /** Read-only catalog evidence; never used to authorize library writes. */
-  evidenceInspection?: DetectiveEvidenceInspection;
 }
 
 export interface SeriesDetectiveOwnedEntry {
@@ -332,8 +330,6 @@ export interface SeriesDetectiveResult {
 export interface FindMissingSeriesOptions {
   /** Skip the short-lived in-memory catalog cache (used by explicit Retry). */
   forceRefresh?: boolean;
-  /** Internal diagnostic opt-in; never enabled for ordinary reader lookups. */
-  includeAdminDiagnostics?: boolean;
   /** Seed work that initiated discovery, even if it has no saved series. */
   seedBookId?: string;
   /**
@@ -1278,13 +1274,7 @@ export async function findMissingSeriesBooks(
         // Retain unknown order instead of presenting a misleading number.
         position: decision.position,
         verification: decision.verification,
-        ...(options.includeAdminDiagnostics ? {
-          evidenceInspection: inspectDetectiveEvidence(
-            providerCandidates, candidate,
-            seriesBooks.map(book => ({ title: book.work.title, author: book.work.author })),
-            seriesName,
-          ),
-        } : {}),
+
       });
     });
 
@@ -1327,8 +1317,6 @@ export async function findMissingSeriesBooks(
   // library for each request.
   const candidates = await discoverCandidates();
   const result = classifySeriesCandidates(seriesName, candidates, libraryBooks);
-  if (options.includeAdminDiagnostics) result.providerReports = providerReports;
-  if (options.includeAdminDiagnostics) result.discoveryDiagnostics = discoveryDiagnostics;
   result.completeness = providerReports.every((report) => report.status === 'unavailable')
     ? 'unavailable' : 'partial';
   return result;
