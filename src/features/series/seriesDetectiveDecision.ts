@@ -5,7 +5,8 @@ import { verifyCanonicalProductionMembership } from './seriesDetectiveCanonicalA
 /**
  * Single production decision point for series membership and reading order.
  * Adapters collect evidence; only this module grants verification.
- * Catalog disagreement about position does not erase membership.
+ * Catalog disagreement about position does not erase discovery, but it
+ * must block bulk-add verification until a trustworthy order is resolved.
  */
 export function decideDetectiveMembership(
   sources: readonly DetectiveMergeCandidate[],
@@ -18,7 +19,9 @@ export function decideDetectiveMembership(
   const verified = candidate.seriesStructured === true
     && hasCorroboratedOwnedSeed(sources, owned, seriesName)
     && membership.providers >= 2
-    && canonical.verified;
+    && canonical.verified
+    && !membership.conflictingOrder
+    && !canonical.conflicting;
   return {
     verification: verified ? 'verified' : 'review',
     position: membership.conflictingOrder ? null : membership.agreedPosition,
