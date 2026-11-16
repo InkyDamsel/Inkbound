@@ -1184,15 +1184,19 @@ export async function findMissingSeriesBooks(
 
     // Keep verification anchored to the requested series and to an actual
     // owned work. A text label by itself cannot establish series identity.
-    const seedMembershipProviders = new Set(providerCandidates.filter(source =>
-      source.seriesStructured === true
-      && source.seriesName
-      && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
-      && seriesBooks.some(book =>
-        comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(source.work.title)
-        && source.work.authors.some(name => detectiveAuthorsCompatible(book.work.author, name))))
-      .map(source => source.seriesProvider ?? source.provider));
-    const seedCorroborated = seedMembershipProviders.size >= 2;
+    // Require two independent providers to identify the SAME owned work.
+    // A vote for owned book A and a vote for owned book B must not combine
+    // into a fictitious corroborated seed.
+    const seedCorroborated = seriesBooks.some(book => {
+      const matchingProviders = new Set(providerCandidates.filter(source =>
+        source.seriesStructured === true
+        && source.seriesName
+        && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
+        && comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(source.work.title)
+        && source.work.authors.some(name => detectiveAuthorsCompatible(book.work.author, name)))
+        .map(source => source.seriesProvider ?? source.provider));
+      return matchingProviders.size >= 2;
+    });
 
     // Independent structured membership, not mere title overlap, establishes
     // candidate eligibility. Compare against raw provider records before merge.
