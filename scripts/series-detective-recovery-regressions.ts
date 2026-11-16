@@ -1215,3 +1215,52 @@ assert.equal(publisherReplay.decisions[0].status, 'rejected');
 assert.ok(publisherReplay.decisions[0].reasonCodes.includes('publisher-collection'));
 
 console.log('Inkbound Series Detective recovery regressions passed.');
+
+ 
+// Production canonical gate: corroborated membership must remain distinct
+// from disputed reading order. Never promote a single-provider claim.
+import { verifyCanonicalProductionMembership } from '../src/features/series/seriesDetectiveCanonicalAdapter';
+import { corroborateDetectiveMembership } from '../src/features/series/seriesDetectiveCorroboration';
+import type { DetectiveMergeCandidate } from '../src/features/series/seriesDetectiveMerge';
+const nativeSeriesFixture = (
+  provider: DetectiveMergeCandidate['provider'],
+  title: string,
+  isbn13: string,
+  position: number,
+): DetectiveMergeCandidate => ({
+  provider,
+  seriesProvider: provider,
+  seriesStructured: true,
+  seriesName: 'Maple Hills',
+  position,
+  work: { key: provider + ':' + title, title, authors: ['Hannah Grace'], genres: [], editions: [] },
+  edition: {
+    source: provider, externalEditionId: provider + ':' + title, title,
+    authors: ['Hannah Grace'], genres: [], publicationYear: 2023,
+    format: 'ebook', isbn13, specialFeatures: [],
+  },
+} as DetectiveMergeCandidate);
+const structuredSeriesEvidence = [
+  nativeSeriesFixture('open-library', 'Icebreaker', '9781668026038', 1),
+  nativeSeriesFixture('hardcover', 'Icebreaker', '9781668026038', 1),
+  nativeSeriesFixture('open-library', 'Wildfire', '9781668026274', 2),
+  nativeSeriesFixture('hardcover', 'Wildfire', '9781668026274', 3),
+];
+const canonicalWithDisputedOrder = verifyCanonicalProductionMembership(
+  structuredSeriesEvidence, structuredSeriesEvidence[2],
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+);
+assert.equal(canonicalWithDisputedOrder.verified, true);
+assert.equal(canonicalWithDisputedOrder.conflicting, true);
+assert.equal(canonicalWithDisputedOrder.agreedPosition, null);
+const disputedOrder = corroborateDetectiveMembership(
+  structuredSeriesEvidence, structuredSeriesEvidence[2], 'Maple Hills',
+);
+assert.equal(disputedOrder.providers, 2);
+assert.equal(disputedOrder.conflictingOrder, true);
+assert.equal(disputedOrder.agreedPosition, null);
+assert.equal(verifyCanonicalProductionMembership(
+  structuredSeriesEvidence.filter(candidate => candidate.provider === 'open-library'),
+  structuredSeriesEvidence[2], [{ title: 'Icebreaker', author: 'Hannah Grace' }],
+  'Maple Hills',
+).verified, false);
