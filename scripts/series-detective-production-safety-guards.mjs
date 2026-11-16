@@ -40,4 +40,6 @@ assert.match(legacy, /!titleKey \|\| !comparableDetectiveTitle\(existing\.work\.
 assert.match(legacy, /comparableDetectiveTitle\(existing\.work\.title, existing\.seriesName\) === titleKey/);
 assert.match(corroboration, /const invalidPosition = matching\.some\(candidate => candidate\.position != null/);
 assert.match(corroboration, /conflictingOrder: invalidPosition \|\| positions\.size > 1/);
+assert.match(legacy, /const targetKey = isbnMatch && titleKey && authorKey \? isbnMatch\[0\] : key;/);
+assert.match(corroboration, /comparableDetectiveTitle\(candidate\.work\.title\) === comparableDetectiveTitle\(target\.work\.title\)/);
 console.log('Series Detective production safety source guards passed (not behavioral verification).');
