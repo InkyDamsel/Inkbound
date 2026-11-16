@@ -11,10 +11,14 @@ export interface DetectiveMergeCandidate {
   edition: SeriesDetectiveEdition;
   seriesName?: string;
   position: number | null;
-  provider: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
-  seriesProvider?: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
+  provider: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house' | 'wikidata';
+  seriesProvider?: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house' | 'wikidata';
   seriesStructured?: boolean;
-  providerSources?: Array<'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house'>;
+  /** Native catalog series identifier, not a normalized text alias. */
+  nativeSeriesId?: string;
+  /** Origin of the series assertion for evidence inspection. */
+  evidenceOrigin?: string;
+  providerSources?: Array<'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house' | 'wikidata'>;
 }
 
 const nonEmpty = (value?: string): string | undefined =>
@@ -153,7 +157,7 @@ const mergeSeries = (
 ): {
   name?: string;
   position: number | null;
-  provider?: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
+  provider?: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house' | 'wikidata';
   structured?: boolean;
 } => {
   const leftName = nonEmpty(left.seriesName);
