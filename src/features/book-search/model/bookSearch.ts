@@ -1,6 +1,6 @@
 import { Format } from '../../../types';
 
-export type BookSearchSource = 'inkbound-catalog' | 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
+export type BookSearchSource = 'inkbound-catalog' | 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house' | 'wikidata';
 
 export interface BookSearchEdition {
   source: BookSearchSource;
