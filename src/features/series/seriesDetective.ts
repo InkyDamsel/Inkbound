@@ -299,7 +299,7 @@ export interface SeriesDetectiveOwnedEntry {
 }
 
 export interface SeriesDetectiveProviderReport {
-  provider: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
+  provider: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house' | 'wikidata';
   status: 'ok' | 'partial' | 'unavailable' | 'rate-limited' | 'timed-out';
   errorCode?: string;
   retrievedAt: string;
