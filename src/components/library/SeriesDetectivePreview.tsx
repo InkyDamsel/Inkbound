@@ -1,5 +1,8 @@
 import { isSeriesDetectiveAvailable } from '../../features/series/seriesDetectiveAvailability';
 import React, { useEffect, useMemo, useState } from 'react';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../lib/firebase';
+import { useAccountSync } from '../../context/AccountSyncContext';
 import type { UserBookRecord } from '../../types';
 import {
   classifySeriesCandidates,
@@ -22,11 +25,40 @@ interface Props {
 
 /** Read-only integration preview: never mutates the user's library. */
 export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, books, seriesBookIds, overrides, onSelectBook }) => {
+  const { user } = useAccountSync();
+  const [adminAuthorized, setAdminAuthorized] = useState(false);
+  const [adminChecking, setAdminChecking] = useState(false);
+  const [adminDiagnosticsOpen, setAdminDiagnosticsOpen] = useState(false);
   const [result, setResult] = useState<SeriesDetectiveResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [run, setRun] = useState(0);
 
+  // The owner-only diagnostics require the existing server-authorized admin
+  // callable; hiding a button is never the authorization boundary.
+  useEffect(() => {
+    setAdminAuthorized(false);
+    setAdminDiagnosticsOpen(false);
+  }, [user?.uid]);
+  const requestAdminDiagnostics = async () => {
+    if (!user || !functions || adminChecking) return;
+    setAdminChecking(true);
+    setAdminAuthorized(false);
+    try {
+      const getAdminDashboard = httpsCallable<{ query: string }, { role?: string }>(functions, 'getAdminDashboard');
+      const response = await getAdminDashboard({ query: '' });
+      if (response.data?.role === 'owner' || response.data?.role === 'admin') {
+        setAdminAuthorized(true);
+        setAdminDiagnosticsOpen(true);
+      }
+    } catch {
+      // Fail closed: no diagnostics when server authorization fails.
+      setAdminAuthorized(false);
+      setAdminDiagnosticsOpen(false);
+    } finally {
+      setAdminChecking(false);
+    }
+  };
   useEffect(() => {
     setResult(null);
     setError('');
@@ -88,14 +120,23 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
         </button>
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-rose-300">{error}</p>}
-      {result?.providerReports && (
+      {result && user && (
+        <button type="button" disabled={adminChecking}
+          onClick={() => { if (adminAuthorized) setAdminDiagnosticsOpen(value => !value); else void requestAdminDiagnostics(); }}
+          className="mt-3 text-xs text-[var(--ink-muted)] underline">
+          {adminChecking ? 'Checking access…' : 'Admin diagnostics'}
+        </button>
+      )}
+      {adminAuthorized && adminDiagnosticsOpen && (
+        <div aria-label="Admin-only Series Detective diagnostics">
+          {result?.providerReports && (
         <div role="status" className="mt-3 rounded-xl border border-amber-400/30 p-3 text-xs text-amber-100">
           <p className="font-semibold">Catalog coverage is incomplete. Missing entries are not proof that a book does not exist.</p>
           <p className="mt-1">{result.providerReports.map((report) =>
             `${report.provider}: ${report.status}${report.errorCode ? ` (${report.errorCode})` : ''}`).join(' · ')}</p>
         </div>
       )}
-      {result?.discoveryDiagnostics && (
+          {result?.discoveryDiagnostics && (
         <details className="mt-3 rounded-xl border border-[var(--ink-border-subtle)] p-3 text-xs text-[var(--ink-muted)]">
           <summary className="cursor-pointer font-semibold">Discovery details</summary>
           <p className="mt-2">
@@ -108,6 +149,8 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
             <p className="mt-2">No actionable roster was established. This does not prove that the series has no other books.</p>
           )}
         </details>
+      )}
+        </div>
       )}
       {roster && (
         <SeriesDetectiveRoster
