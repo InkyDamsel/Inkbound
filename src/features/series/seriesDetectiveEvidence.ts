@@ -246,27 +246,24 @@ export const inferKnownDetectiveSeriesFromDescription = (
   // A blurb mentioning 'will' and 'trent' separately is not Will Trent evidence.
   const paddedIndex = ` ${text} `.indexOf(` ${seriesIdentity} `);
   if (paddedIndex < 0) return null;
-  const seriesIndex = Math.max(0, paddedIndex - 1);
 
   const qualifierPattern = /\b(?:series|saga|novels?|books?|collection)\b/i;
   if (seriesTokens.length === 1 && !qualifierPattern.test(text)) return null;
 
-  const start = Math.max(0, seriesIndex - 120);
-  const end = Math.min(text.length, seriesIndex + seriesIdentity.length + 120);
-  const context = text.slice(start, end);
+  // Ordinals elsewhere in a blurb may describe unrelated books.
+  // Only accept a number grammatically attached to this series name.
+  const escapedSeries = seriesIdentity.replace(/[^a-z0-9 ]/g, '');
+  const ordinal = detectivePositionPattern();
+  const anchoredPatterns = [
+    new RegExp(`\\b(?:book|volume|vol|part)\\s*#?\\s*(${ordinal})\\s+(?:in|of)\\s+(?:the\\s+)?${escapedSeries}\\b`, 'i'),
+    new RegExp(`\\b(${ordinal})\\s+(?:book|novel|volume|part)\\s+(?:in|of)\\s+(?:the\\s+)?${escapedSeries}\\b`, 'i'),
+    new RegExp(`\\b${escapedSeries}\\s+(?:(?:series|saga|collection)\\s+)?(?:book|volume|vol|part)\\s*#?\\s*(${ordinal})\\b`, 'i'),
+  ];
   let position: number | null = null;
-
-  for (const pattern of [
-    new RegExp(`\\b(?:book|volume|vol|part)\\s*#?\\s*(${detectivePositionPattern()})\\b`, 'i'),
-    new RegExp(`\\b(${detectivePositionPattern()})\\s*(?:st|nd|rd|th)?\\s+(?:book|novel|volume|part)\\b`, 'i'),
-    new RegExp(`\\b(${detectivePositionPattern()})\\s+(?:in|of)\\s+(?:the\\s+)?(?:series|saga|collection)\\b`, 'i'),
-  ]) {
-    const match = context.match(pattern);
+  for (const pattern of anchoredPatterns) {
+    const match = text.match(pattern);
     const parsed = match ? parseDetectivePositionToken(match[1]) : null;
-    if (parsed !== null && parsed > 0) {
-      position = parsed;
-      break;
-    }
+    if (parsed !== null && parsed > 0) { position = parsed; break; }
   }
 
   return { name: wantedSeriesName.trim(), position };
