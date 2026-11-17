@@ -37,8 +37,7 @@ const sameAuthor = (left: string[], right: string[]): boolean =>
   left.some((leftAuthor) =>
     Boolean(leftAuthor?.trim()) && right.some((rightAuthor) =>
       Boolean(rightAuthor?.trim())
-      && detectiveAuthorsCompatible(leftAuthor, rightAuthor)
-      && detectiveAuthorsCompatible(rightAuthor, leftAuthor)),
+      && detectiveAuthorsCompatible(leftAuthor, rightAuthor)),
   );
 
 export const detectiveCandidatesAreSameWork = (
