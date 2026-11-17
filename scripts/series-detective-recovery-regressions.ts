@@ -1316,3 +1316,10 @@ assert.equal(inferKnownDetectiveSeriesFromDescription(
 assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
   'The third book in the Will Trent series.', 'Will Trent',
 ), { name: 'Will Trent', position: 3 });
+
+// Empty provider author placeholders must not authenticate a work merge.
+const missingAuthorMerge = mergeDetectiveCandidates([
+  { ...identityFixture, work: { ...identityFixture.work, authors: [''] } },
+  { ...identityFixture, work: { ...identityFixture.work, authors: ['Scarlett St. Clair'] } },
+]);
+assert.equal(missingAuthorMerge.length, 2);
