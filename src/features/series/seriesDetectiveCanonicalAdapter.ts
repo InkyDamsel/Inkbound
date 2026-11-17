@@ -35,16 +35,18 @@ export function verifyCanonicalProductionMembership(
     JSON.stringify([comparableDetectiveTitle(candidate.work.title),
       canonicalDetectiveAuthor(candidate.work.authors[0])]);
   const targetKey = workKey(target);
-  const ownedKeys = new Set(owned.map(book => JSON.stringify([
+  const ownedKeys = new Set(owned.filter(book => Boolean(book.title?.trim())
+    && Boolean(book.author?.trim())).map(book => JSON.stringify([
     comparableDetectiveTitle(book.title), canonicalDetectiveAuthor(book.author),
   ])));
   const matching = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
-    && source.work.title.trim() && source.work.authors.length
+    && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
     && detectiveCandidatesAreSameWork(source, target)
     && workKey(source) === targetKey);
   const seedSources = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
+    && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
     && ownedKeys.has(workKey(source)));
   // A matching ISBN corroborates edition identity across catalogs. It does
   // not by itself prove membership; only structured series claims count.
