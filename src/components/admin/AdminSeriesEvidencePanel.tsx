@@ -3,7 +3,8 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 
 type Claim = { workId: string; seriesId: string; workTitle: string; author: string; series: string; ordinal: string | null; origin: string };
-type Result = { status: 'matched' | 'no-matching-claim' | 'provider-unavailable'; claims: Claim[]; durationMs?: number };
+type ProviderDiagnostics = { durationMs: number; requestsMade: number; rawRecords: number; rejectedRecords: number; httpStatus: number | null; retryAfter: string | null; errorCategory: string | null; timeoutMs: number; provider: string };
+type Result = { status: 'matched' | 'no-matching-claim' | 'provider-unavailable'; claims: Claim[]; diagnostics?: ProviderDiagnostics };
 type Tab = 'investigation' | 'providers';
 
 const card = 'rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4';
@@ -43,6 +44,7 @@ export const AdminSeriesEvidencePanel: React.FC = () => {
 
   const ordinals = result?.claims.map(claim => claim.ordinal).filter((value): value is string => Boolean(value)) ?? [];
   const conflictingOrders = new Set(ordinals).size > 1;
+  const diagnostics = result?.diagnostics;
   const status = result?.status ?? null;
   const metric = (label: string, value: string | number) => (
     <div className={card} key={label}>
@@ -75,27 +77,28 @@ export const AdminSeriesEvidencePanel: React.FC = () => {
       {tab === 'investigation' ? (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            {metric('Duration', result?.durationMs != null ? result.durationMs + 'ms' : '—')}
-            {metric('Requests made', result ? 1 : '—')}
-            {metric('Raw claims', result?.claims.length ?? '—')}
+            {metric('Duration', diagnostics ? diagnostics.durationMs + 'ms' : '—')}
+            {metric('Requests made', diagnostics?.requestsMade ?? (result ? 1 : '—'))}
+            {metric('Raw records', diagnostics?.rawRecords ?? (result?.claims.length ?? '—'))}
             {metric('Unique works', result ? new Set(result.claims.map(claim => claim.workId)).size : '—')}
             {metric('Verified', 'Not assessed')}
-            {metric('Review / excluded', 'Not assessed')}
+            {metric('Filtered / excluded', diagnostics?.rejectedRecords ?? 'Not assessed')}
           </div>
           <div className={card}>
             <h4 className="font-semibold text-[var(--ink-ivory)]">Providers Queried</h4>
             <p className="mt-1 text-xs text-[var(--ink-muted)]">Only Wikidata is connected to this server-side inspector. Other catalog providers are not queried; no status is inferred for them.</p>
+            {diagnostics && <p className="mt-2 text-xs text-[var(--ink-muted)]">HTTP: {diagnostics.httpStatus ?? 'No response'} · Error: {diagnostics.errorCategory ?? 'None'} · Timeout budget: {diagnostics.timeoutMs}ms · Retry-After: {diagnostics.retryAfter ?? 'Not supplied'} · Raw records: {diagnostics.rawRecords} · Filtered records: {diagnostics.rejectedRecords}</p>}
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead><tr className="border-b border-[var(--ink-border-subtle)] text-[var(--ink-muted)]"><th className="py-2 pr-3">Provider</th><th className="py-2 pr-3">Status</th><th className="py-2 pr-3">Requests</th><th className="py-2 pr-3">Claims</th><th className="py-2">Duration</th></tr></thead>
-                <tbody><tr><td className="py-3 pr-3">Wikidata (P179)</td><td className="py-3 pr-3">{status ? statusLabel[status] : 'Not run'}</td><td className="py-3 pr-3">{result ? 1 : '—'}</td><td className="py-3 pr-3">{result?.claims.length ?? '—'}</td><td className="py-3">{result?.durationMs != null ? result.durationMs + 'ms' : '—'}</td></tr></tbody>
+                <tbody><tr><td className="py-3 pr-3">Wikidata (P179)</td><td className="py-3 pr-3">{status ? statusLabel[status] : 'Not run'}</td><td className="py-3 pr-3">{diagnostics?.requestsMade ?? (result ? 1 : '—')}</td><td className="py-3 pr-3">{result?.claims.length ?? '—'}</td><td className="py-3">{result?.durationMs != null ? result.durationMs + 'ms' : '—'}</td></tr></tbody>
               </table>
             </div>
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
             <div className={card}>
               <h4 className="font-semibold">Conflicting Metadata</h4>
-              <p className="mt-2 text-sm text-[var(--ink-muted)]">{!result ? 'Run an inspection to compare returned claims.' : conflictingOrders ? 'Wikidata returned conflicting series ordinals for this match. Manual review required.' : 'No conflicting ordinals among returned Wikidata claims. Cross-provider conflicts are not assessed.'}</p>
+              <p className="mt-2 text-sm text-[var(--ink-muted)]">{!result ? 'Run an inspection to compare returned claims.' : result.status === 'provider-unavailable' ? 'Not assessed — provider request failed.' : conflictingOrders ? 'Wikidata returned conflicting series ordinals for this match. Manual review required.' : 'No conflicting ordinals among returned Wikidata claims. Cross-provider conflicts are not assessed.'}</p>
             </div>
             <div className={card}>
               <h4 className="font-semibold">Rejected &amp; Derivative Products</h4>
