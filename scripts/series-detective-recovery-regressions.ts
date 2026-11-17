@@ -1365,3 +1365,21 @@ assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
 assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
   'The third book in the Will Trent series.', 'Will Trent',
 ), { name: 'Will Trent', position: 3 });
+
+// Matching ISBN-13 with conflicting ISBN-10 is not a safe edition merge.
+const isbnConflictBase = {
+  ...identityFixture,
+  provider: 'google-books' as const,
+  work: { ...identityFixture.work, editions: [] },
+  edition: { ...identityFixture.edition, source: 'google-books' as const,
+    externalEditionId: 'conflict-a', isbn13: '9780991132379', isbn10: '0991132378' },
+};
+const isbnConflictMerge = mergeDetectiveCandidates([
+  { ...isbnConflictBase, work: { ...isbnConflictBase.work,
+    editions: [isbnConflictBase.edition] } },
+  { ...isbnConflictBase, provider: 'open-library',
+    edition: { ...isbnConflictBase.edition, source: 'open-library',
+      externalEditionId: 'conflict-b', isbn10: '099113237X' } },
+]);
+assert.equal(isbnConflictMerge.length, 1);
+assert.equal(isbnConflictMerge[0].work.editions.length, 2);
