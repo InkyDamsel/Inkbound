@@ -24,11 +24,14 @@ export function hasCorroboratedOwnedSeed(
   owned: readonly DetectiveOwnedSeed[],
   seriesName: string,
 ): boolean {
-  return owned.some(book => new Set(candidates.filter(candidate =>
-    structuredForSeries(candidate, seriesName)
-    && comparableDetectiveTitle(candidate.work.title) === comparableDetectiveTitle(book.title)
-    && candidate.work.authors.some(author => detectiveAuthorsCompatible(book.author, author)))
-    .map(providerOf)).size >= 2);
+  return owned.some(book => Boolean(book.author?.trim())
+    && Boolean(comparableDetectiveTitle(book.title))
+    && new Set(candidates.filter(candidate =>
+      structuredForSeries(candidate, seriesName)
+      && comparableDetectiveTitle(candidate.work.title) === comparableDetectiveTitle(book.title)
+      && candidate.work.authors.some(author => Boolean(author?.trim())
+        && detectiveAuthorsCompatible(book.author, author)))
+      .map(providerOf)).size >= 2);
 }
 
 export interface DetectiveMembershipCorroboration {
