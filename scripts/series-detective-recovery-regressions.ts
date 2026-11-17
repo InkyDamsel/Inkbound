@@ -1356,4 +1356,12 @@ assert.equal(selectVerifiedDetectiveEvidence([
 // Conjunction normalization must consume actual whitespace (not literal backslashes).
 assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
   'Hades & Persephone is the second book in the saga.', 'Hades x Persephone',
-), { name: 'Hades x Persephone', position: 2 });
+), { name: 'Hades x Persephone', position: null });
+
+// A position for a different series in the same blurb cannot leak into this one.
+assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
+  'Book 4 in the Other World series. Also recommended for Will Trent readers.', 'Will Trent',
+), { name: 'Will Trent', position: null });
+assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
+  'The third book in the Will Trent series.', 'Will Trent',
+), { name: 'Will Trent', position: 3 });
