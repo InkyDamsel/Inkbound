@@ -110,7 +110,9 @@ export const canonicalDetectiveSeries = (value?: string): string => {
     tokens.length > 1
     && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections', 'trilogy', 'duology', 'duet', 'quartet', 'quintet', 'sextet', 'septet', 'octet'].includes(tokens[tokens.length - 1])
   ) tokens.pop();
-  return tokens.filter((token) => token !== 'x' && token !== 'and').join(' ');
+  // Conjunctions can distinguish genuinely different series names. Removing
+  // them makes 'War and Peace' collide with 'War Peace'.
+  return tokens.join(' ');
 };
 
 export const detectiveSeriesNamesCompatible = (a?: string, b?: string): boolean => {
