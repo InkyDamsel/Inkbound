@@ -83,12 +83,24 @@ export const detectiveCandidatesAreSameWork = (
   return colonVariantMatches(leftRaw, rightRaw) || colonVariantMatches(rightRaw, leftRaw);
 };
 
+// Conflicting identifiers cannot be combined into a synthetic edition, even
+// when one of the ISBN fields happens to agree.
+const editionIdentifiersCompatible = (
+  left: SeriesDetectiveEdition,
+  right: SeriesDetectiveEdition,
+): boolean => (['isbn13', 'isbn10'] as const).every((field) => {
+  const a = compactDetectiveIsbn(left[field]);
+  const b = compactDetectiveIsbn(right[field]);
+  return !a || !b || a === b;
+});
+
 const exactIsbnMatch = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean => {
   const leftIds = [left.isbn13, left.isbn10].map(compactDetectiveIsbn).filter(Boolean);
   const rightIds = [right.isbn13, right.isbn10].map(compactDetectiveIsbn).filter(Boolean);
-  // ISBN-10 and ISBN-13 are different representations; only compare equal
-  // formats here. A shared identifier is edition evidence, never a position.
-  return leftIds.some((isbn) => rightIds.includes(isbn));
+  // A shared identifier is edition evidence only when other populated
+  // identifiers do not contradict it.
+  return editionIdentifiersCompatible(left, right)
+    && leftIds.some((isbn) => rightIds.includes(isbn));
 };
 
 const sameProviderEdition = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean => {
