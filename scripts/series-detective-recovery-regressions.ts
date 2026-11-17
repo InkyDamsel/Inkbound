@@ -1337,3 +1337,18 @@ assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
 assert.equal(inferKnownDetectiveSeriesFromDescription(
   'A history of Warfare and Peacekeeping, book 2.', 'War and Peace',
 ), null);
+
+// Contradictory high-confidence claims must be review-only, not score-winners.
+assert.equal(selectVerifiedDetectiveEvidence([
+  strong,
+  scoreDetectiveEvidence({ ...strong, position: 3, providerId: 'open-library', recordId: 'ol-conflict' }),
+]), null);
+assert.equal(selectVerifiedDetectiveEvidence([
+  strong,
+  scoreDetectiveEvidence({ ...strong, seriesName: 'Another Harbor', providerId: 'open-library', recordId: 'ol-series-conflict' }),
+]), null);
+// Unknown order does not contradict an otherwise supported known position.
+assert.equal(selectVerifiedDetectiveEvidence([
+  strong,
+  scoreDetectiveEvidence({ ...strong, position: null, providerId: 'open-library', recordId: 'ol-unknown-order' }),
+])?.position, 2);
