@@ -103,7 +103,11 @@ export const detectiveAuthorsCompatible = (left?: string, right?: string): boole
 };
 
 export const canonicalDetectiveSeries = (value?: string): string => {
-  const tokens = normalizeDetectiveText(value).split(' ').filter(Boolean);
+  // Treat ampersand and standalone 'x' as conjunction variants while keeping
+  // the conjunction itself significant to the series identity.
+  const normalizedConjunctions = typeof value === 'string'
+    ? value.replace(/\s+[&x]\s+/gi, ' and ') : '';
+  const tokens = normalizeDetectiveText(normalizedConjunctions).split(' ').filter(Boolean);
   // Generic structural qualifiers only: never alias a specific franchise or series.
   while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
   while (
