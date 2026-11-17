@@ -1413,6 +1413,7 @@ assert.equal(verifyCanonicalProductionMembership(
 const sharedSecondaryIsbnEvidence = structuredSeriesEvidence.map(candidate => ({
   ...candidate,
   edition: { ...candidate.edition,
+    isbn13: candidate.provider === 'hardcover' ? undefined : candidate.edition.isbn13,
     isbn10: candidate.work.title === 'Icebreaker' ? '1668026031' : '1668026279',
   },
 }));
