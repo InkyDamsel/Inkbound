@@ -234,12 +234,15 @@ export const inferKnownDetectiveSeriesFromDescription = (
   value: string | undefined,
   wantedSeriesName: string,
 ): { name: string; position: number | null } | null => {
-  const text = normalizeDetectiveText(value);
+  // Normalize conjunction aliases in both the catalog text and requested
+  // series. Keep the original token boundaries to avoid substring matches.
+  const text = normalizeDetectiveText(
+    typeof value === 'string' ? value.replace(/\\s+[&x]\\s+/gi, ' and ') : '',
+  );
   const seriesIdentity = canonicalDetectiveSeries(wantedSeriesName);
   if (!text || !seriesIdentity) return null;
 
   const seriesTokens = seriesIdentity.split(' ').filter(Boolean);
-  // Require the full normalized series phrase, not scattered words or substrings.
   // A blurb mentioning 'will' and 'trent' separately is not Will Trent evidence.
   const seriesIndex = ` ${text} `.indexOf(` ${seriesIdentity} `);
   if (seriesIndex < 0) return null;
