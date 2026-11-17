@@ -26,11 +26,11 @@ export function verifyCanonicalProductionMembership(
   // An ISBN is independently assigned edition evidence. Display title and
   // author are useful for discovery, but must never be forged into a
   // provider-independent identity proof.
-  const isbnOf = (candidate: DetectiveMergeCandidate): string | null => {
-    const isbn13 = compactDetectiveIsbn(candidate.edition.isbn13);
-    const isbn10 = compactDetectiveIsbn(candidate.edition.isbn10);
-    return isbn13 || isbn10 || null;
-  };
+  const isbnsOf = (candidate: DetectiveMergeCandidate): string[] =>
+    [...new Set([candidate.edition.isbn13, candidate.edition.isbn10]
+      .map(compactDetectiveIsbn)
+      .filter((isbn) => (isbn.length === 13 && /^\\d{13}$/.test(isbn))
+        || (isbn.length === 10 && /^\\d{9}[\\dX]$/.test(isbn))))];
   const workKey = (candidate: DetectiveMergeCandidate): string =>
     JSON.stringify([comparableDetectiveTitle(candidate.work.title),
       canonicalDetectiveAuthor(candidate.work.authors[0])]);
@@ -53,11 +53,11 @@ export function verifyCanonicalProductionMembership(
   const independentWorkEvidence = (group: readonly DetectiveMergeCandidate[]): boolean => {
     const byIsbn = new Map<string, Set<Provider>>();
     for (const source of group) {
-      const isbn = isbnOf(source);
-      if (!isbn) continue;
-      const providers = byIsbn.get(isbn) ?? new Set<Provider>();
-      providers.add(source.seriesProvider ?? source.provider);
-      byIsbn.set(isbn, providers);
+      for (const isbn of isbnsOf(source)) {
+        const providers = byIsbn.get(isbn) ?? new Set<Provider>();
+        providers.add(source.seriesProvider ?? source.provider);
+        byIsbn.set(isbn, providers);
+      }
     }
     return [...byIsbn.values()].some(providers => providers.size >= 2);
   };
