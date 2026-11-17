@@ -1421,3 +1421,14 @@ assert.equal(verifyCanonicalProductionMembership(
   sharedSecondaryIsbnEvidence, sharedSecondaryIsbnEvidence[2],
   [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
 ).verified, true);
+
+// A blank leading author in one catalog must not conceal a real author.
+const blankLeadingAuthorEvidence = structuredSeriesEvidence.map(candidate => ({
+  ...candidate,
+  work: { ...candidate.work, authors: candidate.provider === 'hardcover'
+    ? ['', 'Hannah Grace'] : ['Hannah Grace'] },
+}));
+assert.equal(verifyCanonicalProductionMembership(
+  blankLeadingAuthorEvidence, blankLeadingAuthorEvidence[2],
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+).verified, true);
