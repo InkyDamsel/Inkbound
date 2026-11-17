@@ -1329,3 +1329,11 @@ assert.equal(detectiveSeriesNamesCompatible('War and Peace', 'War Peace'), false
 assert.equal(detectiveSeriesNamesCompatible('X and Y', 'Y'), false);
 assert.equal(detectiveSeriesNamesCompatible('The Maple Hills Series', 'Maple Hills'), true);
 assert.equal(detectiveSeriesNamesCompatible('Hades x Persephone Saga', 'Hades & Persephone'), true);
+
+// Conjunction variants must also work in description evidence, not just labels.
+assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
+  'The second book in the Hades x Persephone Saga.', 'Hades & Persephone',
+), { name: 'Hades & Persephone', position: 2 });
+assert.equal(inferKnownDetectiveSeriesFromDescription(
+  'A history of Warfare and Peacekeeping, book 2.', 'War and Peace',
+), null);
