@@ -233,12 +233,14 @@ export const inferKnownDetectiveSeriesFromDescription = (
   if (!text || !seriesIdentity) return null;
 
   const seriesTokens = seriesIdentity.split(' ').filter(Boolean);
-  if (!seriesTokens.every((token) => text.includes(token))) return null;
+  // Require the full normalized series phrase, not scattered words or substrings.
+  // A blurb mentioning 'will' and 'trent' separately is not Will Trent evidence.
+  const seriesIndex = ` ${text} `.indexOf(` ${seriesIdentity} `);
+  if (seriesIndex < 0) return null;
 
   const qualifierPattern = /\b(?:series|saga|novels?|books?|collection)\b/i;
   if (seriesTokens.length === 1 && !qualifierPattern.test(text)) return null;
 
-  const seriesIndex = text.indexOf(seriesTokens[0]);
   const start = Math.max(0, seriesIndex - 120);
   const end = Math.min(text.length, seriesIndex + seriesIdentity.length + 120);
   const context = text.slice(start, end);
