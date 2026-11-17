@@ -64,7 +64,7 @@ export const AdminSeriesEvidencePanel: React.FC = () => {
         </div>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
-        <input aria-label="Owned book title" placeholder="Owned book title" value={title} onChange={event => setTitle(event.target.value)} className="rounded-lg border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-[var(--ink-ivory)]" maxLength={180} />
+        <input aria-label="Owned book title" placeholder="Owned book title" value={title} onChange={event => setTitle(event.target.value)} className="w-full rounded-lg border border-[#a78755] bg-[#24182c] p-3 text-[#fff4dc] caret-[#f6cc75] placeholder:text-[#c9b8d0] focus:border-[#f6cc75] focus:outline-none focus:ring-2 focus:ring-[#f6cc75]/60" maxLength={180} />
         <input aria-label="Author" placeholder="Author" value={author} onChange={event => setAuthor(event.target.value)} className="rounded-lg border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-[var(--ink-ivory)]" maxLength={120} />
         <input aria-label="Series" placeholder="Series" value={seriesName} onChange={event => setSeriesName(event.target.value)} className="rounded-lg border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-[var(--ink-ivory)]" maxLength={160} />
       </div>
