@@ -1383,3 +1383,15 @@ const isbnConflictMerge = mergeDetectiveCandidates([
 ]);
 assert.equal(isbnConflictMerge.length, 1);
 assert.equal(isbnConflictMerge[0].work.editions.length, 2);
+
+// Blank author placeholders cannot anchor an owned series across providers.
+assert.equal(hasCorroboratedOwnedSeed(
+  structuredSeriesEvidence, [{ title: 'Icebreaker', author: '' }], 'Maple Hills',
+), false);
+assert.equal(verifyCanonicalProductionMembership(
+  structuredSeriesEvidence, structuredSeriesEvidence[2],
+  [{ title: 'Icebreaker', author: '' }], 'Maple Hills',
+).verified, false);
+assert.equal(hasCorroboratedOwnedSeed(
+  structuredSeriesEvidence, [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+), true);
