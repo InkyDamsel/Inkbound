@@ -1395,3 +1395,28 @@ assert.equal(verifyCanonicalProductionMembership(
 assert.equal(hasCorroboratedOwnedSeed(
   structuredSeriesEvidence, [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
 ), true);
+
+// A catalog's secondary ISBN-10 is still independent edition evidence.
+// The canonical gate must not ignore it merely because ISBN-13 is populated.
+const secondaryIsbnEvidence = structuredSeriesEvidence.map(candidate => ({
+  ...candidate,
+  edition: { ...candidate.edition,
+    isbn13: candidate.provider === 'open-library' ? '9781668026038' : undefined,
+    isbn10: candidate.provider === 'hardcover' ? '1668026031' : undefined,
+  },
+}));
+// Different ISBN formats are not interchangeable without validated conversion.
+assert.equal(verifyCanonicalProductionMembership(
+  secondaryIsbnEvidence, secondaryIsbnEvidence[2],
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+).verified, false);
+const sharedSecondaryIsbnEvidence = structuredSeriesEvidence.map(candidate => ({
+  ...candidate,
+  edition: { ...candidate.edition,
+    isbn10: candidate.work.title === 'Icebreaker' ? '1668026031' : '1668026279',
+  },
+}));
+assert.equal(verifyCanonicalProductionMembership(
+  sharedSecondaryIsbnEvidence, sharedSecondaryIsbnEvidence[2],
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+).verified, true);
