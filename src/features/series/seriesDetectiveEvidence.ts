@@ -335,18 +335,27 @@ export const selectVerifiedDetectiveEvidence = (
     groups.set(key, current);
   });
 
-  return [...groups.values()]
+  const verifiedGroups = [...groups.values()]
     .map((group) => ({
       best: [...group].sort((a, b) => b.score - a.score)[0],
       distinctProviders: new Set(group.map((item) => item.providerId)).size,
       corroboratingProviders: Math.max(...group.map((item) => item.providerCount ?? 1)),
     }))
     .filter(({ best, distinctProviders, corroboratingProviders }) =>
-      best.structured && best.score >= 170
-      || !best.structured
+      (best.structured && best.score >= 170)
+      || (!best.structured
         && Math.max(distinctProviders, corroboratingProviders) >= 2
-        && best.score >= 100,
-    )
+        && best.score >= 100),
+    );
+  // Never resolve contradictory verified claims by picking the highest score.
+  // A missing ordinal is compatible with a known one; two different known
+  // ordinals or two different series identities require human review.
+  const seriesNames = new Set(verifiedGroups.map(({ best }) => canonicalDetectiveSeries(best.seriesName)));
+  const knownPositions = new Set(verifiedGroups.map(({ best }) => best.position)
+    .filter((position): position is number => position !== null));
+  if (seriesNames.size > 1 || knownPositions.size > 1) return null;
+
+  return verifiedGroups
     .sort((a, b) =>
       b.best.score - a.best.score
       || b.corroboratingProviders - a.corroboratingProviders
