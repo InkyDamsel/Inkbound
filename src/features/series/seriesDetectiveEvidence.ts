@@ -244,8 +244,9 @@ export const inferKnownDetectiveSeriesFromDescription = (
 
   const seriesTokens = seriesIdentity.split(' ').filter(Boolean);
   // A blurb mentioning 'will' and 'trent' separately is not Will Trent evidence.
-  const seriesIndex = ` ${text} `.indexOf(` ${seriesIdentity} `);
-  if (seriesIndex < 0) return null;
+  const paddedIndex = ` ${text} `.indexOf(` ${seriesIdentity} `);
+  if (paddedIndex < 0) return null;
+  const seriesIndex = Math.max(0, paddedIndex - 1);
 
   const qualifierPattern = /\b(?:series|saga|novels?|books?|collection)\b/i;
   if (seriesTokens.length === 1 && !qualifierPattern.test(text)) return null;
