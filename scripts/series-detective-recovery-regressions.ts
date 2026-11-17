@@ -1352,3 +1352,8 @@ assert.equal(selectVerifiedDetectiveEvidence([
   strong,
   scoreDetectiveEvidence({ ...strong, position: null, providerId: 'open-library', recordId: 'ol-unknown-order' }),
 ])?.position, 2);
+
+// Conjunction normalization must consume actual whitespace (not literal backslashes).
+assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
+  'Hades & Persephone is the second book in the saga.', 'Hades x Persephone',
+), { name: 'Hades x Persephone', position: 2 });
