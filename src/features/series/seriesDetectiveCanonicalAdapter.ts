@@ -31,9 +31,11 @@ export function verifyCanonicalProductionMembership(
       .map(compactDetectiveIsbn)
       .filter((isbn) => (isbn.length === 13 && /^\\d{13}$/.test(isbn))
         || (isbn.length === 10 && /^\\d{9}[\\dX]$/.test(isbn))))];
+  // Catalogs sometimes put an empty placeholder before the actual author.
+  // Use the first nonempty author, never an empty identity key.
   const workKey = (candidate: DetectiveMergeCandidate): string =>
     JSON.stringify([comparableDetectiveTitle(candidate.work.title),
-      canonicalDetectiveAuthor(candidate.work.authors[0])]);
+      canonicalDetectiveAuthor(candidate.work.authors.find(author => Boolean(author?.trim())) ?? '')]);
   const targetKey = workKey(target);
   const ownedKeys = new Set(owned.filter(book => Boolean(book.title?.trim())
     && Boolean(book.author?.trim())).map(book => JSON.stringify([
