@@ -258,32 +258,61 @@ export const inspectSeriesWikidataEvidence = onCall(
       FILTER(LANG(?workLabel) = "en" && LANG(?authorLabel) = "en" && LANG(?seriesLabel) = "en")
       FILTER(LCASE(STR(?workLabel)) = LCASE(${JSON.stringify(title)}))
     } LIMIT 50`;
+    const startedAt = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
+    let httpStatus: number | null = null;
+    let retryAfter: string | null = null;
+    let rawRecords = 0;
+    let rejectedRecords = 0;
+    const diagnostics = (errorCategory: string | null = null) => ({
+      durationMs: Date.now() - startedAt,
+      requestsMade: 1,
+      rawRecords,
+      rejectedRecords,
+      httpStatus,
+      retryAfter,
+      errorCategory,
+      timeoutMs: 12000,
+      provider: 'wikidata',
+    });
     try {
       const response = await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(query), {
         headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'InkboundSeriesDetective/1.0 (admin diagnostic)' },
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error('Wikidata HTTP ' + response.status);
+      httpStatus = response.status;
+      retryAfter = response.headers.get('retry-after');
+      if (!response.ok) return {
+        status: 'provider-unavailable', claims: [],
+        diagnostics: diagnostics(response.status === 429 ? 'rate-limited' : response.status >= 500 ? 'upstream-server-error' : 'upstream-http-error'),
+      };
       const payload = await response.json() as { results?: { bindings?: Array<Record<string, { value: string }>> } };
+      if (!Array.isArray(payload.results?.bindings)) {
+        return { status: 'provider-unavailable', claims: [], diagnostics: diagnostics('invalid-response-shape') };
+      }
+      rawRecords = payload.results.bindings.length;
       const normalized = (value: string) => value.trim().toLocaleLowerCase('en').replace(/[^a-z0-9]+/g, ' ');
-      const claims = (payload.results?.bindings ?? [])
-        .filter(row => normalized(row.authorLabel?.value ?? '') === normalized(author)
-          && normalized(row.seriesLabel?.value ?? '') === normalized(seriesName))
-        .slice(0, 30)
-        .map(row => ({
-          workId: row.work?.value?.match(/Q\d+$/)?.[0] ?? '',
-          seriesId: row.series?.value?.match(/Q\d+$/)?.[0] ?? '',
-          workTitle: row.workLabel?.value ?? '',
-          author: row.authorLabel?.value ?? '',
-          series: row.seriesLabel?.value ?? '',
-          ordinal: row.ordinal?.value ?? null,
-          origin: 'wikidata:P179',
-        }));
-      return { status: claims.length ? 'matched' : 'no-matching-claim', claims };
-    } catch {
-      return { status: 'provider-unavailable', claims: [] };
+      const matching = payload.results.bindings.filter(row =>
+        normalized(row.authorLabel?.value ?? '') === normalized(author)
+        && normalized(row.seriesLabel?.value ?? '') === normalized(seriesName));
+      rejectedRecords = rawRecords - matching.length;
+      const claims = matching.slice(0, 30).map(row => ({
+        workId: row.work?.value?.match(/Q\\d+$/)?.[0] ?? '',
+        seriesId: row.series?.value?.match(/Q\\d+$/)?.[0] ?? '',
+        workTitle: row.workLabel?.value ?? '',
+        author: row.authorLabel?.value ?? '',
+        series: row.seriesLabel?.value ?? '',
+        ordinal: row.ordinal?.value ?? null,
+        origin: 'wikidata:P179',
+      }));
+      return { status: claims.length ? 'matched' : 'no-matching-claim', claims, diagnostics: diagnostics() };
+    } catch (error: unknown) {
+      const category = controller.signal.aborted ? 'timeout'
+        : error instanceof SyntaxError ? 'invalid-json'
+        : error instanceof TypeError ? 'network-error'
+        : 'unexpected-provider-error';
+      return { status: 'provider-unavailable', claims: [], diagnostics: diagnostics(category) };
     } finally {
       clearTimeout(timeout);
     }
