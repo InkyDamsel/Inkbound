@@ -35,7 +35,10 @@ const comparableWorkTitle = (value?: string): string => {
 
 const sameAuthor = (left: string[], right: string[]): boolean =>
   left.some((leftAuthor) =>
-    right.some((rightAuthor) => detectiveAuthorsCompatible(leftAuthor, rightAuthor)),
+    Boolean(leftAuthor?.trim()) && right.some((rightAuthor) =>
+      Boolean(rightAuthor?.trim())
+      && detectiveAuthorsCompatible(leftAuthor, rightAuthor)
+      && detectiveAuthorsCompatible(rightAuthor, leftAuthor)),
   );
 
 export const detectiveCandidatesAreSameWork = (
