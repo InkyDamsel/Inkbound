@@ -1307,3 +1307,12 @@ assert.equal(wikidataInspection.verification, 'review');
 assert.equal(wikidataInspection.providerClaims.length, 1);
 assert.equal(wikidataInspection.providerClaims[0].nativeSeriesId, 'Q123456');
 assert.ok(wikidataInspection.reasons.some(reason => reason.includes('two structured')));
+
+// A known series must appear as a contiguous phrase in a description.
+// Separate occurrences of its component words are not series evidence.
+assert.equal(inferKnownDetectiveSeriesFromDescription(
+  'Will the detective finally find Trent after the investigation?', 'Will Trent',
+), null);
+assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
+  'The third book in the Will Trent series.', 'Will Trent',
+), { name: 'Will Trent', position: 3 });
