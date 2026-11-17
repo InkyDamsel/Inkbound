@@ -237,7 +237,7 @@ export const inferKnownDetectiveSeriesFromDescription = (
   // Normalize conjunction aliases in both the catalog text and requested
   // series. Keep the original token boundaries to avoid substring matches.
   const text = normalizeDetectiveText(
-    typeof value === 'string' ? value.replace(/\\s+[&x]\\s+/gi, ' and ') : '',
+    typeof value === 'string' ? value.replace(/\s+[&x]\s+/gi, ' and ') : '',
   );
   const seriesIdentity = canonicalDetectiveSeries(wantedSeriesName);
   if (!text || !seriesIdentity) return null;
