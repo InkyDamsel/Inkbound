@@ -1325,7 +1325,7 @@ const missingAuthorMerge = mergeDetectiveCandidates([
 assert.equal(missingAuthorMerge.length, 2);
 
 // Distinct series titles must not collapse by discarding conjunctions.
-import { detectiveSeriesNamesCompatible } from '../src/features/series/seriesDetectiveEvidence';
 assert.equal(detectiveSeriesNamesCompatible('War and Peace', 'War Peace'), false);
 assert.equal(detectiveSeriesNamesCompatible('X and Y', 'Y'), false);
 assert.equal(detectiveSeriesNamesCompatible('The Maple Hills Series', 'Maple Hills'), true);
+assert.equal(detectiveSeriesNamesCompatible('Hades x Persephone Saga', 'Hades & Persephone'), true);
