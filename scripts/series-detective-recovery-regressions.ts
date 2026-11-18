@@ -247,7 +247,7 @@ const weakEditionScopedSeries = scoreDetectiveEvidence({
   position: 2,
   title: 'Example Punishment',
   authors: ['Example Author'],
-  isbn13: '9780000000002',
+  isbn13: '9780991132379',
   sourceId: 'open-library',
   recordId: 'open-library:translated',
   providerId: 'open-library',
@@ -785,7 +785,7 @@ const suffixMerge = mergeDetectiveCandidates([
         genres: [],
         publicationYear: 2020,
         format: 'hardcover',
-        isbn13: '9780000000001',
+        isbn13: '9780062059963',
         specialFeatures: [],
       }],
     },
@@ -797,7 +797,7 @@ const suffixMerge = mergeDetectiveCandidates([
       genres: [],
       publicationYear: 2020,
       format: 'hardcover',
-      isbn13: '9780000000001',
+      isbn13: '9780062059963',
       specialFeatures: [],
     },
   },
@@ -820,7 +820,7 @@ const suffixMerge = mergeDetectiveCandidates([
         genres: [],
         publicationYear: 2020,
         format: 'paperback',
-        isbn13: '9780000000002',
+        isbn13: '9780991132379',
         specialFeatures: [],
       }],
     },
@@ -832,7 +832,7 @@ const suffixMerge = mergeDetectiveCandidates([
       genres: [],
       publicationYear: 2020,
       format: 'paperback',
-      isbn13: '9780000000002',
+      isbn13: '9780991132379',
       specialFeatures: [],
     },
   },
@@ -1144,9 +1144,9 @@ assert.deepEqual(confirmedGoogleMembershipIds({ volumeInfo: { seriesInfo: { volu
 // A reused provider edition ID with contradictory ISBNs must never create
 // a synthetic edition containing identifiers from two different books.
 const reusedEditionOne = { ...identityFixture.edition, source: 'google-books' as const,
-  externalEditionId: 'reused-edition', isbn13: '9780000000001', isbn10: undefined };
+  externalEditionId: 'reused-edition', isbn13: '9780062059963', isbn10: undefined };
 const reusedEditionTwo = { ...identityFixture.edition, source: 'google-books' as const,
-  externalEditionId: 'reused-edition', isbn13: '9780000000002', isbn10: undefined };
+  externalEditionId: 'reused-edition', isbn13: '9780991132379', isbn10: undefined };
 const reusedProviderEditionId = mergeDetectiveCandidates([
   { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
     work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work', editions: [reusedEditionOne] },
@@ -1158,7 +1158,7 @@ const reusedProviderEditionId = mergeDetectiveCandidates([
 assert.equal(reusedProviderEditionId.length, 1);
 assert.equal(reusedProviderEditionId[0].work.editions.length, 2);
 assert.deepEqual(new Set(reusedProviderEditionId[0].work.editions.map(edition => edition.isbn13)),
-  new Set(['9780000000001', '9780000000002']));
+  new Set(['9780062059963', '9780991132379']));
 
 // Open Library publisher collection numbers must not masquerade as literary series.
 assert.equal(plausibleOpenLibrarySeriesName('rororo 23230'), false);
