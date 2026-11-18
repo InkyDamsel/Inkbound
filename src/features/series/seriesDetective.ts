@@ -809,12 +809,15 @@ const mergeCandidateFromGoogleVolume = (
   const canonicalWantedAuthor = canonicalDetectiveAuthor(wantedAuthor);
   const authorIsUsable = canonicalWantedAuthor && canonicalWantedAuthor !== 'unknown author';
   const exactAuthor = !authorIsUsable || authors.some((name) => detectiveAuthorsCompatible(wantedAuthor, name));
-  const hasStructuredSeries = Boolean(
-    (info?.seriesInfo?.volumeSeries ?? []).some((membership) => {
-      const id = safeDetectiveTrim(membership.seriesId);
-      return Boolean(id && catalog.seriesTitlesById[id]);
-    }),
-  );
+  // A volume may belong to multiple series. Native membership in series A
+  // cannot upgrade a scraped label for series B into structured evidence.
+  const matchedNativeSeriesId = (info?.seriesInfo?.volumeSeries ?? [])
+    .map(membership => safeDetectiveTrim(membership.seriesId))
+    .find(id => Boolean(id && catalog.seriesTitlesById[id]
+      && metadata?.name
+      && detectiveSeriesNamesCompatible(catalog.seriesTitlesById[id], metadata.name)
+      && (!wantedSeriesName || detectiveSeriesNamesCompatible(catalog.seriesTitlesById[id], wantedSeriesName))));
+  const hasStructuredSeries = Boolean(matchedNativeSeriesId);
 
   const bibliographicSeriesMatchesRequested = Boolean(
     wantedSeriesName
@@ -899,11 +902,7 @@ const mergeCandidateFromGoogleVolume = (
     // Scraped bibliographic labels, including explicit-looking ones, are
     // discovery hints. Only a resolved native membership may be structured.
     seriesStructured: metadata ? hasStructuredSeries : undefined,
-    nativeSeriesId: hasStructuredSeries
-      ? (info?.seriesInfo?.volumeSeries ?? [])
-        .map(membership => safeDetectiveTrim(membership.seriesId))
-        .find(id => Boolean(id && catalog.seriesTitlesById[id]))
-      : undefined,
+    nativeSeriesId: matchedNativeSeriesId,
   };
 };
 
