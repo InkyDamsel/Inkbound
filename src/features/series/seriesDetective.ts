@@ -535,10 +535,14 @@ const evidenceForVolume = (
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
   const exactAuthor = !wantedAuthor || (volume.volumeInfo?.authors ?? [])
     .some((author) => detectiveAuthorsCompatible(book.work.author, author));
+  // An unrelated native series on the same volume must not validate a
+  // bibliographic label for the requested series during evidence scoring.
   const structured = Boolean(
     (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
       const id = safeDetectiveTrim(membership.seriesId);
-      return Boolean(id && catalog.seriesTitlesById[id]);
+      const nativeName = id ? catalog.seriesTitlesById[id] : undefined;
+      return Boolean(nativeName
+        && detectiveSeriesNamesCompatible(nativeName, metadata.name));
     })
     // Scraped bibliographic labels (even explicit-looking ones) are hints,
     // not an authenticated series-ID mapping. Never promote them to proof.
