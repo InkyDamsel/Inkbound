@@ -34,14 +34,14 @@ export function verifyCanonicalProductionMembership(
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
     && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
     && detectiveCandidatesAreSameWork(source, target)
-    && detectiveWorkTitlesCompatible(source.work.title, target.work.title)
+    && detectiveWorkTitlesCompatible(source.work.title, target.work.title, seriesName)
     && source.work.authors.some(author => target.work.authors.some(other =>
       Boolean(author?.trim()) && Boolean(other?.trim()) && detectiveAuthorsCompatible(author, other))));
   const seedSources = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
     && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
     && owned.some(book => Boolean(book.title?.trim()) && Boolean(book.author?.trim())
-      && detectiveWorkTitlesCompatible(source.work.title, book.title)
+      && detectiveWorkTitlesCompatible(source.work.title, book.title, seriesName)
       && source.work.authors.some(author => Boolean(author?.trim())
         && detectiveAuthorsCompatible(author, book.author))));
   // A matching ISBN corroborates edition identity across catalogs. It does
@@ -59,7 +59,7 @@ export function verifyCanonicalProductionMembership(
   };
   const corroboratedOwnedSeed = owned.some(book => Boolean(book.title?.trim())
     && Boolean(book.author?.trim()) && independentWorkEvidence(seedSources.filter(source =>
-      detectiveWorkTitlesCompatible(source.work.title, book.title)
+      detectiveWorkTitlesCompatible(source.work.title, book.title, seriesName)
       && source.work.authors.some(author => Boolean(author?.trim())
         && detectiveAuthorsCompatible(author, book.author)))));
   if (!independentWorkEvidence(matching) || !corroboratedOwnedSeed) {
