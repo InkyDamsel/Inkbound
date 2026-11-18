@@ -1034,8 +1034,10 @@ export async function findMissingSeriesBooks(
         const title = safeDetectiveTrim(volume.volumeInfo?.title);
         const authors = volume.volumeInfo?.authors ?? [];
         if (!title || !seriesBooks.some((book) =>
-          comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(title)
-          && authors.some((name) => detectiveAuthorsCompatible(book.work.author, name)))) return;
+          detectiveWorkTitlesCompatible(book.work.title, title, seriesName)
+          && authors.some((name) => Boolean(canonicalDetectiveAuthor(name))
+            && Boolean(canonicalDetectiveAuthor(book.work.author))
+            && detectiveAuthorsCompatible(book.work.author, name)))) return;
         const verified = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
         // The user's custom label is not evidence that every Google membership
         // on an owned book refers to the same series.
