@@ -4,6 +4,7 @@ import {
   detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
   normalizeDetectiveText,
+  detectiveWorkTitlesCompatible,
 } from './seriesDetectiveEvidence';
 
 export interface DetectiveMergeCandidate {
@@ -64,7 +65,7 @@ export const detectiveCandidatesAreSameWork = (
   const leftTitle = comparableWorkTitle(left.work.title);
   const rightTitle = comparableWorkTitle(right.work.title);
   if (!leftTitle || !rightTitle) return false;
-  if (leftTitle === rightTitle) return true;
+  if (detectiveWorkTitlesCompatible(left.work.title, right.work.title)) return true;
 
   // Only collapse an omitted subtitle when the provider text explicitly uses a
   // colon separator. Broad prefix matching is unsafe for series where sequel
