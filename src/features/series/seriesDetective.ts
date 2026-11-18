@@ -1200,7 +1200,7 @@ export async function findMissingSeriesBooks(
       .filter((candidate) => hasExplicitDetectiveSeriesBrand(candidate, seriesName)
         && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)))
       .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
-    const verifiedMultiAuthorBrand = structuredAuthors.size >= 3 || brandedAuthors.size >= 2;
+    const verifiedMultiAuthorBrand = structuredAuthors.size >= 2 || brandedAuthors.size >= 2;
 
     const diagnostics = {
       discovered: providerCandidates.length,
