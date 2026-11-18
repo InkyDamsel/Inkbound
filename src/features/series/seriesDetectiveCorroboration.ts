@@ -28,7 +28,7 @@ export function hasCorroboratedOwnedSeed(
     && Boolean(comparableDetectiveTitle(book.title))
     && new Set(candidates.filter(candidate =>
       structuredForSeries(candidate, seriesName)
-      && detectiveWorkTitlesCompatible(candidate.work.title, book.title)
+      && detectiveWorkTitlesCompatible(candidate.work.title, book.title, seriesName)
       && candidate.work.authors.some(author => Boolean(author?.trim())
         && detectiveAuthorsCompatible(book.author, author)))
       .map(providerOf)).size >= 2);
@@ -51,7 +51,7 @@ export function corroborateDetectiveMembership(
     && detectiveCandidatesAreSameWork(candidate, target)
     // Never allow a record whose work identity is ambiguous to provide a
     // second independent vote merely because a reused ISBN matches.
-    && detectiveWorkTitlesCompatible(candidate.work.title, target.work.title));
+    && detectiveWorkTitlesCompatible(candidate.work.title, target.work.title, seriesName));
   const providers = new Set(matching.map(providerOf));
   const invalidPosition = matching.some(candidate => candidate.position != null
     && (!Number.isSafeInteger(candidate.position) || candidate.position <= 0));
