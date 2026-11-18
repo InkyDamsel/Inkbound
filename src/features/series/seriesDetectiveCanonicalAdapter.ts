@@ -29,8 +29,8 @@ export function verifyCanonicalProductionMembership(
   const isbnsOf = (candidate: DetectiveMergeCandidate): string[] =>
     [...new Set([candidate.edition.isbn13, candidate.edition.isbn10]
       .map(compactDetectiveIsbn)
-      .filter((isbn) => (isbn.length === 13 && /^\\d{13}$/.test(isbn))
-        || (isbn.length === 10 && /^\\d{9}[\\dX]$/.test(isbn))))];
+      .filter((isbn) => (isbn.length === 13 && /^\d{13}$/.test(isbn))
+        || (isbn.length === 10 && /^\d{9}[\dX]$/.test(isbn))))];
   // Catalogs sometimes put an empty placeholder before the actual author.
   // Use the first nonempty author, never an empty identity key.
   const workKey = (candidate: DetectiveMergeCandidate): string =>
