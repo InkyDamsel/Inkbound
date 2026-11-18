@@ -1218,7 +1218,6 @@ const publisherReplay = replayDetectiveEvidence({ ...replayInput,
 assert.equal(publisherReplay.decisions[0].status, 'rejected');
 assert.ok(publisherReplay.decisions[0].reasonCodes.includes('publisher-collection'));
 
-console.log('Inkbound Series Detective recovery regressions passed.');
 
  
 // Production canonical gate: corroborated membership must remain distinct
@@ -1403,7 +1402,7 @@ assert.equal(hasCorroboratedOwnedSeed(
 
 // A catalog's secondary ISBN-10 is still independent edition evidence.
 // The canonical gate must not ignore it merely because ISBN-13 is populated.
-const secondaryIsbnEvidence = structuredSeriesEvidence.map(candidate => ({
+const secondaryIsbnEvidence = agreeingSeriesEvidence.map(candidate => ({
   ...candidate,
   edition: { ...candidate.edition,
     isbn13: candidate.provider === 'open-library' ? '9781668026038' : undefined,
@@ -1415,7 +1414,7 @@ assert.equal(verifyCanonicalProductionMembership(
   secondaryIsbnEvidence, secondaryIsbnEvidence[2],
   [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
 ).verified, false);
-const sharedSecondaryIsbnEvidence = structuredSeriesEvidence.map(candidate => ({
+const sharedSecondaryIsbnEvidence = agreeingSeriesEvidence.map(candidate => ({
   ...candidate,
   edition: { ...candidate.edition,
     isbn13: candidate.provider === 'hardcover' ? undefined : candidate.edition.isbn13,
@@ -1428,7 +1427,7 @@ assert.equal(verifyCanonicalProductionMembership(
 ).verified, true);
 
 // A blank leading author in one catalog must not conceal a real author.
-const blankLeadingAuthorEvidence = structuredSeriesEvidence.map(candidate => ({
+const blankLeadingAuthorEvidence = agreeingSeriesEvidence.map(candidate => ({
   ...candidate,
   work: { ...candidate.work, authors: candidate.provider === 'hardcover'
     ? ['', 'Hannah Grace'] : ['Hannah Grace'] },
@@ -1437,3 +1436,5 @@ assert.equal(verifyCanonicalProductionMembership(
   blankLeadingAuthorEvidence, blankLeadingAuthorEvidence[2],
   [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
 ).verified, true);
+
+console.log('Inkbound Series Detective recovery regressions passed.');
