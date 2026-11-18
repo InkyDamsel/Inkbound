@@ -1412,10 +1412,10 @@ const secondaryIsbnEvidence = agreeingSeriesEvidence.map(candidate => ({
   ...candidate,
   edition: { ...candidate.edition,
     isbn13: candidate.provider === 'open-library' ? '9781668026038' : undefined,
-    isbn10: candidate.provider === 'hardcover' ? '1668026031' : undefined,
+    isbn10: candidate.provider === 'hardcover' ? '1668026279' : undefined,
   },
 }));
-// Different ISBN formats are not interchangeable without validated conversion.
+// Valid ISBN-10/13 values for different editions must not corroborate each other.
 assert.equal(verifyCanonicalProductionMembership(
   secondaryIsbnEvidence, secondaryIsbnEvidence[2],
   [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
