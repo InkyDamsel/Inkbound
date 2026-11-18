@@ -1,6 +1,6 @@
 import type { SeriesDetectiveEdition, SeriesDetectiveWorkGroup } from './seriesDetectiveCatalogTypes';
 import {
-  compactDetectiveIsbn,
+  canonicalDetectiveIsbn13,
   detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
   normalizeDetectiveText,
@@ -84,38 +84,35 @@ export const detectiveCandidatesAreSameWork = (
   return colonVariantMatches(leftRaw, rightRaw) || colonVariantMatches(rightRaw, leftRaw);
 };
 
-// Conflicting identifiers cannot be combined into a synthetic edition, even
-// when one of the ISBN fields happens to agree.
+// ISBN-10 and ISBN-13 may describe the same edition. Never compare raw
+// strings or accept malformed checksums as proof of edition identity.
+const editionIdentifiers = (edition: SeriesDetectiveEdition): string[] =>
+  [...new Set([edition.isbn13, edition.isbn10]
+    .map(canonicalDetectiveIsbn13)
+    .filter((value): value is string => Boolean(value)))];
+
 const editionIdentifiersCompatible = (
   left: SeriesDetectiveEdition,
   right: SeriesDetectiveEdition,
-): boolean => (['isbn13', 'isbn10'] as const).every((field) => {
-  const a = compactDetectiveIsbn(left[field]);
-  const b = compactDetectiveIsbn(right[field]);
-  return !a || !b || a === b;
-});
+): boolean => {
+  const leftIds = editionIdentifiers(left);
+  const rightIds = editionIdentifiers(right);
+  // Conflicting valid ISBNs within either record mean ambiguous metadata.
+  if (leftIds.length > 1 || rightIds.length > 1) return false;
+  return leftIds.length === 0 || rightIds.length === 0 || leftIds[0] === rightIds[0];
+};
 
 const exactIsbnMatch = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean => {
-  const leftIds = [left.isbn13, left.isbn10].map(compactDetectiveIsbn).filter(Boolean);
-  const rightIds = [right.isbn13, right.isbn10].map(compactDetectiveIsbn).filter(Boolean);
-  // A shared identifier is edition evidence only when other populated
-  // identifiers do not contradict it.
+  const leftIds = editionIdentifiers(left);
+  const rightIds = editionIdentifiers(right);
   return editionIdentifiersCompatible(left, right)
-    && leftIds.some((isbn) => rightIds.includes(isbn));
+    && leftIds.length === 1 && rightIds.length === 1 && leftIds[0] === rightIds[0];
 };
 
-const sameProviderEdition = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean => {
-  if (left.source !== right.source || !left.externalEditionId
-    || left.externalEditionId !== right.externalEditionId) return false;
-  // A provider ID can be reused or its metadata can change. Never combine
-  // incompatible identifiers into a synthetic edition.
-  for (const field of ['isbn13', 'isbn10'] as const) {
-    const a = compactDetectiveIsbn(left[field]);
-    const b = compactDetectiveIsbn(right[field]);
-    if (a && b && a !== b) return false;
-  }
-  return true;
-};
+const sameProviderEdition = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean =>
+  left.source === right.source && Boolean(left.externalEditionId)
+  && left.externalEditionId === right.externalEditionId
+  && editionIdentifiersCompatible(left, right);
 
 const editionQuality = (edition: SeriesDetectiveEdition): number => {
   let score = 0;
