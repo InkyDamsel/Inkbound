@@ -1169,7 +1169,7 @@ export async function findMissingSeriesBooks(
       const current = seen.get(targetKey);
       const conflictingTitles = Boolean(current
         && comparableDetectiveTitle(current.work.title, current.seriesName) !== titleKey);
-      const proposed = conflictingTitles ? { ...candidate, verification: 'review' as const } : candidate;
+      const proposed = conflictingTitles ? { ...candidate, verification: 'review' as const, position: null } : candidate;
       if (!current || (current.verification !== 'verified' && proposed.verification === 'verified')
         || (current.verification === proposed.verification && !current.edition.coverUrl && proposed.edition.coverUrl)) {
         seen.set(targetKey, proposed);
@@ -1178,7 +1178,7 @@ export async function findMissingSeriesBooks(
       // silently promoted to verified bulk-add eligibility.
       if (conflictingTitles) {
         const selected = seen.get(targetKey);
-        if (selected) seen.set(targetKey, { ...selected, verification: 'review' });
+        if (selected) seen.set(targetKey, { ...selected, verification: 'review', position: null });
       }
     };
 
