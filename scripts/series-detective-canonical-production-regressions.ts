@@ -67,4 +67,24 @@ assert.equal(run([sameEditionSources[0], subtitleSeed, sameEditionSources[2], su
 const unrelatedSubtitle = withIsbn(make('Kisscut: A Different Book', 'hardcover', 2), 'isbn13', siblingIsbn13);
 assert.equal(run([sameEditionSources[0], subtitleSeed, sameEditionSources[2], unrelatedSubtitle]).verified, false,
   'A generic colon prefix must not make unrelated subtitle text a verification vote');
+// Cross-edition work evidence is allowed only when two independent providers
+// supply native series identifiers. A text label or one provider is insufficient.
+const native = (source: DetectiveMergeCandidate, id: string): DetectiveMergeCandidate => ({
+  ...source, nativeSeriesId: id,
+});
+const crossEdition = [
+  native(withIsbn(seed, 'isbn13', seedIsbn13), 'ol-grant-county'),
+  native(withIsbn(seed2, 'isbn13', siblingIsbn13), 'hc-grant-county'),
+  native(withIsbn(sibling, 'isbn13', siblingIsbn13), 'ol-grant-county'),
+  native(withIsbn(sibling2, 'isbn13', seedIsbn13), 'hc-grant-county'),
+];
+assert.equal(run(crossEdition).verified, true,
+  'Independent native series memberships may corroborate a work across different editions');
+assert.equal(run(crossEdition.map(({ nativeSeriesId: _id, ...source }) => source)).verified, false,
+  'Matching title and series text without native identifiers cannot prove cross-edition identity');
+assert.equal(run([crossEdition[0], crossEdition[1], crossEdition[2]]).verified, false,
+  'One native provider for the target cannot prove cross-edition membership');
+assert.equal(run([crossEdition[0], crossEdition[1], crossEdition[2],
+  { ...crossEdition[3], seriesName: 'Will Trent' }]).verified, false,
+  'Native memberships in different series cannot corroborate');
 console.log('Series Detective canonical production adapter regressions passed.');
