@@ -54,7 +54,11 @@ assert.match(legacy, /comparableDetectiveTitle\(existing\.work\.title, existing\
 assert.match(corroboration, /const invalidPosition = matching\.some\(candidate => candidate\.position != null/);
 assert.match(corroboration, /conflictingOrder: invalidPosition \|\| positions\.size > 1/);
 assert.match(legacy, /const targetKey = isbnMatch && titleKey && authorKey \? isbnMatch\[0\] : key;/);
-assert.match(corroboration, /comparableDetectiveTitle\(candidate\.work\.title\) === comparableDetectiveTitle\(target\.work\.title\)/);
+assert.match(corroboration, /detectiveWorkTitlesCompatible\(candidate\.work\.title, target\.work\.title, seriesName\)/);
+assert.match(legacy, /conflictedPositions\.has\(candidate\.position\)[\s\S]*?verification: 'review' as const, position: null/);
+assert.match(legacy, /seen\.set\(targetKey, \{ \.\.\.selected, verification: 'review', position: null \}\)/);
+assert.match(decision, /position: verified \? canonical\.agreedPosition : null/);
+assert.match(canonicalAdapter, /export function verifyCanonicalProductionMembership\(/);
 assert.match(decision, /verifyCanonicalProductionMembership\(/);
 assert.match(decision, /&& canonical\.verified/);
 assert.match(canonicalAdapter, /return \{ verified: false, agreedPosition: null, conflicting: false,/);
