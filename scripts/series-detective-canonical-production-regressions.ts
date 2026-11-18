@@ -39,11 +39,16 @@ assert.equal(run([seed, seed2, make('Kisscut', 'open-library', null),
 const withIsbn = (candidate: DetectiveMergeCandidate, field: 'isbn10' | 'isbn13', isbn: string): DetectiveMergeCandidate => ({
   ...candidate, edition: { ...candidate.edition, [field]: isbn },
 });
+// These ISBNs are test fixtures for identity mechanics, not catalog claims.
+const seedIsbn10 = '0743273567';
+const seedIsbn13 = '9780743273565';
+const siblingIsbn10 = '0306406152';
+const siblingIsbn13 = '9780306406157';
 const sameEditionSources = [
-  withIsbn(seed, 'isbn10', '0743273567'),
-  withIsbn(seed2, 'isbn13', '9780743273565'),
-  withIsbn(sibling, 'isbn10', '0743273567'),
-  withIsbn(sibling2, 'isbn13', '9780743273565'),
+  withIsbn(seed, 'isbn10', seedIsbn10),
+  withIsbn(seed2, 'isbn13', seedIsbn13),
+  withIsbn(sibling, 'isbn10', siblingIsbn10),
+  withIsbn(sibling2, 'isbn13', siblingIsbn13),
 ];
 assert.equal(run(sameEditionSources).verified, true,
   'Equivalent checksum-valid ISBN-10/13 values should count as one edition identifier');
@@ -55,11 +60,11 @@ assert.equal(run([
   ...sameEditionSources.slice(0, 3),
   withIsbn(sibling2, 'isbn13', '9780062024039'),
 ]).verified, false, 'Different edition identifiers cannot establish exact-edition corroboration');
-const subtitleSeed = withIsbn(make('Blindsighted: A Grant County Novel', 'hardcover'), 'isbn13', '9780743273565');
-const subtitleSibling = withIsbn(make('Kisscut: A Grant County Novel', 'hardcover', 2), 'isbn13', '9780743273565');
+const subtitleSeed = withIsbn(make('Blindsighted: A Grant County Novel', 'hardcover'), 'isbn13', seedIsbn13);
+const subtitleSibling = withIsbn(make('Kisscut: A Grant County Novel', 'hardcover', 2), 'isbn13', siblingIsbn13);
 assert.equal(run([sameEditionSources[0], subtitleSeed, sameEditionSources[2], subtitleSibling]).verified, true,
   'A series-anchored publisher subtitle must not erase an independent vote');
-const unrelatedSubtitle = withIsbn(make('Kisscut: A Different Book', 'hardcover', 2), 'isbn13', '9780743273565');
+const unrelatedSubtitle = withIsbn(make('Kisscut: A Different Book', 'hardcover', 2), 'isbn13', siblingIsbn13);
 assert.equal(run([sameEditionSources[0], subtitleSeed, sameEditionSources[2], unrelatedSubtitle]).verified, false,
   'A generic colon prefix must not make unrelated subtitle text a verification vote');
 console.log('Series Detective canonical production adapter regressions passed.');
