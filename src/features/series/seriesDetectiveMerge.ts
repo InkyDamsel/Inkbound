@@ -51,7 +51,9 @@ export const detectiveCandidatesAreSameWork = (
   // collide accidentally. An edition ISBN is also exact shared evidence.
   if (left.work.key && right.work.key && left.work.key === right.work.key
     && left.work.key.startsWith(`${left.provider}:`)
-    && right.work.key.startsWith(`${right.provider}:`)) return true;
+    && right.work.key.startsWith(`${right.provider}:`)
+    && detectiveWorkTitlesCompatible(left.work.title, right.work.title)
+    && editionIdentifiersCompatible(left.edition, right.edition)) return true;
   // A recycled or incorrect ISBN must not merge unrelated works. For
   // different titles, require compatible explicit series membership on both
   // records before accepting shared edition identifiers as work identity.
@@ -67,21 +69,7 @@ export const detectiveCandidatesAreSameWork = (
   if (!leftTitle || !rightTitle) return false;
   if (detectiveWorkTitlesCompatible(left.work.title, right.work.title)) return true;
 
-  // Only collapse an omitted subtitle when the provider text explicitly uses a
-  // colon separator. Broad prefix matching is unsafe for series where sequel
-  // titles share a franchise prefix (for example "Harry Potter ..." books).
-  const rawWithoutSeriesSuffix = (value?: string) =>
-    (nonEmpty(value) ?? '').replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
-
-  const leftRaw = rawWithoutSeriesSuffix(left.work.title);
-  const rightRaw = rawWithoutSeriesSuffix(right.work.title);
-  const colonVariantMatches = (base: string, expanded: string) => {
-    const colonIndex = expanded.indexOf(':');
-    if (colonIndex < 0) return false;
-    return normalizeDetectiveText(expanded.slice(0, colonIndex)) === normalizeDetectiveText(base);
-  };
-
-  return colonVariantMatches(leftRaw, rightRaw) || colonVariantMatches(rightRaw, leftRaw);
+  return false;
 };
 
 // ISBN-10 and ISBN-13 may describe the same edition. Never compare raw
