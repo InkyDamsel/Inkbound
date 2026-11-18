@@ -1383,7 +1383,7 @@ const isbnConflictMerge = mergeDetectiveCandidates([
     editions: [isbnConflictBase.edition] } },
   { ...isbnConflictBase, provider: 'open-library',
     edition: { ...isbnConflictBase.edition, source: 'open-library',
-      externalEditionId: 'conflict-b', isbn10: '099113237X' } },
+      externalEditionId: 'conflict-b', isbn10: '1668026031' } },
 ]);
 assert.equal(isbnConflictMerge.length, 1);
 assert.equal(isbnConflictMerge[0].work.editions.length, 2);
