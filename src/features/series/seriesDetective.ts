@@ -526,10 +526,8 @@ const evidenceForVolume = (
       const id = safeDetectiveTrim(membership.seriesId);
       return Boolean(id && catalog.seriesTitlesById[id]);
     })
-    // Description, title branding, and non-explicit bibliographic labels are
-    // discovery hints, not independent structured series membership.
-    || (volume.inkboundBibliographicSeries?.explicit === true
-      && Boolean(safeDetectiveTrim(volume.inkboundBibliographicSeries?.name))),
+    // Scraped bibliographic labels (even explicit-looking ones) are hints,
+    // not an authenticated series-ID mapping. Never promote them to proof.
   );
 
   return scoreDetectiveEvidence({
