@@ -24,7 +24,9 @@ export function decideDetectiveMembership(
     && !canonical.conflicting;
   return {
     verification: verified ? 'verified' : 'review',
-    position: membership.conflictingOrder ? null : membership.agreedPosition,
+    // Review-only candidates must never export a verified-looking ordinal.
+    // Preserve ordering only after every independent evidence gate succeeds.
+    position: verified ? canonical.agreedPosition : null,
     conflictingOrder: membership.conflictingOrder || canonical.conflicting,
   };
 }
