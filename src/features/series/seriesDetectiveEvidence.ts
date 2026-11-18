@@ -31,7 +31,7 @@ export const compactDetectiveIsbn = (value?: string): string =>
  * contribute independent corroboration or suppress conflict detection. */
 export const canonicalDetectiveIsbn13 = (value?: string): string | null => {
   const raw = compactDetectiveIsbn(value);
-  if (/^\\d{13}$/.test(raw)) {
+  if (/^\d{13}$/.test(raw)) {
     const sum = [...raw.slice(0, 12)].reduce((total, digit, index) =>
       total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
     return (10 - (sum % 10)) % 10 === Number(raw[12]) ? raw : null;
