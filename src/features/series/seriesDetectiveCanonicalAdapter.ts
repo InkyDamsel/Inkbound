@@ -16,6 +16,6 @@
   // Membership and ordering are distinct evidence. The final decision engine
   // must keep disputed ordering review-only for safe bulk operations.
   return { verified: anchored && providers.size >= 2
-    && independentlyCorroborated(matching) && !conflicting,
+    && independentlyCorroborated(matching) && corroboratedOwnedSeed && !conflicting,
     agreedPosition, conflicting, providerCount: providers.size };
 }
