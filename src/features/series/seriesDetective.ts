@@ -985,7 +985,13 @@ export async function findMissingSeriesBooks(
       const failed = results.filter((result) => result.providerStatus !== 'ok');
       providerReports.push({
         provider,
-        status: failed.length ? (results.every((result) => result.providerStatus === 'unavailable' || result.providerStatus === 'rate-limited' || result.providerStatus === 'timed-out') ? 'unavailable' : 'partial') : 'ok',
+        // Preserve the actual outage category when every request failed alike.
+        // Mixed failures or any successful/partial request mean partial coverage.
+        status: failed.length === 0 ? 'ok'
+          : results.every((result) => result.providerStatus === 'rate-limited') ? 'rate-limited'
+          : results.every((result) => result.providerStatus === 'timed-out') ? 'timed-out'
+          : results.every((result) => result.providerStatus === 'unavailable') ? 'unavailable'
+          : 'partial',
         errorCode: failed.map((result) => result.providerErrorCode).find(Boolean),
         retrievedAt,
       });
