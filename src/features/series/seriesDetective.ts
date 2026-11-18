@@ -133,6 +133,11 @@ const hardcoverContextCandidates = (
         provider: 'hardcover' as const,
         seriesProvider: metadata ? 'hardcover' as const : undefined,
         seriesStructured: structuredSeriesMatch || Boolean(!wantedSeriesName && (seriesAware.seriesName || edition.seriesMemberships?.length)),
+        nativeSeriesId: edition.seriesMemberships?.find(membership =>
+          Boolean(membership.externalSeriesId?.trim())
+          && (!wantedSeriesName || detectiveSeriesNamesCompatible(membership.name, wantedSeriesName))
+          && (!metadata?.name || detectiveSeriesNamesCompatible(membership.name, metadata.name))
+        )?.externalSeriesId,
       }];
     });
   });
