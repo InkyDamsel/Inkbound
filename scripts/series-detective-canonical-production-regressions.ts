@@ -55,4 +55,11 @@ assert.equal(run([
   ...sameEditionSources.slice(0, 3),
   withIsbn(sibling2, 'isbn13', '9780062024039'),
 ]).verified, false, 'Different edition identifiers cannot establish exact-edition corroboration');
+const subtitleSeed = withIsbn(make('Blindsighted: A Grant County Novel', 'hardcover'), 'isbn13', '9780743273565');
+const subtitleSibling = withIsbn(make('Kisscut: A Grant County Novel', 'hardcover', 2), 'isbn13', '9780743273565');
+assert.equal(run([sameEditionSources[0], subtitleSeed, sameEditionSources[2], subtitleSibling]).verified, true,
+  'A series-anchored publisher subtitle must not erase an independent vote');
+const unrelatedSubtitle = withIsbn(make('Kisscut: A Different Book', 'hardcover', 2), 'isbn13', '9780743273565');
+assert.equal(run([sameEditionSources[0], subtitleSeed, sameEditionSources[2], unrelatedSubtitle]).verified, false,
+  'A generic colon prefix must not make unrelated subtitle text a verification vote');
 console.log('Series Detective canonical production adapter regressions passed.');
