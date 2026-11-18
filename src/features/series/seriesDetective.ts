@@ -1309,7 +1309,7 @@ export async function findMissingSeriesBooks(
       .map(([position]) => position));
     return [...seen.values()].map((candidate) =>
       candidate.position !== null && conflictedPositions.has(candidate.position)
-        ? { ...candidate, verification: 'review' as const }
+        ? { ...candidate, verification: 'review' as const, position: null }
         : candidate).sort((a, b) => {
       if (a.position !== null && b.position !== null) return a.position - b.position;
       if (a.position !== null) return -1;
