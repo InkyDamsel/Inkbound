@@ -26,6 +26,26 @@ export const normalizeDetectiveText = (value?: string): string =>
 export const compactDetectiveIsbn = (value?: string): string =>
   typeof value === 'string' ? value.replace(/[^0-9X]/gi, '').toUpperCase() : '';
 
+/** Validate ISBN checksums and convert both formats to a canonical ISBN-13.
+ * ISBNs identify editions, not works. Invalid identifiers must never
+ * contribute independent corroboration or suppress conflict detection. */
+export const canonicalDetectiveIsbn13 = (value?: string): string | null => {
+  const raw = compactDetectiveIsbn(value);
+  if (/^\\d{13}$/.test(raw)) {
+    const sum = [...raw.slice(0, 12)].reduce((total, digit, index) =>
+      total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
+    return (10 - (sum % 10)) % 10 === Number(raw[12]) ? raw : null;
+  }
+  if (!/^\\d{9}[\\dX]$/.test(raw)) return null;
+  const sum10 = [...raw].reduce((total, digit, index) =>
+    total + (digit === 'X' ? 10 : Number(digit)) * (10 - index), 0);
+  if (sum10 % 11 !== 0) return null;
+  const stem = '978' + raw.slice(0, 9);
+  const sum13 = [...stem].reduce((total, digit, index) =>
+    total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
+  return stem + String((10 - (sum13 % 10)) % 10);
+};
+
 export const comparableDetectiveTitle = (value?: string, seriesName?: string): string => {
   let title = typeof value === 'string' ? value.trim() : '';
   if (!title) return '';
