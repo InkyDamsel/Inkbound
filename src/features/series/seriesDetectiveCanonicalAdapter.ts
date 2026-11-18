@@ -1,6 +1,6 @@
 import type { DetectiveMergeCandidate } from './seriesDetectiveMerge';
 import { detectiveCandidatesAreSameWork } from './seriesDetectiveMerge';
-import { detectiveWorkTitlesCompatible, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible, compactDetectiveIsbn } from './seriesDetectiveEvidence';
+import { detectiveWorkTitlesCompatible, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible, canonicalDetectiveIsbn13 } from './seriesDetectiveEvidence';
 
 type Provider = DetectiveMergeCandidate['provider'];
 
@@ -28,9 +28,8 @@ export function verifyCanonicalProductionMembership(
   // provider-independent identity proof.
   const isbnsOf = (candidate: DetectiveMergeCandidate): string[] =>
     [...new Set([candidate.edition.isbn13, candidate.edition.isbn10]
-      .map(compactDetectiveIsbn)
-      .filter((isbn) => (isbn.length === 13 && /^\d{13}$/.test(isbn))
-        || (isbn.length === 10 && /^\d{9}[\dX]$/.test(isbn))))];
+      .map(canonicalDetectiveIsbn13)
+      .filter((isbn): isbn is string => Boolean(isbn)))];
   const matching = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
     && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
