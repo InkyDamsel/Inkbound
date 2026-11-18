@@ -1093,7 +1093,9 @@ export async function findMissingSeriesBooks(
         position: candidate.position,
         provider: 'open-library',
         seriesProvider: candidate.seriesName ? 'open-library' : undefined,
-        seriesStructured: Boolean(candidate.seriesName),
+        // Context records can carry an inferred series label; only the
+        // explicit Open Library series-field candidates above are structured.
+        seriesStructured: false,
       });
     });
 
