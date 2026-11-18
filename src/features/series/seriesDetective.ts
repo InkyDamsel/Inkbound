@@ -1247,7 +1247,9 @@ export async function findMissingSeriesBooks(
       const ownedAuthors = seriesBooks.map((book) => book.work.author).filter(Boolean);
       const matchingAuthor = candidate.work.authors.some((name) =>
         (Boolean(canonicalDetectiveAuthor(author)) && detectiveAuthorsCompatible(author, name))
-        || ownedAuthors.some((ownedAuthor) => detectiveAuthorsCompatible(ownedAuthor, name)));
+        || ownedAuthors.some((ownedAuthor) =>
+          Boolean(canonicalDetectiveAuthor(ownedAuthor))
+          && detectiveAuthorsCompatible(ownedAuthor, name)));
       // Cross-author anthologies are legitimate, but a shared title phrase
       // is not enough to admit a different author's unrelated work.
       const compatibleSeries = detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName);
