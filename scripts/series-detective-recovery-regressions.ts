@@ -30,6 +30,7 @@ import { mergeDetectiveCandidates } from '../src/features/series/seriesDetective
 import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
+  canonicalDetectiveIsbn13,
   comparableDetectiveTitle,
   detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
