@@ -44,8 +44,9 @@ export function verifyCanonicalProductionMembership(
       && detectiveWorkTitlesCompatible(source.work.title, book.title, seriesName)
       && source.work.authors.some(author => Boolean(author?.trim())
         && detectiveAuthorsCompatible(author, book.author))));
-  // A matching ISBN corroborates edition identity across catalogs. It does
-  // not by itself prove membership; only structured series claims count.
+  // ISBN corroboration proves an edition. Two independently identified native
+  // catalog memberships can corroborate a work even across different editions.
+  // A textual series label alone must never count as that native evidence.
   const independentWorkEvidence = (group: readonly DetectiveMergeCandidate[]): boolean => {
     const byIsbn = new Map<string, Set<Provider>>();
     for (const source of group) {
@@ -57,12 +58,24 @@ export function verifyCanonicalProductionMembership(
     }
     return [...byIsbn.values()].some(providers => providers.size >= 2);
   };
+  const independentNativeWorkEvidence = (group: readonly DetectiveMergeCandidate[]): boolean => {
+    const providers = new Set<Provider>();
+    for (const source of group) {
+      if (source.seriesStructured !== true || !source.nativeSeriesId?.trim()) continue;
+      // Reject recycled or ambiguous identifiers within a provider. Native
+      // series IDs are provider-scoped; never compare their literal strings.
+      providers.add(source.seriesProvider ?? source.provider);
+    }
+    return providers.size >= 2;
+  };
+  const independentlyCorroborated = (group: readonly DetectiveMergeCandidate[]): boolean =>
+    independentWorkEvidence(group) || independentNativeWorkEvidence(group);
   const corroboratedOwnedSeed = owned.some(book => Boolean(book.title?.trim())
-    && Boolean(book.author?.trim()) && independentWorkEvidence(seedSources.filter(source =>
+    && Boolean(book.author?.trim()) && independentlyCorroborated(seedSources.filter(source =>
       detectiveWorkTitlesCompatible(source.work.title, book.title, seriesName)
       && source.work.authors.some(author => Boolean(author?.trim())
         && detectiveAuthorsCompatible(author, book.author)))));
-  if (!independentWorkEvidence(matching) || !corroboratedOwnedSeed) {
+  if (!independentlyCorroborated(matching) || !corroboratedOwnedSeed) {
     return { verified: false, agreedPosition: null, conflicting: false,
       providerCount: new Set(matching.map(source => source.seriesProvider ?? source.provider)).size };
   }
