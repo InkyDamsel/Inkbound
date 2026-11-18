@@ -34,6 +34,8 @@ assert.match(decision, /&& !membership\.conflictingOrder/);
 assert.match(decision, /&& canonical\.verified/);
 assert.match(decision, /&& !canonical\.conflicting/);
 assert.match(decision, /verification: verified \? 'verified' : 'review'/);
+assert.match(legacy, /DERIVATIVE_ADAPTATION_PATTERN\.test\(value\)/);
+assert.match(legacy, /CATALOG_PLACEHOLDER_PATTERN\.test\(candidate\.work\.title\)/);
 assert.match(legacy, /decideDetectiveMembership\(/);
 assert.match(decision, /hasCorroboratedOwnedSeed\(/);
 // Assert the required guards directly; avoid fragile regex source matching.
