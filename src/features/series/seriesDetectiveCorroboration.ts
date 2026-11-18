@@ -1,6 +1,6 @@
 import type { DetectiveMergeCandidate } from './seriesDetectiveMerge';
 import { detectiveCandidatesAreSameWork } from './seriesDetectiveMerge';
-import { comparableDetectiveTitle, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible } from './seriesDetectiveEvidence';
+import { comparableDetectiveTitle, detectiveWorkTitlesCompatible, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible } from './seriesDetectiveEvidence';
 
 export interface DetectiveOwnedSeed {
   readonly title: string;
@@ -28,7 +28,7 @@ export function hasCorroboratedOwnedSeed(
     && Boolean(comparableDetectiveTitle(book.title))
     && new Set(candidates.filter(candidate =>
       structuredForSeries(candidate, seriesName)
-      && comparableDetectiveTitle(candidate.work.title) === comparableDetectiveTitle(book.title)
+      && detectiveWorkTitlesCompatible(candidate.work.title, book.title)
       && candidate.work.authors.some(author => Boolean(author?.trim())
         && detectiveAuthorsCompatible(book.author, author)))
       .map(providerOf)).size >= 2);
@@ -51,7 +51,7 @@ export function corroborateDetectiveMembership(
     && detectiveCandidatesAreSameWork(candidate, target)
     // Never allow a record whose work identity is ambiguous to provide a
     // second independent vote merely because a reused ISBN matches.
-    && comparableDetectiveTitle(candidate.work.title) === comparableDetectiveTitle(target.work.title));
+    && detectiveWorkTitlesCompatible(candidate.work.title, target.work.title));
   const providers = new Set(matching.map(providerOf));
   const invalidPosition = matching.some(candidate => candidate.position != null
     && (!Number.isSafeInteger(candidate.position) || candidate.position <= 0));
