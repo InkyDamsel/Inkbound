@@ -91,7 +91,7 @@ export const AdminSeriesEvidencePanel: React.FC = () => {
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead><tr className="border-b border-[var(--ink-border-subtle)] text-[var(--ink-muted)]"><th className="py-2 pr-3">Provider</th><th className="py-2 pr-3">Status</th><th className="py-2 pr-3">Requests</th><th className="py-2 pr-3">Claims</th><th className="py-2">Duration</th></tr></thead>
-                <tbody><tr><td className="py-3 pr-3">Wikidata (P179)</td><td className="py-3 pr-3">{status ? statusLabel[status] : 'Not run'}</td><td className="py-3 pr-3">{diagnostics?.requestsMade ?? (result ? 1 : '—')}</td><td className="py-3 pr-3">{result?.claims.length ?? '—'}</td><td className="py-3">{result?.durationMs != null ? result.durationMs + 'ms' : '—'}</td></tr></tbody>
+                <tbody><tr><td className="py-3 pr-3">Wikidata (P179)</td><td className="py-3 pr-3">{status ? statusLabel[status] : 'Not run'}</td><td className="py-3 pr-3">{diagnostics?.requestsMade ?? (result ? 1 : '—')}</td><td className="py-3 pr-3">{result?.claims.length ?? '—'}</td><td className="py-3">{diagnostics?.durationMs != null ? diagnostics.durationMs + 'ms' : '—'}</td></tr></tbody>
               </table>
             </div>
           </div>
