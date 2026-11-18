@@ -36,6 +36,11 @@ assert.match(decision, /&& !canonical\.conflicting/);
 assert.match(decision, /verification: verified \? 'verified' : 'review'/);
 assert.match(legacy, /DERIVATIVE_ADAPTATION_PATTERN\.test\(value\)/);
 assert.match(legacy, /CATALOG_PLACEHOLDER_PATTERN\.test\(candidate\.work\.title\)/);
+// Work identity must govern ownership; ISBN-only matches are unsafe.
+assert.match(legacy, /if \(!sameAuthor \|\| !sameTitle\) return false;/);
+assert.match(legacy, /detectiveWorkTitlesCompatible\(book\.work\.title, title, seriesName\)/);
+assert.match(legacy, /seriesStructured: false,/);
+assert.ok((legacy.match(/Number\.isSafeInteger\(displayPosition\) && displayPosition > 0/g) ?? []).length >= 2);
 assert.match(legacy, /decideDetectiveMembership\(/);
 assert.match(decision, /hasCorroboratedOwnedSeed\(/);
 // Assert the required guards directly; avoid fragile regex source matching.
