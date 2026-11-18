@@ -364,29 +364,25 @@ export const findLibraryBookForCandidate = (
   candidate: SeriesDetectiveCandidate,
   libraryBooks: UserBookRecord[],
 ): UserBookRecord | null => {
-  const candidateTitle = comparableDetectiveTitle(candidate.work.title, candidate.seriesName);
   const candidateIsbns = [...new Set([candidate.edition.isbn13, candidate.edition.isbn10]
     .map(canonicalDetectiveIsbn13).filter((isbn): isbn is string => Boolean(isbn)))];
 
   return libraryBooks.find((book) => {
-    // An ISBN identifies an edition, not a literary work. Catalog errors
-    // occasionally recycle identifiers across different titles. Never mark a
-    // different author's or different titled book as owned from ISBN alone.
     const sameAuthor = candidate.work.authors.some((author) =>
       Boolean(canonicalDetectiveAuthor(author))
       && detectiveAuthorsCompatible(author, book.work.author));
-    const sameTitle = Boolean(candidateTitle
-      && detectiveWorkTitlesCompatible(candidate.work.title, book.work.title, candidate.seriesName));
+    // An ISBN identifies an edition, not a literary work. Require compatible
+    // title and author before considering ANY ownership identifier.
+    const sameTitle = detectiveWorkTitlesCompatible(
+      candidate.work.title, book.work.title, candidate.seriesName);
     if (!sameAuthor || !sameTitle) return false;
-    // External IDs are supplementary evidence, not an override for conflicting
-    // title/author identities.
     if (candidate.work.key && safeDetectiveTrim(book.work.externalWorkId) === candidate.work.key) return true;
-    if (sameTitle) return true;
-    if (!candidateIsbns.length) return false;
-    return book.editions.some((edition) =>
+    const ownedIsbns = new Set(book.editions.flatMap(edition =>
       [edition.isbn13, edition.isbn10, edition.isbn]
-        .map(canonicalDetectiveIsbn13)
-        .some((isbn) => Boolean(isbn && candidateIsbns.includes(isbn))));
+        .map(canonicalDetectiveIsbn13).filter((isbn): isbn is string => Boolean(isbn))));
+    // Contradictory ISBNs should not override an otherwise exact title/author
+    // match; a reader may own a different edition of the same work.
+    return candidateIsbns.some(isbn => ownedIsbns.has(isbn)) || sameTitle;
   }) ?? null;
 };
 
