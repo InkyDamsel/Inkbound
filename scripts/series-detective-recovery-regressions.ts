@@ -1378,6 +1378,11 @@ const isbnConflictBase = {
   edition: { ...identityFixture.edition, source: 'google-books' as const,
     externalEditionId: 'conflict-a', isbn13: '9780991132379', isbn10: '0991132378' },
 };
+// Validate the fixture itself: both identifiers are checksum-valid but refer to
+// different editions, even though the incoming row repeats the first ISBN-13.
+assert.equal(canonicalDetectiveIsbn13(isbnConflictBase.edition.isbn10), isbnConflictBase.edition.isbn13);
+assert.equal(canonicalDetectiveIsbn13('1668026031'), '9781668026038');
+assert.notEqual(canonicalDetectiveIsbn13('1668026031'), isbnConflictBase.edition.isbn13);
 const isbnConflictMerge = mergeDetectiveCandidates([
   { ...isbnConflictBase, work: { ...isbnConflictBase.work,
     editions: [isbnConflictBase.edition] } },
