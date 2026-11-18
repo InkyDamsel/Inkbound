@@ -1221,7 +1221,7 @@ console.log('Inkbound Series Detective recovery regressions passed.');
 // from disputed reading order. Never promote a single-provider claim.
 import { verifyCanonicalProductionMembership } from '../src/features/series/seriesDetectiveCanonicalAdapter';
 import { decideDetectiveMembership } from '../src/features/series/seriesDetectiveDecision';
-import { corroborateDetectiveMembership } from '../src/features/series/seriesDetectiveCorroboration';
+import { corroborateDetectiveMembership, hasCorroboratedOwnedSeed } from '../src/features/series/seriesDetectiveCorroboration';
 import type { DetectiveMergeCandidate } from '../src/features/series/seriesDetectiveMerge';
 const nativeSeriesFixture = (
   provider: DetectiveMergeCandidate['provider'],
