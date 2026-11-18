@@ -10,7 +10,6 @@ import {
   canonicalDetectiveSeries,
   detectiveAuthorsCompatible,
   compactDetectiveIsbn,
-  canonicalDetectiveIsbn13,
   detectiveWorkTitlesCompatible,
   comparableDetectiveTitle,
   detectiveSeriesNamesCompatible,
@@ -364,8 +363,6 @@ export const findLibraryBookForCandidate = (
   candidate: SeriesDetectiveCandidate,
   libraryBooks: UserBookRecord[],
 ): UserBookRecord | null => {
-  const candidateIsbns = [...new Set([candidate.edition.isbn13, candidate.edition.isbn10]
-    .map(canonicalDetectiveIsbn13).filter((isbn): isbn is string => Boolean(isbn)))];
 
   return libraryBooks.find((book) => {
     const sameAuthor = candidate.work.authors.some((author) =>
@@ -376,13 +373,9 @@ export const findLibraryBookForCandidate = (
     const sameTitle = detectiveWorkTitlesCompatible(
       candidate.work.title, book.work.title, candidate.seriesName);
     if (!sameAuthor || !sameTitle) return false;
-    if (candidate.work.key && safeDetectiveTrim(book.work.externalWorkId) === candidate.work.key) return true;
-    const ownedIsbns = new Set(book.editions.flatMap(edition =>
-      [edition.isbn13, edition.isbn10, edition.isbn]
-        .map(canonicalDetectiveIsbn13).filter((isbn): isbn is string => Boolean(isbn))));
-    // Contradictory ISBNs should not override an otherwise exact title/author
-    // match; a reader may own a different edition of the same work.
-    return candidateIsbns.some(isbn => ownedIsbns.has(isbn)) || sameTitle;
+    // Cross-edition ownership is a work-level decision. Different valid ISBNs
+    // can describe the same book; a recycled ISBN cannot describe a new work.
+    return true;
   }) ?? null;
 };
 
