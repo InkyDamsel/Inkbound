@@ -87,4 +87,13 @@ assert.equal(run([crossEdition[0], crossEdition[1], crossEdition[2]]).verified, 
 assert.equal(run([crossEdition[0], crossEdition[1], crossEdition[2],
   { ...crossEdition[3], seriesName: 'Will Trent' }]).verified, false,
   'Native memberships in different series cannot corroborate');
+assert.equal(run([...crossEdition, {
+  ...crossEdition[2], nativeSeriesId: 'ol-different-series',
+}]).verified, false, 'A provider contradicting its own native series ID must not grant verification');
+assert.equal(run([...crossEdition.slice(0, 3), {
+  ...crossEdition[3], position: 0,
+}]).conflicting, true, 'Invalid positions must remain visible as conflicts');
+assert.equal(run([...crossEdition.slice(0, 3), {
+  ...crossEdition[3], position: 3,
+}]).verified, false, 'Disputed native series order must block verification');
 console.log('Series Detective canonical production adapter regressions passed.');
