@@ -882,12 +882,13 @@ const mergeCandidateFromGoogleVolume = (
     position: metadata?.position ?? null,
     provider: 'google-books',
     seriesProvider: metadata ? 'google-books' : undefined,
-    seriesStructured: metadata
-      ? Boolean(
-          hasStructuredSeries
-          || (safeDetectiveTrim(volume.inkboundBibliographicSeries?.name)
-            && volume.inkboundBibliographicSeries.explicit === true)
-        )
+    // Scraped bibliographic labels, including explicit-looking ones, are
+    // discovery hints. Only a resolved native membership may be structured.
+    seriesStructured: metadata ? hasStructuredSeries : undefined,
+    nativeSeriesId: hasStructuredSeries
+      ? (info?.seriesInfo?.volumeSeries ?? [])
+        .map(membership => safeDetectiveTrim(membership.seriesId))
+        .find(id => Boolean(id && catalog.seriesTitlesById[id]))
       : undefined,
   };
 };
@@ -1054,6 +1055,9 @@ export async function findMissingSeriesBooks(
           candidate.position = structuredSeriesPosition(volume, confirmedGoogleSeriesIds);
           candidate.seriesProvider = 'google-books';
           candidate.seriesStructured = true;
+          candidate.nativeSeriesId = (volume.volumeInfo?.seriesInfo?.volumeSeries ?? [])
+            .map(membership => safeDetectiveTrim(membership.seriesId))
+            .find(id => Boolean(id && confirmedGoogleSeriesIds.has(id)));
         }
 
         providerCandidates.push(candidate);
