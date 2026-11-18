@@ -463,9 +463,9 @@ const structuredSeriesPosition = (
   const positionCandidate = membership.orderNumber
     ?? membership.issue?.find((issue) => typeof issue.issueOrderNumber === 'number')?.issueOrderNumber;
   const displayPosition = Number(info?.bookDisplayNumber?.match(/\d+(?:\.\d+)?/)?.[0]);
-  return typeof positionCandidate === 'number' && Number.isFinite(positionCandidate)
+  return typeof positionCandidate === 'number' && Number.isSafeInteger(positionCandidate) && positionCandidate > 0
     ? positionCandidate
-    : Number.isFinite(displayPosition) ? displayPosition : null;
+    : Number.isSafeInteger(displayPosition) && displayPosition > 0 ? displayPosition : null;
 };
 
 const volumeUsesConfirmedSeriesId = (
