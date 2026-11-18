@@ -526,9 +526,8 @@ const evidenceForVolume = (
       const id = safeDetectiveTrim(membership.seriesId);
       return Boolean(id && catalog.seriesTitlesById[id]);
     })
-    || safeDetectiveTrim(volume.inkboundBibliographicSeries?.name)
-    // Description and title branding are hints, not structured membership.
-    // They must never promote a work to verified series evidence.
+    // Description, title branding, and non-explicit bibliographic labels are
+    // discovery hints, not independent structured series membership.
     || (volume.inkboundBibliographicSeries?.explicit === true
       && Boolean(safeDetectiveTrim(volume.inkboundBibliographicSeries?.name))),
   );
