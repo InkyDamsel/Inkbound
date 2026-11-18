@@ -174,6 +174,13 @@ const prhContextCandidates = (
 
 const DERIVATIVE_SERIES_PRODUCT_PATTERN =
   /\b(?:box(?:ed)?\s+set|collection\s+set|series\s+sampler|sampler|coloring\s+book|colouring\s+book|omnibus|anthology|complete\s+.*\s+set|\d+[- ]book\s+(?:box\s+)?set|\d+[- ]book\s+collection)\b/i;
+// Adaptations and catalog placeholders are not distinct installments of the
+// prose series. Keep the check narrowly tied to explicit product labeling:
+// "manga" and "graphic novel" by themselves may describe legitimate series.
+const DERIVATIVE_ADAPTATION_PATTERN =
+  /(?:\(\s*the\s+manga\s*\)|\b(?:manga|graphic\s+novel)\s+adaptation\b|\badapted\s+(?:as|into)\s+(?:a\s+)?(?:manga|graphic\s+novel)\b)/i;
+const CATALOG_PLACEHOLDER_PATTERN =
+  /^(?:[\p{L}.'-]+\s+){1,5}book\s*#?\s*\d+\s*\([^)]{2,}\)$/iu;
 
 const isDerivativeSeriesProduct = (candidate: DetectiveMergeCandidate): boolean => {
   const values = [
@@ -183,7 +190,9 @@ const isDerivativeSeriesProduct = (candidate: DetectiveMergeCandidate): boolean 
     candidate.edition.subtitle,
     candidate.edition.editionName,
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-  return values.some((value) => DERIVATIVE_SERIES_PRODUCT_PATTERN.test(value));
+  return values.some((value) => DERIVATIVE_SERIES_PRODUCT_PATTERN.test(value)
+    || DERIVATIVE_ADAPTATION_PATTERN.test(value))
+    || CATALOG_PLACEHOLDER_PATTERN.test(candidate.work.title);
 };
 
 // A catalog entry naming the series itself is not evidence of a distinct book.
