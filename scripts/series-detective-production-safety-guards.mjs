@@ -36,11 +36,11 @@ assert.match(decision, /&& !canonical\.conflicting/);
 assert.match(decision, /verification: verified \? 'verified' : 'review'/);
 assert.match(legacy, /decideDetectiveMembership\(/);
 assert.match(decision, /hasCorroboratedOwnedSeed\(/);
-// Preserve the actual safety contract without requiring one exact formatting shape.
-assert.match(corroboration, /return owned\\.some\\(book => Boolean\\(book\\.author\\?\\.trim\\(\\)\\)/);
-assert.match(corroboration, /Boolean\\(comparableDetectiveTitle\\(book\\.title\\)\\)/);
-assert.match(corroboration, /new Set\\(candidates\\.filter\\(candidate =>/);
-assert.match(corroboration, /candidate\\.work\\.authors\\.some\\(author => Boolean\\(author\\?\\.trim\\(\\)\\)/);
+// Assert the required guards directly; avoid fragile regex source matching.
+assert.ok(corroboration.includes('return owned.some(book => Boolean(book.author?.trim())'));
+assert.ok(corroboration.includes('Boolean(comparableDetectiveTitle(book.title))'));
+assert.ok(corroboration.includes('new Set(candidates.filter(candidate =>'));
+assert.ok(corroboration.includes('candidate.work.authors.some(author => Boolean(author?.trim())'));
 assert.doesNotMatch(legacy, /result\.discoveryDiagnostics = discoveryDiagnostics;/);
 assert.doesNotMatch(bookLookup, /result\?\.providerReports/);
 assert.match(legacy, /discoveryDiagnostics = \{ \.\.\.diagnostics, uniqueWorks: seen\.size \};/);
