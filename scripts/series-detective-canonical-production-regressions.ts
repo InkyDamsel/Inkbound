@@ -35,4 +35,24 @@ assert.equal(run([seed, seed2, sibling, make('Kisscut', 'hardcover', 2, 'Will Tr
 assert.equal(run([seed, seed2, make('Kisscut', 'open-library', null),
   make('Kisscut', 'hardcover', null)]).agreedPosition, null,
   'Unnumbered membership must not invent a reading order');
+// Real ISBN-10/ISBN-13 representations of the same edition must corroborate.
+const withIsbn = (candidate: DetectiveMergeCandidate, field: 'isbn10' | 'isbn13', isbn: string): DetectiveMergeCandidate => ({
+  ...candidate, edition: { ...candidate.edition, [field]: isbn },
+});
+const sameEditionSources = [
+  withIsbn(seed, 'isbn10', '0743273567'),
+  withIsbn(seed2, 'isbn13', '9780743273565'),
+  withIsbn(sibling, 'isbn10', '0743273567'),
+  withIsbn(sibling2, 'isbn13', '9780743273565'),
+];
+assert.equal(run(sameEditionSources).verified, true,
+  'Equivalent checksum-valid ISBN-10/13 values should count as one edition identifier');
+assert.equal(run([
+  withIsbn(seed, 'isbn10', '0743273560'),
+  ...sameEditionSources.slice(1),
+]).verified, false, 'An invalid ISBN checksum cannot corroborate the owned seed');
+assert.equal(run([
+  ...sameEditionSources.slice(0, 3),
+  withIsbn(sibling2, 'isbn13', '9780062024039'),
+]).verified, false, 'Different edition identifiers cannot establish exact-edition corroboration');
 console.log('Series Detective canonical production adapter regressions passed.');
