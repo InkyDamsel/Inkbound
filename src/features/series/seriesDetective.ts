@@ -10,6 +10,8 @@ import {
   canonicalDetectiveSeries,
   detectiveAuthorsCompatible,
   compactDetectiveIsbn,
+  canonicalDetectiveIsbn13,
+  detectiveWorkTitlesCompatible,
   comparableDetectiveTitle,
   detectiveSeriesNamesCompatible,
   inferDetectiveSeriesFromDescription,
@@ -363,29 +365,28 @@ export const findLibraryBookForCandidate = (
   libraryBooks: UserBookRecord[],
 ): UserBookRecord | null => {
   const candidateTitle = comparableDetectiveTitle(candidate.work.title, candidate.seriesName);
-  const candidateIsbns = [candidate.edition.isbn13, candidate.edition.isbn10]
-    .map(compactDetectiveIsbn)
-    .filter(Boolean);
+  const candidateIsbns = [...new Set([candidate.edition.isbn13, candidate.edition.isbn10]
+    .map(canonicalDetectiveIsbn13).filter((isbn): isbn is string => Boolean(isbn)))];
 
   return libraryBooks.find((book) => {
-    // A shared title is not a work identity: different authors can publish
-    // books with the same title. Preserve exact external identifiers, and
-    // require compatible authors for title-based ownership reconciliation.
+    // An ISBN identifies an edition, not a literary work. Catalog errors
+    // occasionally recycle identifiers across different titles. Never mark a
+    // different author's or different titled book as owned from ISBN alone.
+    const sameAuthor = candidate.work.authors.some((author) =>
+      Boolean(canonicalDetectiveAuthor(author))
+      && detectiveAuthorsCompatible(author, book.work.author));
+    const sameTitle = Boolean(candidateTitle
+      && detectiveWorkTitlesCompatible(candidate.work.title, book.work.title, candidate.seriesName));
+    if (!sameAuthor || !sameTitle) return false;
+    // External IDs are supplementary evidence, not an override for conflicting
+    // title/author identities.
     if (candidate.work.key && safeDetectiveTrim(book.work.externalWorkId) === candidate.work.key) return true;
-    if (
-      candidateTitle
-      && comparableDetectiveTitle(book.work.title, candidate.seriesName) === candidateTitle
-      && candidate.work.authors.some((author) =>
-        Boolean(canonicalDetectiveAuthor(author))
-        && detectiveAuthorsCompatible(author, book.work.author))
-    ) return true;
+    if (sameTitle) return true;
     if (!candidateIsbns.length) return false;
     return book.editions.some((edition) =>
       [edition.isbn13, edition.isbn10, edition.isbn]
-        .map(compactDetectiveIsbn)
-        .filter(Boolean)
-        .some((isbn) => candidateIsbns.includes(isbn)),
-    );
+        .map(canonicalDetectiveIsbn13)
+        .some((isbn) => Boolean(isbn && candidateIsbns.includes(isbn))));
   }) ?? null;
 };
 
