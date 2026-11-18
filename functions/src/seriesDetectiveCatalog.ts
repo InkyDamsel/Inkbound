@@ -945,34 +945,10 @@ async function detectiveGoogleCatalog(
       : volume;
   }));
 
-  const seriesIds = [...new Set(items.flatMap((volume) =>
-    volume.volumeInfo?.seriesInfo?.volumeSeries
-      ?.map((membership) => membership.seriesId?.trim())
-      .filter((value): value is string => Boolean(value)) ?? [],
-  ))];
+  // books.series.get requires OAuth and cannot be called with this server's
+  // API key. Do not silently attempt an unsupported enrichment endpoint.
+  // Unresolved series IDs remain unverified; provider labels are hints only.
   const seriesMetadataById: Record<string, string> = {};
-
-  if (seriesIds.length > 0) {
-    try {
-      const seriesParams = new URLSearchParams({ key: apiKey });
-      seriesIds.forEach((id) => seriesParams.append('series_id', id));
-      const seriesResponse = await fetch(
-        `https://www.googleapis.com/books/v1/series/get?${seriesParams.toString()}`,
-      );
-      if (seriesResponse.ok) {
-        const seriesPayload = await seriesResponse.json() as {
-          series?: Array<{ seriesId?: string; title?: string }>;
-        };
-        (seriesPayload.series ?? []).forEach((series) => {
-          const id = series.seriesId?.trim();
-          const title = series.title?.trim();
-          if (id && title) seriesMetadataById[id] = title;
-        });
-      }
-    } catch (error) {
-      console.warn('Series Detective Google series-title expansion unavailable.', error);
-    }
-  }
 
   return {
     totalItems: typeof payload.totalItems === 'number' ? payload.totalItems : items.length,
