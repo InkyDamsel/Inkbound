@@ -1,6 +1,6 @@
 import type { DetectiveMergeCandidate } from './seriesDetectiveMerge';
 import { detectiveCandidatesAreSameWork } from './seriesDetectiveMerge';
-import { comparableDetectiveTitle, canonicalDetectiveAuthor, detectiveSeriesNamesCompatible, compactDetectiveIsbn } from './seriesDetectiveEvidence';
+import { detectiveWorkTitlesCompatible, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible, compactDetectiveIsbn } from './seriesDetectiveEvidence';
 
 type Provider = DetectiveMergeCandidate['provider'];
 
@@ -31,25 +31,20 @@ export function verifyCanonicalProductionMembership(
       .map(compactDetectiveIsbn)
       .filter((isbn) => (isbn.length === 13 && /^\d{13}$/.test(isbn))
         || (isbn.length === 10 && /^\d{9}[\dX]$/.test(isbn))))];
-  // Catalogs sometimes put an empty placeholder before the actual author.
-  // Use the first nonempty author, never an empty identity key.
-  const workKey = (candidate: DetectiveMergeCandidate): string =>
-    JSON.stringify([comparableDetectiveTitle(candidate.work.title),
-      canonicalDetectiveAuthor(candidate.work.authors.find(author => Boolean(author?.trim())) ?? '')]);
-  const targetKey = workKey(target);
-  const ownedKeys = new Set(owned.filter(book => Boolean(book.title?.trim())
-    && Boolean(book.author?.trim())).map(book => JSON.stringify([
-    comparableDetectiveTitle(book.title), canonicalDetectiveAuthor(book.author),
-  ])));
   const matching = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
     && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
     && detectiveCandidatesAreSameWork(source, target)
-    && workKey(source) === targetKey);
+    && detectiveWorkTitlesCompatible(source.work.title, target.work.title)
+    && source.work.authors.some(author => target.work.authors.some(other =>
+      Boolean(author?.trim()) && Boolean(other?.trim()) && detectiveAuthorsCompatible(author, other))));
   const seedSources = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
     && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
-    && ownedKeys.has(workKey(source)));
+    && owned.some(book => Boolean(book.title?.trim()) && Boolean(book.author?.trim())
+      && detectiveWorkTitlesCompatible(source.work.title, book.title)
+      && source.work.authors.some(author => Boolean(author?.trim())
+        && detectiveAuthorsCompatible(author, book.author))));
   // A matching ISBN corroborates edition identity across catalogs. It does
   // not by itself prove membership; only structured series claims count.
   const independentWorkEvidence = (group: readonly DetectiveMergeCandidate[]): boolean => {
@@ -63,15 +58,18 @@ export function verifyCanonicalProductionMembership(
     }
     return [...byIsbn.values()].some(providers => providers.size >= 2);
   };
-  if (!independentWorkEvidence(matching)
-    || ![...ownedKeys].some(key => independentWorkEvidence(seedSources.filter(source => workKey(source) === key)))) {
+  const corroboratedOwnedSeed = owned.some(book => Boolean(book.title?.trim())
+    && Boolean(book.author?.trim()) && independentWorkEvidence(seedSources.filter(source =>
+      detectiveWorkTitlesCompatible(source.work.title, book.title)
+      && source.work.authors.some(author => Boolean(author?.trim())
+        && detectiveAuthorsCompatible(author, book.author)))));
+  if (!independentWorkEvidence(matching) || !corroboratedOwnedSeed) {
     return { verified: false, agreedPosition: null, conflicting: false,
       providerCount: new Set(matching.map(source => source.seriesProvider ?? source.provider)).size };
   }
   // Require the same independently corroborated owned work to anchor the
   // requested series. A generic matching series phrase is not enough.
-  const anchored = [...ownedKeys].some(key =>
-    independentWorkEvidence(seedSources.filter(source => workKey(source) === key)));
+  const anchored = corroboratedOwnedSeed;
   // Count only structured native membership claims, not search mirrors.
   const providers = new Set(matching.map(source => source.seriesProvider ?? source.provider));
   const positions = matching.filter(source => source.position !== null
