@@ -526,8 +526,12 @@ const sameProviderAlternateTitle = mergeDetectiveCandidates([
     edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-b', isbn13: undefined, isbn10: undefined },
     seriesStructured: true },
 ]);
-assert.equal(sameProviderAlternateTitle.length, 1);
-assert.equal(sameProviderAlternateTitle[0].seriesStructured, false);
+assert.equal(sameProviderAlternateTitle.length, 2,
+  'A recycled provider work ID must not merge differently titled works');
+assert.deepEqual(
+  new Set(sameProviderAlternateTitle.map(candidate => candidate.work.title)),
+  new Set(['Original Title', 'Alternate Title']),
+);
 
 const sharedIsbnAlternateTitle = mergeDetectiveCandidates([
   { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
