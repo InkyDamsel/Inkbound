@@ -36,7 +36,7 @@ export const canonicalDetectiveIsbn13 = (value?: string): string | null => {
       total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
     return (10 - (sum % 10)) % 10 === Number(raw[12]) ? raw : null;
   }
-  if (!/^\\d{9}[\\dX]$/.test(raw)) return null;
+  if (!/^\d{9}[\dX]$/.test(raw)) return null;
   const sum10 = [...raw].reduce((total, digit, index) =>
     total + (digit === 'X' ? 10 : Number(digit)) * (10 - index), 0);
   if (sum10 % 11 !== 0) return null;
