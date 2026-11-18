@@ -72,18 +72,26 @@ export const comparableDetectiveTitle = (value?: string, seriesName?: string): s
 /** Same-work title variants must agree across merge and verification.
  * Only a literal colon-delimited subtitle may be omitted; never use broad
  * prefix matching, which would collapse distinct franchise installments. */
-export const detectiveWorkTitlesCompatible = (left?: string, right?: string): boolean => {
+export const detectiveWorkTitlesCompatible = (left?: string, right?: string, seriesName?: string): boolean => {
   const a = comparableDetectiveTitle(left);
   const b = comparableDetectiveTitle(right);
   if (!a || !b) return false;
   if (a === b) return true;
-  const colonBase = (value?: string): string | null => {
+  const colonBase = (value?: string): { base: string; suffix: string } | null => {
     const raw = typeof value === 'string' ? value.trim() : '';
     const index = raw.indexOf(':');
-    return index < 0 ? null : comparableDetectiveTitle(raw.slice(0, index));
+    return index < 0 ? null : {
+      base: comparableDetectiveTitle(raw.slice(0, index)),
+      suffix: normalizeDetectiveText(raw.slice(index + 1)),
+    };
   };
-  return (colonBase(left) === b && Boolean(colonBase(left)))
-    || (colonBase(right) === a && Boolean(colonBase(right)));
+  const anchored = (variant: { base: string; suffix: string } | null, base: string): boolean => {
+    if (!variant || variant.base !== base) return false;
+    if (!seriesName) return true; // Merge only: verification requires a series-anchored subtitle.
+    const series = canonicalDetectiveSeries(seriesName);
+    return Boolean(series && (' ' + variant.suffix + ' ').includes(' ' + series + ' '));
+  };
+  return anchored(colonBase(left), b) || anchored(colonBase(right), a);
 };
 
 export const canonicalDetectiveAuthor = (value?: string): string => {
