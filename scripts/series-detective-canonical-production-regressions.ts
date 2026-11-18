@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { decideDetectiveMembership } from '../src/features/series/seriesDetectiveDecision';
 import { verifyCanonicalProductionMembership } from '../src/features/series/seriesDetectiveCanonicalAdapter';
 import type { DetectiveMergeCandidate } from '../src/features/series/seriesDetectiveMerge';
 
@@ -96,4 +97,16 @@ assert.equal(run([...crossEdition.slice(0, 3), {
 assert.equal(run([...crossEdition.slice(0, 3), {
   ...crossEdition[3], position: 3,
 }]).verified, false, 'Disputed native series order must block verification');
+const reviewOrder = decideDetectiveMembership(
+  [seed, seed2, sibling, sibling2], sibling, owned, 'Grant County',
+);
+assert.deepEqual(reviewOrder, {
+  verification: 'review', position: null, conflictingOrder: false,
+}, 'A review-only candidate must not leak an apparently verified ordinal');
+const verifiedOrder = decideDetectiveMembership(
+  sameEditionSources, sameEditionSources[2], owned, 'Grant County',
+);
+assert.equal(verifiedOrder.verification, 'verified');
+assert.equal(verifiedOrder.position, 2,
+  'Independently verified ordering should remain available');
 console.log('Series Detective canonical production adapter regressions passed.');
