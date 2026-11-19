@@ -314,28 +314,10 @@ export default function App() {
       if (commitCanonicalBooks(next) !== next) { showToast('Could not save series metadata.'); return; }
       showToast('Series metadata saved to your library.');
     };
-    const connectDetectiveBooks = (event: Event) => {
-      const entries = (event as CustomEvent<{ books: Array<{ bookId: string; seriesName: string; position: number | null }> }>).detail?.books;
-      if (!Array.isArray(entries) || !entries.length) return;
-      const byId = new Map(entries.filter((entry) => entry.bookId && entry.seriesName?.trim())
-        .map((entry) => [entry.bookId, entry]));
-      const current = booksRef.current;
-      let updated = 0;
-      const next = current.map((book) => {
-        const entry = byId.get(book.id);
-        // Preserve existing user metadata, statuses, editions and ownership.
-        if (!entry || book.work.seriesName?.trim()) return book;
-        updated++;
-        return { ...book, work: {
-          ...book.work,
-          seriesName: entry.seriesName.trim(),
-          ...(book.work.seriesOrder == null && typeof entry.position === 'number' && Number.isFinite(entry.position)
-            ? { seriesOrder: entry.position } : {}),
-        } };
-      });
-      if (!updated) { showToast('No empty series fields needed repair.'); return; }
-      if (commitCanonicalBooks(next) !== next) { showToast('Could not save series connections.'); return; }
-      showToast(`Connected ${updated} existing book(s) to their series.`);
+    // The event carries no independent catalog evidence. Never treat a
+    // caller-supplied series label as authorization to mutate owned books.
+    const connectDetectiveBooks = (_event: Event) => {
+      showToast('Automatic series connection is paused until evidence can be revalidated. Your library is unchanged.');
     };
     window.addEventListener('inkbound:series-detective-connect', connectDetectiveBooks);
     window.addEventListener('inkbound:series-detective-apply', applyDetectiveSeries);
