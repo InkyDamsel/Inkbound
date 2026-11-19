@@ -155,7 +155,7 @@ export const detectiveAuthorCandidates = (value?: string): string[] => {
 
 export const detectiveAuthorsCompatible = (left?: string, right?: string): boolean => {
   const leftIds = new Set(detectiveAuthorCandidates(left));
-  if (!leftIds.size) return true;
+  if (!leftIds.size) return false;
   return detectiveAuthorCandidates(right).some((candidate) => leftIds.has(candidate));
 };
 
