@@ -999,10 +999,22 @@ export async function findMissingSeriesBooks(
     summarizeProvider('penguin-random-house', [prhSeriesAndAuthor, prhSeriesOnly, prhAuthor]);
     // Google and Open Library currently swallow some individual lookup errors.
     // Never advertise them as healthy until all failure paths are instrumented.
+    const googleRequested = queries.length + (author.trim() ? 1 : 0);
+    const googleFailed = googleFailures.length;
+    const googleFailureCodes = googleFailures.map((error) =>
+      error instanceof Error ? error.message.toLowerCase() : '');
+    const googleRateLimited = googleFailureCodes.some((message) =>
+      /(?:rate-limited|429|resource-exhausted)/.test(message));
+    const googleTimedOut = googleFailureCodes.some((message) =>
+      /(?:timed-out|timeout|deadline-exceeded)/.test(message));
     providerReports.push({
       provider: 'google-books',
-      status: googleFailures.length >= queries.length + (author.trim() ? 1 : 0) ? 'unavailable' : 'partial',
-      errorCode: googleFailures.length ? 'query-failed' : 'pagination-not-verified',
+      status: googleFailed > 0 && googleFailed >= googleRequested
+        ? (googleRateLimited ? 'rate-limited' : googleTimedOut ? 'timed-out' : 'unavailable')
+        : 'partial',
+      errorCode: googleRateLimited ? 'rate-limited'
+        : googleTimedOut ? 'timed-out'
+        : googleFailed ? 'query-failed' : 'pagination-not-verified',
       retrievedAt,
     });
     providerReports.push({ provider: 'open-library', status: 'partial', errorCode: openLibraryFailures.length ? 'query-failed' : 'pagination-not-verified', retrievedAt });
