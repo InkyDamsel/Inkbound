@@ -121,4 +121,16 @@ const verifiedOrder = decideDetectiveMembership(
 assert.equal(verifiedOrder.verification, 'verified');
 assert.equal(verifiedOrder.position, 2,
   'Independently verified ordering should remain available');
+const placeholderAuthorSources = sameEditionSources.map(source => ({
+  ...source,
+  work: { ...source.work, authors: ['Unknown Author'] },
+}));
+assert.equal(run(placeholderAuthorSources).verified, false,
+  'Catalog placeholder authors must not corroborate a work');
+const blankAndValidAuthorSources = sameEditionSources.map(source => ({
+  ...source,
+  work: { ...source.work, authors: ['', 'Karin Slaughter'] },
+}));
+assert.equal(run(blankAndValidAuthorSources).verified, true,
+  'A blank author preceding a credible author must not invalidate corroboration');
 console.log('Series Detective canonical production adapter regressions passed.');
