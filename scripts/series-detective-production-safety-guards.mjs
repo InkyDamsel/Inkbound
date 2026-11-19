@@ -50,10 +50,10 @@ assert.match(app, /isIssuedVerifiedDetectiveCandidate\(candidate\)/);
 assert.doesNotMatch(bookLookup, /inkbound:series-detective-apply/);
 assert.match(decision, /hasCorroboratedOwnedSeed\(/);
 // Assert the required guards directly; avoid fragile regex source matching.
-assert.ok(corroboration.includes('return owned.some(book => Boolean(book.author?.trim())'));
+assert.ok(corroboration.includes('return owned.some(book => isCredibleDetectiveAuthor(book.author)'));
 assert.ok(corroboration.includes('Boolean(comparableDetectiveTitle(book.title))'));
 assert.ok(corroboration.includes('new Set(candidates.filter(candidate =>'));
-assert.ok(corroboration.includes('candidate.work.authors.some(author => Boolean(author?.trim())'));
+assert.ok(corroboration.includes('candidate.work.authors.some(author => isCredibleDetectiveAuthor(author)'));
 assert.match(legacy, /result\.discoveryDiagnostics = \{/);
 assert.match(bookLookup, /result\?\.providerReports/);
 assert.match(legacy, /discoveryDiagnostics = \{ \.\.\.diagnostics, uniqueWorks: seen\.size \};/);
