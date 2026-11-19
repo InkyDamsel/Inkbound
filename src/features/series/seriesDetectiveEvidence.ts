@@ -103,7 +103,7 @@ const NON_AUTHOR_IDENTITIES = new Set([
 export const isCredibleDetectiveAuthor = (value?: string): boolean => {
   const identity = normalizeDetectiveText(value);
   return Boolean(identity && !NON_AUTHOR_IDENTITIES.has(identity)
-    && !/^(?:unknown|anonymous|various|n\\s*a)\\s+(?:author|authors)$/.test(identity));
+    && !/^(?:unknown|anonymous|various|n\s*a)\s+(?:author|authors)$/.test(identity));
 };
 
 export const canonicalDetectiveAuthor = (value?: string): string => {
