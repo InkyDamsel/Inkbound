@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { detectiveWorkTitlesCompatible, normalizeDetectiveText } from '../src/features/series/seriesDetectiveEvidence';
 import { detectiveCandidatesAreSameWork, mergeDetectiveCandidates, type DetectiveMergeCandidate } from '../src/features/series/seriesDetectiveMerge';
 
 const candidate = (title: string, provider: DetectiveMergeCandidate['provider']): DetectiveMergeCandidate => ({
@@ -65,4 +66,14 @@ assert.equal(mergeDetectiveCandidates([
   contradictorySameKey,
 ])[0].work.editions.length, 2,
   'Conflicting editions remain separate even when a provider reuses its work key');
+assert.equal(normalizeDetectiveText('Мапл Хиллз'), 'мапл хиллз', 'Non-Latin identities must remain nonempty');
+assert.equal(normalizeDetectiveText('吹雪'), '吹雪', 'CJK identities must remain nonempty');
+assert.equal(detectiveWorkTitlesCompatible('Icebreaker: A Novel', 'Icebreaker'), true,
+  'Generic marketing subtitles may be omitted');
+assert.equal(detectiveWorkTitlesCompatible('Dune: Messiah', 'Dune'), false,
+  'Distinct installment titles must never merge by colon prefix');
+assert.equal(detectiveWorkTitlesCompatible('As Old as Time: A Twisted Tale Manga, Volume 1', 'As Old as Time', 'A Twisted Tale'), false,
+  'Adaptations must not corroborate original novels');
+assert.equal(detectiveWorkTitlesCompatible('Daydream: Deluxe Edition Hardcover', 'Daydream'), false,
+  'Deluxe editions must not automatically count as the same verified identity');
 console.log('Series Detective merge identity regressions passed.');
