@@ -1200,7 +1200,18 @@ export async function findMissingSeriesBooks(
       .filter((candidate) => hasExplicitDetectiveSeriesBrand(candidate, seriesName)
         && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)))
       .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
-    const verifiedMultiAuthorBrand = structuredAuthors.size >= 2 || brandedAuthors.size >= 2;
+    // Owned books already assigned to this series are a separate, local
+    // bootstrap signal for a shared-world series. Do not count an arbitrary
+    // seed book or a placeholder author as proof of a multi-author family.
+    const ownedSeriesAuthors = new Set(seriesBooks
+      .filter((book) => {
+        const resolved = resolveEffectiveSeriesMetadata(book, overrides);
+        return Boolean(resolved && detectiveSeriesNamesCompatible(resolved.name, seriesName));
+      })
+      .map((book) => canonicalDetectiveAuthor(book.work.author))
+      .filter(Boolean));
+    const verifiedMultiAuthorBrand = ownedSeriesAuthors.size >= 2
+      || structuredAuthors.size >= 2 || brandedAuthors.size >= 2;
 
     const diagnostics = {
       discovered: providerCandidates.length,
