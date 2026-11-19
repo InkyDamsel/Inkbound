@@ -121,6 +121,22 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
         <p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p>
         <p className="text-xs text-stone-400">Catalog suggestion only. This match has not passed Series Detective's independent verification gate and cannot be saved automatically.</p>
       </div>}
+      {result?.providerReports && result.providerReports.length > 0 && (
+        <details className="mt-3 rounded-lg border border-white/15 p-3 text-xs text-stone-300">
+          <summary className="cursor-pointer font-semibold text-[#f3dbad]">Catalog health and discovery details</summary>
+          <p className="mt-2">Coverage: {result.completeness ?? 'unknown'}. Incomplete results never mean a book is standalone.</p>
+          <ul className="mt-2 space-y-1">
+            {result.providerReports.map((report, index) => (
+              <li key={report.provider + index}>{report.provider}: {report.status}{report.errorCode ? ` (${report.errorCode})` : ''}</li>
+            ))}
+          </ul>
+          {result.discoveryDiagnostics && <p className="mt-2">
+            Discovered {result.discoveryDiagnostics.discovered}; merged {result.discoveryDiagnostics.merged};
+            admitted {result.discoveryDiagnostics.admitted}; rejected by series {result.discoveryDiagnostics.rejectedSeries},
+            author {result.discoveryDiagnostics.rejectedAuthor}, evidence {result.discoveryDiagnostics.rejectedEvidence}.
+          </p>}
+        </details>
+      )}
       {roster && <SeriesDetectiveRoster entries={roster} />}
       </section>
     </div>}
