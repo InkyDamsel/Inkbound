@@ -40,7 +40,7 @@ import { ProfileScreen } from './components/ProfileScreen';
 import { AdminScreen } from './components/AdminScreen';
 import { AddBookModal } from './components/AddBookModal';
 import { createBookFromSearchEdition } from './features/book-search/mapping/bookSearchMapper';
-import { findLibraryBookForCandidate, type SeriesDetectiveCandidate } from './features/series/seriesDetective';
+import { findLibraryBookForCandidate, isIssuedVerifiedDetectiveCandidate, type SeriesDetectiveCandidate } from './features/series/seriesDetective';
 import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
 import { usePersistentState } from './hooks/usePersistentState';
@@ -246,7 +246,7 @@ export default function App() {
       const eligible: SaveableCandidate[] = [];
       const pendingWorks: UserBookRecord[] = [];
       for (const candidate of candidates) {
-        if (candidate?.verification !== 'verified'
+        if (!isIssuedVerifiedDetectiveCandidate(candidate)
           || !candidate.work?.title?.trim()
           || !candidate.work.authors?.[0]?.trim()
           || !candidate.edition
