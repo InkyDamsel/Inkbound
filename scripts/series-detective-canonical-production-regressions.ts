@@ -26,7 +26,7 @@ assert.equal(run([seed, sibling, sibling2]).verified, false,
 assert.equal(run([seed, seed2, sibling]).verified, false,
   'One-provider sibling must remain review-only');
 assert.equal(run([seed, seed2, sibling, make('Kisscut', 'hardcover', 3)]).verified, false,
-  'Disputed position must remain review-only');
+  'Without independent edition evidence, a disputed position cannot grant membership');
 assert.equal(run([seed, seed2, sibling, make('Kisscut', 'hardcover', 0)]).verified, false);
 assert.equal(run([seed, seed2, sibling, make('Kisscut', 'hardcover', 1.5)]).verified, false);
 assert.equal(run([seed, seed2, sibling, make('Triptych', 'hardcover', 2)]).verified, false,
@@ -61,10 +61,10 @@ assert.equal(run([
   ...sameEditionSources.slice(0, 3),
   withIsbn(sibling2, 'isbn13', '9780062024039'),
 ]).verified, false, 'Different edition identifiers cannot establish exact-edition corroboration');
-const subtitleSeed = withIsbn(make('Blindsighted: A Grant County Novel', 'hardcover'), 'isbn13', seedIsbn13);
-const subtitleSibling = withIsbn(make('Kisscut: A Grant County Novel', 'hardcover', 2), 'isbn13', siblingIsbn13);
+const subtitleSeed = withIsbn(make('Blindsighted: A Novel', 'hardcover'), 'isbn13', seedIsbn13);
+const subtitleSibling = withIsbn(make('Kisscut: A Novel', 'hardcover', 2), 'isbn13', siblingIsbn13);
 assert.equal(run([sameEditionSources[0], subtitleSeed, sameEditionSources[2], subtitleSibling]).verified, true,
-  'A series-anchored publisher subtitle must not erase an independent vote');
+  'A generic publisher subtitle must not erase an independent vote');
 const unrelatedSubtitle = withIsbn(make('Kisscut: A Different Book', 'hardcover', 2), 'isbn13', siblingIsbn13);
 assert.equal(run([sameEditionSources[0], subtitleSeed, sameEditionSources[2], unrelatedSubtitle]).verified, false,
   'A generic colon prefix must not make unrelated subtitle text a verification vote');
@@ -96,7 +96,19 @@ assert.equal(run([...crossEdition.slice(0, 3), {
 }]).conflicting, true, 'Invalid positions must remain visible as conflicts');
 assert.equal(run([...crossEdition.slice(0, 3), {
   ...crossEdition[3], position: 3,
-}]).verified, false, 'Disputed native series order must block verification');
+}]).verified, true, 'Disputed native series order must preserve verified membership');
+const disputedEditionSources = [
+  ...sameEditionSources.slice(0, 3),
+  { ...sameEditionSources[3], position: 3 },
+];
+assert.equal(run(disputedEditionSources).verified, true,
+  'Verified membership must survive conflicting independent ordinals');
+assert.equal(run(disputedEditionSources).conflicting, true);
+assert.equal(run(disputedEditionSources).agreedPosition, null);
+assert.deepEqual(decideDetectiveMembership(
+  disputedEditionSources, disputedEditionSources[2], owned, 'Grant County',
+), { verification: 'verified', position: null, conflictingOrder: true },
+'The production decision must separate membership from disputed order');
 const reviewOrder = decideDetectiveMembership(
   [seed, seed2, sibling, sibling2], sibling, owned, 'Grant County',
 );
