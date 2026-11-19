@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
-import { buildSeriesLibrary } from '../src/features/series/seriesLibrary';
+import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
+import { summarizeSeriesRoster, type SeriesRosterEntry } from '../src/features/series/seriesDetectiveRoster';
 // Discovery from search has no owned numbered anchor: probe opening volumes.
 const unanchoredPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [] });
 assert.deepEqual(unanchoredPlan.targetPositions, [1, 2, 3, 4, 5]);
 assert.ok(unanchoredPlan.queries.includes('Sample Chronicles book 1 A. Reader'));
 assert.ok(unanchoredPlan.queries.includes('"Sample Chronicles"'));
+// Custom reading-order labels must still search by exact owned book anchors.
+const anchoredPlan = planSeriesDiscoveryQueries({
+  seriesName: 'My Reading Order', author: 'Example Author', knownPositions: [3],
+  anchorTitles: ['A Touch of Ruin'],
+});
+assert.ok(anchoredPlan.queries.includes('intitle:"A Touch of Ruin" inauthor:"Example Author"'));
+assert.ok(anchoredPlan.targetPositions.includes(1));
+assert.ok(anchoredPlan.targetPositions.includes(2));
+
 // A malformed very high position must never allocate a massive gap array.
 const distantPlan = planSeriesDiscoveryQueries({ seriesName: 'Sample Chronicles', author: 'A. Reader', knownPositions: [1000000000] });
 assert.deepEqual(distantPlan.targetPositions.slice(0, MAX_GAP_QUERY_TARGETS), [1, 2, 3, 4, 5]);
@@ -14,7 +24,8 @@ assert.ok(!distantPlan.targetPositions.includes(1000000000));
 
 import { planSeriesDiscoveryQueries, MAX_GAP_QUERY_TARGETS, FORWARD_QUERY_TARGETS } from '../src/features/series/seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand } from '../src/features/series/seriesDetectiveBranding';
-import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
+import { confirmedGoogleMembershipIds } from '../src/features/series/seriesDetectiveGoogleSeriesIds';
+import { parseDetectiveOpenLibrarySeries, plausibleOpenLibrarySeriesName } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
 import {
   buildSeriesDetectionQueries,
@@ -71,6 +82,31 @@ assert.equal(hasExplicitDetectiveSeriesBrand(
   brandedFixture('Salt & Blood: A Hades and Persephone Romance', ''),
   'Hades x Persephone',
 ), false);
+
+// Unverified catalog records must not inflate the verified missing count.
+const rosterSummary = summarizeSeriesRoster([
+  { kind: 'owned', key: 'owned', candidate: { verification: 'verified' } },
+  { kind: 'library-only', key: 'library-only' },
+  { kind: 'missing', key: 'verified-missing', candidate: { verification: 'verified' } },
+  { kind: 'missing', key: 'review', candidate: { verification: 'review' } },
+] as SeriesRosterEntry[]);
+assert.deepEqual(rosterSummary, { inLibrary: 2, missing: 1, review: 1, libraryOnly: 1, total: 4 });
+
+// Shared library normalization must agree with Detective evidence on leading articles.
+for (const [label, expected] of [
+  ['The Selection', 'selection'],
+  ['Selection', 'selection'],
+  ['A Twisted Tale', 'twisted tale'],
+  ['Twisted Tale', 'twisted tale'],
+  ['The Unhinged Love Trilogy', 'unhinged love'],
+  ['Unhinged Love', 'unhinged love'],
+] as const) {
+  assert.equal(canonicalSeriesIdentity(label), expected);
+  assert.equal(detectiveSeriesNamesCompatible(label, expected), true);
+}
+assert.equal(seriesNamesAreCompatible('The Selection', 'Selection'), true);
+assert.equal(seriesNamesAreCompatible('A Twisted Tale', 'Twisted Tale'), true);
+assert.equal(seriesNamesAreCompatible('The Heart Duology', 'The Heart of Darkness'), false);
 
 // Never infer a franchise alias or singular/plural equivalence without bibliographic evidence.
 assert.equal(detectiveSeriesNamesCompatible('Disney: A Twisted Tale', 'Twisted Tales'), false);
@@ -476,6 +512,40 @@ assert.deepEqual(
   new Set(['google-books', 'open-library']),
 );
 
+// Provider-native work IDs can identify alternate titles within the same
+// namespace. A shared ISBN across providers is edition evidence, not proof
+// that differently titled literary works are the same installment.
+const identityFixture = mergedProviders[0];
+const sameProviderAlternateTitle = mergeDetectiveCandidates([
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:work-42', title: 'Original Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-a', isbn13: undefined, isbn10: undefined },
+    seriesStructured: true },
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:work-42', title: 'Alternate Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-b', isbn13: undefined, isbn10: undefined },
+    seriesStructured: true },
+]);
+assert.equal(sameProviderAlternateTitle.length, 1);
+assert.equal(sameProviderAlternateTitle[0].seriesStructured, false);
+
+const sharedIsbnAlternateTitle = mergeDetectiveCandidates([
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:one', title: 'Original Title' },
+    edition: { ...identityFixture.edition, source: 'google-books', externalEditionId: 'edition-c', isbn13: '9780991132379' },
+    seriesStructured: true },
+  { ...identityFixture, provider: 'open-library', providerSources: ['open-library'],
+    work: { ...identityFixture.work, key: 'open-library:two', title: 'Alternate Title' },
+    edition: { ...identityFixture.edition, source: 'open-library', externalEditionId: 'edition-d', isbn13: '9780991132379' },
+    seriesStructured: true },
+]);
+assert.equal(sharedIsbnAlternateTitle.length, 2,
+  'Different titles sharing an ISBN must remain separate works');
+assert.deepEqual(
+  new Set(sharedIsbnAlternateTitle.map(candidate => candidate.work.title)),
+  new Set(['Original Title', 'Alternate Title']),
+);
+
 // Shared franchise prefixes are not work identity. Distinct installments by
 // the same author must never collapse just because one title starts with the
 // other's words.
@@ -691,6 +761,7 @@ const conflictingOrder = mergeDetectiveCandidates([
 assert.equal(conflictingOrder.length, 1);
 assert.equal(detectiveSeriesNamesCompatible(conflictingOrder[0].seriesName, 'Example Saga'), true);
 assert.equal(conflictingOrder[0].position, null);
+assert.equal(conflictingOrder[0].seriesStructured, false, 'Conflicting structured installment numbers must remain review-only');
 
 // Bibliographic suffixes may vary by provider without splitting one work.
 const suffixMerge = mergeDetectiveCandidates([
@@ -1050,4 +1121,189 @@ assert.deepEqual(parseDetectiveOpenLibrarySeries(['Will Trent, Book Three']), {
 assert.equal(comparableDetectiveTitle('Tending to the Rot (High Crest Chronicles 1)', 'High Crest Chronicles'), comparableDetectiveTitle('Tending to the Rot'));
 assert.notEqual(comparableDetectiveTitle('Tending to the Rot (High Crest Chronicles 1)', 'Grant County'), comparableDetectiveTitle('Tending to the Rot'));
 
+// Multi-series Google volumes must not authorize unrelated sibling series IDs.
+const googleMembershipCatalog = { items: [], seriesTitlesById: { correct: 'Grant County', wrong: 'Will Trent' } };
+const googleMultiMembership = { volumeInfo: { seriesInfo: { volumeSeries: [
+  { seriesId: 'correct', orderNumber: 1 }, { seriesId: 'wrong', orderNumber: 2 },
+] } } };
+assert.deepEqual(confirmedGoogleMembershipIds(googleMultiMembership, googleMembershipCatalog, 'Grant County', true), ['correct']);
+assert.deepEqual(confirmedGoogleMembershipIds(googleMultiMembership, googleMembershipCatalog, 'Unrelated Series', true), []);
+const unnamedMulti = { items: [], seriesTitlesById: {} };
+assert.deepEqual(confirmedGoogleMembershipIds(googleMultiMembership, unnamedMulti, 'Grant County', true), []);
+assert.deepEqual(confirmedGoogleMembershipIds({ volumeInfo: { seriesInfo: { volumeSeries: [
+  { seriesId: 'single' }, { seriesId: 'single' },
+] } } }, unnamedMulti, 'Grant County', true), ['single']);
+assert.deepEqual(confirmedGoogleMembershipIds({ volumeInfo: { seriesInfo: { volumeSeries: [
+  { seriesId: 'single' },
+] } } }, unnamedMulti, 'Grant County', false), []);
+
+// A reused provider edition ID with contradictory ISBNs must never create
+// a synthetic edition containing identifiers from two different books.
+const reusedEditionOne = { ...identityFixture.edition, source: 'google-books' as const,
+  externalEditionId: 'reused-edition', isbn13: '9780000000001', isbn10: undefined };
+const reusedEditionTwo = { ...identityFixture.edition, source: 'google-books' as const,
+  externalEditionId: 'reused-edition', isbn13: '9780000000002', isbn10: undefined };
+const reusedProviderEditionId = mergeDetectiveCandidates([
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work', editions: [reusedEditionOne] },
+    edition: reusedEditionOne },
+  { ...identityFixture, provider: 'google-books', providerSources: ['google-books'],
+    work: { ...identityFixture.work, key: 'google-books:reused-id', title: 'Same Work', editions: [reusedEditionTwo] },
+    edition: reusedEditionTwo },
+]);
+assert.equal(reusedProviderEditionId.length, 1);
+assert.equal(reusedProviderEditionId[0].work.editions.length, 2);
+assert.deepEqual(new Set(reusedProviderEditionId[0].work.editions.map(edition => edition.isbn13)),
+  new Set(['9780000000001', '9780000000002']));
+
+// Open Library publisher collection numbers must not masquerade as literary series.
+assert.equal(plausibleOpenLibrarySeriesName('rororo 23230'), false);
+assert.equal(plausibleOpenLibrarySeriesName('Sara Linton'), true);
+assert.equal(plausibleOpenLibrarySeriesName('The Shining'), true);
+assert.equal(parseDetectiveOpenLibrarySeries(['Sara Linton #1'])?.position, 1);
+
+// V2 offline replay: evidence is source-attributed, order-independent, and
+// never converts one provider's repeated assertions into corroboration.
+const { replayDetectiveEvidence } = await import('../src/features/series/seriesDetectiveReplay');
+const replayClaims = [
+  { id: 'google:work-1:membership', provider: 'google-books' as const,
+    sourceRecordId: 'g1', kind: 'series-membership' as const,
+    subjectId: 'work-1', objectId: 'series-1', value: 'Example Series',
+    structured: true, sourceField: 'volumeInfo.seriesInfo' },
+  { id: 'hardcover:work-1:membership', provider: 'hardcover' as const,
+    sourceRecordId: 'h1', kind: 'series-membership' as const,
+    subjectId: 'work-1', objectId: 'series-1', value: 'Example Series',
+    structured: true, sourceField: 'series.id' },
+];
+const replayObservations = [
+  { provider: 'google-books' as const, operation: 'seed', state: 'ok' as const, recordCount: 1 },
+  { provider: 'hardcover' as const, operation: 'seed', state: 'ok' as const, recordCount: 1 },
+];
+const replayInput = { seedBookId: 'seed-1', observations: replayObservations, claims: replayClaims };
+const replayA = replayDetectiveEvidence(replayInput);
+const replayB = replayDetectiveEvidence({ ...replayInput,
+  claims: [...replayClaims].reverse(), observations: [...replayObservations].reverse() });
+assert.deepEqual(replayA, replayB, 'Provider ordering must not change evidence replay');
+assert.equal(replayA.decisions[0].status, 'verified');
+assert.equal(replayDetectiveEvidence({ ...replayInput, claims: [replayClaims[0]] }).decisions[0].status, 'review');
+assert.equal(replayDetectiveEvidence({ ...replayInput, claims: [replayClaims[0],
+  { ...replayClaims[0], id: 'google:work-1:duplicate', sourceRecordId: 'g2' }] }).decisions[0].status, 'review');
+const conflictingReplay = replayDetectiveEvidence({ ...replayInput, claims: [replayClaims[0],
+  { ...replayClaims[1], objectId: 'unrelated-series' }] });
+assert.equal(conflictingReplay.decisions[0].status, 'review');
+assert.ok(conflictingReplay.decisions[0].reasonCodes.includes('conflicting-evidence'));
+const outageReplay = replayDetectiveEvidence({ ...replayInput,
+  observations: [{ provider: 'hardcover', operation: 'seed', state: 'unavailable', recordCount: 0 }],
+  claims: [replayClaims[0]] });
+assert.equal(outageReplay.decisions.length, 1);
+assert.equal(outageReplay.decisions[0].status, 'review');
+assert.deepEqual(outageReplay.decisions[0].supportingClaimIds, []);
+assert.ok(outageReplay.decisions[0].reasonCodes.includes('provider-unavailable'));
+assert.deepEqual(outageReplay.quarantinedClaimIds, ['google:work-1:membership']);
+assert.equal(replayDetectiveEvidence({ ...replayInput, claims: [] }).decisions.length, 0);
+
+const { classifyDetectiveSeriesLabel } = await import('../src/features/series/seriesDetectiveLabelClassifier');
+for (const label of ['rororo 23230', 'rororo ; 23230', 'Fischer Taschenbuch 12345', 'Heyne 43/123', 'Penguin Books Ltd']) {
+  assert.equal(classifyDetectiveSeriesLabel(label), 'publisher-collection', label);
+}
+for (const label of ['Grant County', 'Hades x Persephone', 'A Twisted Tale', 'The Shining']) {
+  assert.equal(classifyDetectiveSeriesLabel(label), 'literary-candidate', label);
+}
+const publisherReplay = replayDetectiveEvidence({ ...replayInput,
+  claims: replayClaims.map(claim => ({ ...claim, value: 'rororo 23230' })) });
+assert.equal(publisherReplay.decisions[0].status, 'rejected');
+assert.ok(publisherReplay.decisions[0].reasonCodes.includes('publisher-collection'));
+
 console.log('Inkbound Series Detective recovery regressions passed.');
+
+ 
+// Production canonical gate: corroborated membership must remain distinct
+// from disputed reading order. Never promote a single-provider claim.
+import { verifyCanonicalProductionMembership } from '../src/features/series/seriesDetectiveCanonicalAdapter';
+import { decideDetectiveMembership } from '../src/features/series/seriesDetectiveDecision';
+import { corroborateDetectiveMembership } from '../src/features/series/seriesDetectiveCorroboration';
+import type { DetectiveMergeCandidate } from '../src/features/series/seriesDetectiveMerge';
+const nativeSeriesFixture = (
+  provider: DetectiveMergeCandidate['provider'],
+  title: string,
+  isbn13: string,
+  position: number,
+): DetectiveMergeCandidate => ({
+  provider,
+  seriesProvider: provider,
+  seriesStructured: true,
+  seriesName: 'Maple Hills',
+  position,
+  work: { key: provider + ':' + title, title, authors: ['Hannah Grace'], genres: [], editions: [] },
+  edition: {
+    source: provider, externalEditionId: provider + ':' + title, title,
+    authors: ['Hannah Grace'], genres: [], publicationYear: 2023,
+    format: 'ebook', isbn13, specialFeatures: [],
+  },
+} as DetectiveMergeCandidate);
+const structuredSeriesEvidence = [
+  nativeSeriesFixture('open-library', 'Icebreaker', '9781668026038', 1),
+  nativeSeriesFixture('hardcover', 'Icebreaker', '9781668026038', 1),
+  nativeSeriesFixture('open-library', 'Wildfire', '9781668026274', 2),
+  nativeSeriesFixture('hardcover', 'Wildfire', '9781668026274', 3),
+];
+const canonicalWithDisputedOrder = verifyCanonicalProductionMembership(
+  structuredSeriesEvidence, structuredSeriesEvidence[2],
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+);
+assert.equal(canonicalWithDisputedOrder.verified, true);
+assert.equal(canonicalWithDisputedOrder.conflicting, true);
+assert.equal(canonicalWithDisputedOrder.agreedPosition, null);
+const disputedOrder = corroborateDetectiveMembership(
+  structuredSeriesEvidence, structuredSeriesEvidence[2], 'Maple Hills',
+);
+assert.equal(disputedOrder.providers, 2);
+assert.equal(disputedOrder.conflictingOrder, true);
+assert.equal(disputedOrder.agreedPosition, null);
+assert.equal(verifyCanonicalProductionMembership(
+  structuredSeriesEvidence.filter(candidate => candidate.provider === 'open-library'),
+  structuredSeriesEvidence[2], [{ title: 'Icebreaker', author: 'Hannah Grace' }],
+  'Maple Hills',
+).verified, false);
+
+const unifiedDecision = decideDetectiveMembership(
+  structuredSeriesEvidence, structuredSeriesEvidence[2],
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+);
+assert.deepEqual(unifiedDecision, {
+  verification: 'review', position: null, conflictingOrder: true,
+});
+const singleProviderDecision = decideDetectiveMembership(
+  structuredSeriesEvidence.filter(candidate => candidate.provider === 'open-library'),
+  structuredSeriesEvidence[2], [{ title: 'Icebreaker', author: 'Hannah Grace' }],
+  'Maple Hills',
+);
+assert.equal(singleProviderDecision.verification, 'review');
+
+const agreeingSeriesEvidence = structuredSeriesEvidence.map(candidate =>
+  candidate.work.title === 'Wildfire' ? { ...candidate, position: 2 } : candidate);
+assert.deepEqual(decideDetectiveMembership(
+  agreeingSeriesEvidence, agreeingSeriesEvidence[2],
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+), { verification: 'verified', position: 2, conflictingOrder: false });
+
+ 
+// Wikidata is an independent provider namespace, not a duplicate vote for
+// multiple rows from one P179 statement. The inspector must not mutate data.
+import { inspectDetectiveEvidence } from '../src/features/series/seriesDetectiveEvidenceInspector';
+const wikidataClaim = {
+  ...structuredSeriesEvidence[2],
+  provider: 'wikidata' as const,
+  seriesProvider: 'wikidata' as const,
+  nativeSeriesId: 'Q123456',
+  evidenceOrigin: 'wikidata:P179',
+};
+const wikidataInspection = inspectDetectiveEvidence(
+  [structuredSeriesEvidence[0], structuredSeriesEvidence[1], wikidataClaim],
+  wikidataClaim,
+  [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
+);
+assert.equal(wikidataInspection.verification, 'review');
+assert.equal(wikidataInspection.providerClaims.length, 1);
+assert.equal(wikidataInspection.providerClaims[0].nativeSeriesId, 'Q123456');
+assert.ok(wikidataInspection.reasons.some(reason => reason.includes('two structured')));

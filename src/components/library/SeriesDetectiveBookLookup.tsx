@@ -1,4 +1,5 @@
 import { isSeriesDetectiveAvailable } from '../../features/series/seriesDetectiveAvailability';
+import { allowProductionFirebaseFunctions } from '../../lib/firebase';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { resolveEffectiveSeriesMetadata } from '../../features/series/seriesLibrary';
@@ -77,7 +78,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
           library,
           controller.signal,
           seriesBookIds,
-          { forceRefresh: run > 1, overrides: overridesRef.current },
+          { forceRefresh: run > 1, overrides: overridesRef.current, seedBookId: currentBook.id },
         );
         if (!controller.signal.aborted) setResult(missing);
       }

@@ -38,10 +38,15 @@ import {
 } from './seriesDetectiveOpenLibraryApi';
 import {
   mergeDetectiveCandidates,
+  detectiveCandidatesAreSameWork,
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
 import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
+import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
+import { decideDetectiveMembership } from './seriesDetectiveDecision';
+
+import { discoverDetectiveWikidata } from './seriesDetectiveWikidataApi';
 
 type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
   seriesName?: string;
@@ -176,6 +181,18 @@ const isDerivativeSeriesProduct = (candidate: DetectiveMergeCandidate): boolean 
   return values.some((value) => DERIVATIVE_SERIES_PRODUCT_PATTERN.test(value));
 };
 
+// A catalog entry naming the series itself is not evidence of a distinct book.
+// Restrict this guard to exact series-name metadata labels; never infer from
+// position or fuzzy title similarity, and leave ambiguous works reviewable.
+const isSeriesMetadataRecord = (candidate: DetectiveMergeCandidate, seriesName: string): boolean => {
+  const title = candidate.work.title.trim();
+  const normalized = canonicalDetectiveSeries(title);
+  const wanted = canonicalDetectiveSeries(seriesName);
+  if (!normalized || !wanted) return false;
+  if (!/\b(?:series|saga|books)\s*$/i.test(title)) return false;
+  return normalized === wanted;
+};
+
 const hasMergedKnownSeriesContext = (
   candidate: DetectiveMergeCandidate,
   wantedSeriesName: string,
@@ -282,6 +299,13 @@ export interface SeriesDetectiveOwnedEntry {
   book: UserBookRecord;
 }
 
+export interface SeriesDetectiveProviderReport {
+  provider: 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house' | 'wikidata';
+  status: 'ok' | 'partial' | 'unavailable' | 'rate-limited' | 'timed-out';
+  errorCode?: string;
+  retrievedAt: string;
+}
+
 export interface SeriesDetectiveResult {
   seriesName: string;
   candidates: SeriesDetectiveCandidate[];
@@ -289,11 +313,25 @@ export interface SeriesDetectiveResult {
   /** Catalog candidates already in the library (additive; `missing` is unchanged). */
   owned: SeriesDetectiveOwnedEntry[];
   completeness?: 'complete' | 'partial' | 'unavailable' | 'conflict';
+  providerReports?: SeriesDetectiveProviderReport[];
+  /** Read-only explanation of why discovery did or did not produce a roster. */
+  discoveryDiagnostics?: {
+    discovered: number;
+    merged: number;
+    rejectedSeries: number;
+    rejectedAuthor: number;
+    rejectedEvidence: number;
+    admitted: number;
+    uniqueWorks: number;
+    providerCounts: Record<string, number>;
+  };
 }
 
 export interface FindMissingSeriesOptions {
   /** Skip the short-lived in-memory catalog cache (used by explicit Retry). */
   forceRefresh?: boolean;
+  /** Seed work that initiated discovery, even if it has no saved series. */
+  seedBookId?: string;
   /**
    * The reader's manual series corrections. The canonical resolver applies
    * these first, so gap/next-book planning must see them too.
@@ -358,32 +396,6 @@ export const classifySeriesCandidates = (
   // No provider in this pipeline supplies a trusted complete-series total.
   // A nonempty roster is partial, never automatically complete.
   return { seriesName, candidates, missing, owned, completeness: candidates.length ? 'partial' : 'unavailable' };
-};
-
-const SERIES_CANDIDATE_CACHE_TTL_MS = 15 * 60 * 1000;
-const SERIES_CANDIDATE_CACHE_MAX = 40;
-const seriesCandidateCache = new Map<string, { at: number; candidates: SeriesDetectiveCandidate[] }>();
-
-const readSeriesCandidateCache = (key: string): SeriesDetectiveCandidate[] | null => {
-  const entry = seriesCandidateCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.at > SERIES_CANDIDATE_CACHE_TTL_MS) {
-    seriesCandidateCache.delete(key);
-    return null;
-  }
-  return entry.candidates;
-};
-
-const writeSeriesCandidateCache = (key: string, candidates: SeriesDetectiveCandidate[]) => {
-  // An empty result can come from a transient provider outage (each provider
-  // call swallows its own errors), so only successful discoveries are cached.
-  if (!candidates.length) return;
-  seriesCandidateCache.set(key, { at: Date.now(), candidates });
-  while (seriesCandidateCache.size > SERIES_CANDIDATE_CACHE_MAX) {
-    const oldest = seriesCandidateCache.keys().next().value;
-    if (oldest === undefined) break;
-    seriesCandidateCache.delete(oldest);
-  }
 };
 
 const identifier = (volume: DetectiveGoogleVolume, type: 'ISBN_10' | 'ISBN_13'): string | undefined =>
@@ -509,19 +521,16 @@ const evidenceForVolume = (
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
   const exactAuthor = !wantedAuthor || (volume.volumeInfo?.authors ?? [])
     .some((author) => detectiveAuthorsCompatible(book.work.author, author));
-  const explicitDescriptionSeries = inferDetectiveSeriesFromDescription(volume.volumeInfo?.description);
-  // An explicit numbered series in the catalog title is bibliographic evidence,
-  // not a free-form subtitle guess. It still requires an exact work/author match.
-  const explicitTitleSeries = inferDetectiveSeriesFromTitle(volume.volumeInfo?.title)
-    ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
   const structured = Boolean(
     (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
       const id = safeDetectiveTrim(membership.seriesId);
       return Boolean(id && catalog.seriesTitlesById[id]);
     })
     || safeDetectiveTrim(volume.inkboundBibliographicSeries?.name)
-    || explicitDescriptionSeries
-    || (explicitTitleSeries && detectiveSeriesNamesCompatible(explicitTitleSeries.name, metadata.name)),
+    // Description and title branding are hints, not structured membership.
+    // They must never promote a work to verified series evidence.
+    || (volume.inkboundBibliographicSeries?.explicit === true
+      && Boolean(safeDetectiveTrim(volume.inkboundBibliographicSeries?.name))),
   );
 
   return scoreDetectiveEvidence({
@@ -544,12 +553,14 @@ const evidenceForVolume = (
 const safeDetectiveSearch = async (
   query: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveGoogleCatalog> => {
   try {
     return await searchDetectiveGoogleBooks(query, signal);
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective catalog query failed.', error);
+    onFailure?.(error);
     return { items: [], seriesTitlesById: {} };
   }
 };
@@ -559,6 +570,7 @@ const SERIES_DISCOVERY_MAX_PAGES = 4;
 const collectGoogleAuthorCatalogs = async (
   author: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveGoogleCatalog[]> => {
   const catalogs: DetectiveGoogleCatalog[] = [];
   if (!author.trim()) return catalogs;
@@ -578,6 +590,7 @@ const collectGoogleAuthorCatalogs = async (
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn('Series Detective paged author discovery failed.', error);
+      onFailure?.(error);
       break;
     }
   }
@@ -732,12 +745,7 @@ export async function detectSeriesForBook(
       recordId: `merged:${normalizeDetectiveText(candidate.work.title)}:${canonicalDetectiveAuthor(candidate.work.authors[0])}`,
       providerId: candidate.seriesProvider ?? candidate.provider,
       providerCount: candidate.providerSources?.length ?? 1,
-      structured: candidate.seriesStructured === true
-        || [candidate.work.title, candidate.edition.title, candidate.work.subtitle, candidate.edition.subtitle]
-          .some((value) => {
-            const explicit = inferDetectiveSeriesFromTitle(value);
-            return Boolean(explicit && detectiveSeriesNamesCompatible(explicit.name, candidate.seriesName));
-          }),
+      structured: candidate.seriesStructured === true,
       exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
         .map(compactDetectiveIsbn)
         .filter(Boolean)
@@ -882,7 +890,6 @@ const mergeCandidateFromGoogleVolume = (
           hasStructuredSeries
           || (safeDetectiveTrim(volume.inkboundBibliographicSeries?.name)
             && volume.inkboundBibliographicSeries.explicit === true)
-          || inferDetectiveSeriesFromDescription(info?.description)
         )
       : undefined,
   };
@@ -898,6 +905,7 @@ export async function findMissingSeriesBooks(
 ): Promise<SeriesDetectiveResult> {
   const overrides = options.overrides ?? {};
   const scopedSeriesBookIds = new Set(seriesBookIds ?? []);
+  if (options.seedBookId) scopedSeriesBookIds.add(options.seedBookId);
   // An entry point is a hint, not a limit on discovery. Include every owned
   // installment carrying the same verified series identity as additional
   // anchors, even when the library grouped authors into separate clusters.
@@ -912,15 +920,16 @@ export async function findMissingSeriesBooks(
       ? [resolved.position]
       : [];
   });
-  const { queries, targetPositions } = planSeriesDiscoveryQueries({ seriesName, author, knownPositions });
+  const { queries, targetPositions } = planSeriesDiscoveryQueries({ seriesName, author, knownPositions, anchorTitles: seriesBooks.map((book) => book.work.title) });
 
-  const cacheKey = [
-    canonicalDetectiveSeries(seriesName),
-    canonicalDetectiveAuthor(author),
-    targetPositions.join(','),
-    seriesBooks.map((book) => comparableDetectiveTitle(book.work.title)).sort().join('|'),
-  ].join('::');
-
+  // Discovery does not yet carry reliable availability/completeness signals
+  // from every provider. Until it does, do not reuse a roster that may have
+  // silently omitted Google Books or Open Library results.
+  const providerReports: SeriesDetectiveProviderReport[] = [];
+  let discoveryDiagnostics: SeriesDetectiveResult['discoveryDiagnostics'];
+  const googleFailures: unknown[] = [];
+  const openLibraryFailures: unknown[] = [];
+  const recordOpenLibraryFailure = (error: unknown) => { openLibraryFailures.push(error); };
   const discoverCandidates = async (): Promise<SeriesDetectiveCandidate[]> => {
     const [
       queryCatalogs,
@@ -938,12 +947,12 @@ export async function findMissingSeriesBooks(
     ] = await Promise.all([
       // Bounded fan-out: the planner may emit ~25 queries, and firing them all
       // at once alongside the other providers trips Google Books rate limits.
-      mapWithConcurrency(queries, 4, (query) => safeDetectiveSearch(query, signal)),
-      collectGoogleAuthorCatalogs(author, signal),
-      searchDetectiveOpenLibrarySeries(seriesName, author, signal),
-      searchDetectiveOpenLibraryAuthor(author, signal),
-      searchDetectiveOpenLibraryContext(seriesName, author, signal),
-      searchDetectiveOpenLibraryContext(seriesName, author, signal, true),
+      mapWithConcurrency(queries, 4, (query) => safeDetectiveSearch(query, signal, (error) => googleFailures.push(error))),
+      collectGoogleAuthorCatalogs(author, signal, (error) => googleFailures.push(error)),
+      searchDetectiveOpenLibrarySeries(seriesName, author, signal, recordOpenLibraryFailure),
+      searchDetectiveOpenLibraryAuthor(author, signal, recordOpenLibraryFailure),
+      searchDetectiveOpenLibraryContext(seriesName, author, signal, false, recordOpenLibraryFailure),
+      searchDetectiveOpenLibraryContext(seriesName, author, signal, true, recordOpenLibraryFailure),
       // Only the series + author query may expand Hardcover's structured
       // series ID. A bare series name can collide across unrelated authors.
       searchSeriesDetectiveHardcover(
@@ -968,6 +977,36 @@ export async function findMissingSeriesBooks(
       searchSeriesDetectivePenguinRandomHouse(seriesName),
       searchSeriesDetectivePenguinRandomHouse(author),
     ]);
+    const retrievedAt = new Date().toISOString();
+    const summarizeProvider = (
+      provider: SeriesDetectiveProviderReport['provider'],
+      results: Array<{ providerStatus?: SeriesDetectiveProviderReport['status']; providerErrorCode?: string }>,
+    ) => {
+      const failed = results.filter((result) => result.providerStatus !== 'ok');
+      providerReports.push({
+        provider,
+        // Preserve the actual outage category when every request failed alike.
+        // Mixed failures or any successful/partial request mean partial coverage.
+        status: failed.length === 0 ? 'ok'
+          : results.every((result) => result.providerStatus === 'rate-limited') ? 'rate-limited'
+          : results.every((result) => result.providerStatus === 'timed-out') ? 'timed-out'
+          : results.every((result) => result.providerStatus === 'unavailable') ? 'unavailable'
+          : 'partial',
+        errorCode: failed.map((result) => result.providerErrorCode).find(Boolean),
+        retrievedAt,
+      });
+    };
+    summarizeProvider('hardcover', [hardcoverSeriesAndAuthor, hardcoverSeriesOnly, hardcoverAuthor]);
+    summarizeProvider('penguin-random-house', [prhSeriesAndAuthor, prhSeriesOnly, prhAuthor]);
+    // Google and Open Library currently swallow some individual lookup errors.
+    // Never advertise them as healthy until all failure paths are instrumented.
+    providerReports.push({
+      provider: 'google-books',
+      status: googleFailures.length >= queries.length + (author.trim() ? 1 : 0) ? 'unavailable' : 'partial',
+      errorCode: googleFailures.length ? 'query-failed' : 'pagination-not-verified',
+      retrievedAt,
+    });
+    providerReports.push({ provider: 'open-library', status: 'partial', errorCode: openLibraryFailures.length ? 'query-failed' : 'pagination-not-verified', retrievedAt });
     const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
     const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
     const seen = new Map<string, SeriesDetectiveCandidate>();
@@ -980,24 +1019,35 @@ export async function findMissingSeriesBooks(
     // existing verification gates. Then reuse that structured identity for
     // sibling volumes carrying the exact same seriesId.
     const confirmedGoogleSeriesIds = new Set<string>();
+    // Resolve catalog series identities from an owned work, not just the
+    // reader's potentially custom series label. An exact title+author anchor
+    // must carry an actual Google volumeSeries ID; search text is insufficient.
+    const seedGoogleSeriesIds = (
+      volume: DetectiveGoogleVolume,
+      catalog: DetectiveGoogleCatalog,
+      allowSingleUnnamed: boolean,
+    ) => {
+      confirmedGoogleMembershipIds(volume, catalog, seriesName, allowSingleUnnamed)
+        .forEach(id => confirmedGoogleSeriesIds.add(id));
+    };
     catalogs.forEach((catalog) => {
       catalog.items.forEach((volume) => {
+        const title = safeDetectiveTrim(volume.volumeInfo?.title);
+        const authors = volume.volumeInfo?.authors ?? [];
+        if (!title || !seriesBooks.some((book) =>
+          comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(title)
+          && authors.some((name) => detectiveAuthorsCompatible(book.work.author, name)))) return;
         const verified = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
-        if (
-          !verified?.seriesName
-          || !detectiveSeriesNamesCompatible(verified.seriesName, seriesName)
-          // A loosely inferred label on an unrelated work must never seed
-          // a provider-wide series ID used to admit additional volumes.
-          || !verified.work.authors.some((name) => detectiveAuthorsCompatible(author, name))
-          || !verified.seriesStructured
-        ) return;
-
-        (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
-          const id = safeDetectiveTrim(membership.seriesId);
-          if (id) confirmedGoogleSeriesIds.add(id);
-        });
+        // The user's custom label is not evidence that every Google membership
+        // on an owned book refers to the same series.
+        seedGoogleSeriesIds(volume, catalog, Boolean(verified?.seriesStructured && verified.seriesName
+          && detectiveSeriesNamesCompatible(verified.seriesName, seriesName)));
       });
     });
+    // Do not allow arbitrary search results to seed a series ID. Only an
+    // exact owned-work title/author anchor above can establish the ID;
+    // otherwise unrelated search hits could launder their siblings into
+    // verified membership.
 
     catalogs.forEach((catalog) => {
       catalog.items.forEach((volume) => {
@@ -1026,8 +1076,10 @@ export async function findMissingSeriesBooks(
         seriesName: candidate.seriesName,
         position: candidate.position,
         provider: 'open-library',
-        seriesProvider: 'open-library',
-        seriesStructured: true,
+        seriesProvider: candidate.seriesName ? 'open-library' : undefined,
+        // Search hits are not structured series evidence unless the provider
+        // supplied actual membership, rather than a query-text association.
+        seriesStructured: Boolean(candidate.seriesName),
       });
     });
 
@@ -1062,6 +1114,22 @@ export async function findMissingSeriesBooks(
       author,
     ));
 
+    // Wikidata is a distinct, structured series graph. Only query series IDs
+    // anchored to an owned work; failures must never imply absence.
+    // Keep a bounded one-seed lookup instead of multiplying calls by book.
+    const wikidataSeed = seriesBooks.find(book => book.work.title && book.work.author);
+    if (wikidataSeed) {
+      const wikidata = await discoverDetectiveWikidata(
+        { title: wikidataSeed.work.title, author: wikidataSeed.work.author }, seriesName, signal,
+      );
+      providerReports.push({
+        provider: 'wikidata',
+        status: wikidata.status === 'ok' ? 'ok' : wikidata.status === 'empty' ? 'partial' : 'unavailable',
+        errorCode: wikidata.error, retrievedAt,
+      });
+      providerCandidates.push(...wikidata.candidates);
+    }
+
     // Position is ordering metadata, never work identity. Providers frequently
     // omit or misreport it, so pruning to one candidate per position can delete
     // legitimate sibling works. Merge/dedupe by work identity and ISBN only.
@@ -1071,7 +1139,9 @@ export async function findMissingSeriesBooks(
     const addCandidate = (candidate: SeriesDetectiveCandidate) => {
       const titleKey = comparableDetectiveTitle(candidate.work.title, candidate.seriesName);
       const authorKey = canonicalDetectiveAuthor(candidate.work.authors[0]);
-      const isbnKey = compactDetectiveIsbn(candidate.edition.isbn13 ?? candidate.edition.isbn10);
+      const candidateIsbns = [candidate.edition.isbn13, candidate.edition.isbn10]
+        .map(compactDetectiveIsbn).filter(Boolean);
+      const isbnKey = candidateIsbns[0];
       // Series position is ordering metadata, not work identity. Two catalog
       // records claiming the same slot must not cause one distinct work to be
       // silently discarded.
@@ -1081,10 +1151,34 @@ export async function findMissingSeriesBooks(
       const key = titleKey && authorKey
         ? `work:${titleKey}::${authorKey}`
         : isbnKey ? `isbn:${isbnKey}` : `unidentified:${seen.size}`;
-      const current = seen.get(key);
-      if (!current || (current.verification !== 'verified' && candidate.verification === 'verified')
-        || (current.verification === candidate.verification && !current.edition.coverUrl && candidate.edition.coverUrl)) {
-        seen.set(key, candidate);
+      // ISBN identifies an edition, not a work. Catalogs sometimes reuse an
+      // ISBN across different installments; never discard a distinct title
+      // because its edition metadata collides with another candidate.
+      const isbnMatch = candidateIsbns.length ? [...seen.entries()].find(([, existing]) =>
+        [existing.edition.isbn13, existing.edition.isbn10]
+          .map(compactDetectiveIsbn).filter(Boolean)
+          .some((isbn) => candidateIsbns.includes(isbn))
+        && existing.work.authors.some((existingAuthor) =>
+          candidate.work.authors.some((incomingAuthor) =>
+            detectiveAuthorsCompatible(existingAuthor, incomingAuthor)))
+        && (!titleKey || !comparableDetectiveTitle(existing.work.title, existing.seriesName)
+          || comparableDetectiveTitle(existing.work.title, existing.seriesName) === titleKey)) : undefined;
+      // A missing title must not overwrite an identified work merely because
+      // the provider supplied a colliding ISBN. Keep it reviewable separately.
+      const targetKey = isbnMatch && titleKey && authorKey ? isbnMatch[0] : key;
+      const current = seen.get(targetKey);
+      const conflictingTitles = Boolean(current
+        && comparableDetectiveTitle(current.work.title, current.seriesName) !== titleKey);
+      const proposed = conflictingTitles ? { ...candidate, verification: 'review' as const } : candidate;
+      if (!current || (current.verification !== 'verified' && proposed.verification === 'verified')
+        || (current.verification === proposed.verification && !current.edition.coverUrl && proposed.edition.coverUrl)) {
+        seen.set(targetKey, proposed);
+      }
+      // Disagreement about the title of an identical ISBN must never be
+      // silently promoted to verified bulk-add eligibility.
+      if (conflictingTitles) {
+        const selected = seen.get(targetKey);
+        if (selected) seen.set(targetKey, { ...selected, verification: 'review' });
       }
     };
 
@@ -1110,12 +1204,21 @@ export async function findMissingSeriesBooks(
       rejectedEvidence: 0,
       admitted: 0,
       providerCounts: Object.fromEntries(
-        ['google-books', 'open-library', 'hardcover', 'penguin-random-house']
+        ['google-books', 'open-library', 'hardcover', 'penguin-random-house', 'wikidata']
           .map((provider) => [provider, providerCandidates.filter((candidate) => candidate.provider === provider).length]),
       ),
     };
 
+    // Keep verification anchored to the requested series and to an actual
+    // owned work. A text label by itself cannot establish series identity.
+    // Require two independent providers to identify the SAME owned work.
+    // A vote for owned book A and a vote for owned book B must not combine
+    // into a fictitious corroborated seed.
     mergedProviderCandidates.forEach((candidate) => {
+      if (isSeriesMetadataRecord(candidate, seriesName)) {
+        diagnostics.rejectedEvidence += 1;
+        return;
+      }
       // Fail closed at the final actionable-roster boundary. A matching series
       // phrase in a title, subtitle, or description is not proof of membership.
       // The catalog must supply structured membership or independent provider
@@ -1125,13 +1228,25 @@ export async function findMissingSeriesBooks(
         && (hasMergedKnownSeriesContext(candidate, seriesName)
           || explicitBrand);
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
+      // A seed work may belong to multiple related series. Its membership in
+      // another series cannot authorize relabeling all sibling works into the
+      // requested roster. Preserve cross-series evidence for future review,
+      // but do not promote it to an actionable candidate.
+      const anchoredAlias = false;
       if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) {
         diagnostics.rejectedSeries += 1;
         return;
       }
       const independentlyCorroborated = new Set(candidate.providerSources ?? [candidate.provider]).size >= 2;
-      const matchingAuthor = candidate.work.authors.some((name) => detectiveAuthorsCompatible(author, name));
-      if (!matchingAuthor && !(verifiedMultiAuthorBrand && (candidate.seriesStructured || explicitBrand))) {
+      const ownedAuthors = seriesBooks.map((book) => book.work.author).filter(Boolean);
+      const matchingAuthor = candidate.work.authors.some((name) =>
+        (Boolean(canonicalDetectiveAuthor(author)) && detectiveAuthorsCompatible(author, name))
+        || ownedAuthors.some((ownedAuthor) => detectiveAuthorsCompatible(ownedAuthor, name)));
+      // Cross-author anthologies are legitimate, but a shared title phrase
+      // is not enough to admit a different author's unrelated work.
+      const compatibleSeries = detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName);
+      const crossAuthorMembership = candidate.seriesStructured && compatibleSeries && verifiedMultiAuthorBrand;
+      if (!matchingAuthor && !crossAuthorMembership && !(candidate.seriesStructured && anchoredAlias)) {
         diagnostics.rejectedAuthor += 1;
         return;
       }
@@ -1144,18 +1259,32 @@ export async function findMissingSeriesBooks(
       // providers may repeat the same title/description branding. Require
       // explicit structured series evidence as well as corroboration before
       // offering bulk addition. Brand-only discoveries remain reviewable.
-      const verification: 'verified' | 'review' =
-        candidate.seriesStructured && independentlyCorroborated ? 'verified' : 'review';
-
+      // An authoritative structured membership with a real installment number
+      // can verify independently; weak/unnumbered metadata still needs corroboration.
+      // Aliases and title branding never grant automatic verification.
+      // A single provider's numbered membership is discovery evidence, not
+      // independent verification. Preserve the candidate for review instead
+      // of silently granting bulk-add eligibility.
+      const decision = decideDetectiveMembership(
+        providerCandidates, candidate,
+        seriesBooks.map(book => ({ title: book.work.title, author: book.work.author })),
+        seriesName,
+      );
       addCandidate({
         work: candidate.work,
         edition: candidate.edition,
-        seriesName: resolvedSeriesName,
-        position: candidate.position,
-        verification,
+        // Present results under the reader's collection without modifying
+        // the original catalog evidence or saved reading order.
+        seriesName: anchoredAlias ? seriesName : resolvedSeriesName,
+        // A single catalog's ordinal is not a verified reading order.
+        // Retain unknown order instead of presenting a misleading number.
+        position: decision.position,
+        verification: decision.verification,
+
       });
     });
 
+    discoveryDiagnostics = { ...diagnostics, uniqueWorks: seen.size };
     if (import.meta.env.DEV) {
       console.info('[Series Detective] discovery diagnostics', {
         seriesName,
@@ -1165,7 +1294,23 @@ export async function findMissingSeriesBooks(
       });
     }
 
-    return [...seen.values()].sort((a, b) => {
+    // Conflicting claims to the same numbered slot are not proof of identical
+    // works. Preserve both records but require individual review of each.
+    const byPosition = new Map<number, SeriesDetectiveCandidate[]>();
+    for (const candidate of seen.values()) {
+      if (candidate.position === null) continue;
+      const siblings = byPosition.get(candidate.position) ?? [];
+      siblings.push(candidate);
+      byPosition.set(candidate.position, siblings);
+    }
+    const conflictedPositions = new Set([...byPosition.entries()]
+      .filter(([, siblings]) => new Set(siblings.map((candidate) =>
+        `${comparableDetectiveTitle(candidate.work.title, candidate.seriesName)}::${canonicalDetectiveAuthor(candidate.work.authors[0])}`)).size > 1)
+      .map(([position]) => position));
+    return [...seen.values()].map((candidate) =>
+      candidate.position !== null && conflictedPositions.has(candidate.position)
+        ? { ...candidate, verification: 'review' as const }
+        : candidate).sort((a, b) => {
       if (a.position !== null && b.position !== null) return a.position - b.position;
       if (a.position !== null) return -1;
       if (b.position !== null) return 1;
@@ -1173,14 +1318,12 @@ export async function findMissingSeriesBooks(
     });
   };
 
-  // Catalog discovery is the expensive part and is independent of what the
-  // library currently holds, so it is cached briefly. Owned/missing is always
-  // recomputed against the live library below.
-  let candidates = options.forceRefresh ? null : readSeriesCandidateCache(cacheKey);
-  if (!candidates) {
-    candidates = await discoverCandidates();
-    writeSeriesCandidateCache(cacheKey, candidates);
-  }
-
-  return classifySeriesCandidates(seriesName, candidates, libraryBooks);
+  // Do not cache discovery until every provider exposes reliable health and
+  // pagination/completeness signals. Ownership is classified against the live
+  // library for each request.
+  const candidates = await discoverCandidates();
+  const result = classifySeriesCandidates(seriesName, candidates, libraryBooks);
+  result.completeness = providerReports.every((report) => report.status === 'unavailable')
+    ? 'unavailable' : 'partial';
+  return result;
 }

@@ -51,7 +51,7 @@ export const SeriesDetectivePreview: React.FC<Props> = ({ seriesName, author, bo
       booksRef.current,
       controller.signal,
       seriesBookIds,
-      // The first run may reuse a recent catalog lookup; an explicit re-run is a retry.
+      // Every explicit lookup refreshes discovery; no roster cache is active.
       { forceRefresh: run > 1, overrides: overridesRef.current },
     )
       .then((next) => { if (!controller.signal.aborted) setResult(next); })

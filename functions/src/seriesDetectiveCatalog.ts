@@ -269,7 +269,8 @@ const normalizeHardcoverText = (value?: string): string =>
 
 const normalizeHardcoverSeries = (value?: string): string => {
   const tokens = normalizeHardcoverText(value).split(' ').filter(Boolean);
-  // Generic series qualifiers only; no franchise-specific aliases.\n  while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
+  // Generic series qualifiers only; no franchise-specific aliases.
+  while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
   while (
     tokens.length > 1
     && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections', 'trilogy', 'duology', 'duet', 'quartet', 'quintet', 'sextet', 'septet', 'octet'].includes(tokens[tokens.length - 1])
@@ -374,6 +375,7 @@ async function detectiveHardcoverCatalog(
   const searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
   const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
 
+  let providerPartial = false;
   let editions: HardcoverEdition[] = [];
   let books: HardcoverBook[] = [];
 
@@ -416,6 +418,7 @@ async function detectiveHardcoverCatalog(
         });
     } catch (error) {
       console.warn('Series Detective Hardcover exact-title lookup unavailable.', error);
+      providerPartial = true;
     }
   }
   if (ids.length > 0) {
@@ -587,6 +590,7 @@ async function detectiveHardcoverCatalog(
       }
     } catch (error) {
       console.warn('Series Detective Hardcover direct series lookup unavailable.', error);
+      providerPartial = true;
     }
   }
 
@@ -674,6 +678,7 @@ async function detectiveHardcoverCatalog(
         }
       } catch (error) {
         console.warn('Series Detective Hardcover series expansion unavailable.', error);
+      providerPartial = true;
       }
     }
   }
@@ -842,7 +847,7 @@ async function detectiveHardcoverCatalog(
     });
   });
 
-  return { groups, totalItems: groups.length };
+  return { groups, totalItems: groups.length, providerStatus: providerPartial ? 'partial' as const : 'ok' as const, providerErrorCode: providerPartial ? 'expansion-failed' : undefined };
 }
 
 export const searchSeriesDetectiveHardcover = onCall(
@@ -872,7 +877,7 @@ export const searchSeriesDetectiveHardcover = onCall(
       });
     } catch (error) {
       console.warn('Series Detective Hardcover catalog unavailable.', error);
-      return { groups: [], totalItems: 0 };
+      return { groups: [], totalItems: 0, providerStatus: 'unavailable' as const, providerErrorCode: 'upstream-failure' };
     }
   },
 );
@@ -1132,6 +1137,7 @@ async function detectivePrhCatalog(
     anchorTitles?: string[];
   } = {},
 ) {
+  let providerPartial = false;
   const compactIsbn = query.replace(/[^0-9X]/gi, '').toUpperCase();
   if (/^(?:978|979)\d{10}$/.test(compactIsbn)) {
     try {
@@ -1188,6 +1194,7 @@ async function detectivePrhCatalog(
       }
     } catch (error) {
       console.warn('Penguin Random House exact-ISBN lookup unavailable; falling back to work search.', error);
+      providerPartial = true;
     }
   }
 
@@ -1229,6 +1236,7 @@ async function detectivePrhCatalog(
       }
     } catch (error) {
       console.warn('Series Detective PRH series expansion unavailable.', error);
+      providerPartial = true;
     }
   }
 
@@ -1300,7 +1308,7 @@ async function detectivePrhCatalog(
     };
   }));
 
-  return { groups, totalItems: groups.length };
+  return { groups, totalItems: groups.length, providerStatus: providerPartial ? 'partial' as const : 'ok' as const, providerErrorCode: providerPartial ? 'expansion-failed' : undefined };
 }
 
 
@@ -1406,7 +1414,7 @@ export const searchSeriesDetectivePenguinRandomHouse = onCall(
       });
     } catch (error) {
       console.warn('Series Detective Penguin Random House catalog unavailable.', error);
-      return { groups: [], totalItems: 0 };
+      return { groups: [], totalItems: 0, providerStatus: 'unavailable' as const, providerErrorCode: 'upstream-failure' };
     }
   },
 );
@@ -1425,7 +1433,7 @@ export const searchSeriesDetectiveGoogleBooks = onCall(
       return await detectiveGoogleCatalog(query, startIndex, maxResults);
     } catch (error) {
       console.warn('Series Detective Google Books catalog unavailable.', error);
-      return { totalItems: 0, items: [], seriesMetadataById: {} };
+      return { totalItems: 0, items: [], seriesMetadataById: {}, providerStatus: 'unavailable' as const, providerErrorCode: 'upstream-failure' };
     }
   },
 );

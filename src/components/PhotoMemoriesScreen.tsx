@@ -57,7 +57,7 @@ function resizeImage(file: File): Promise<string> {
 }
 
 export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books, onSelectBook }) => {
-  const [memories, setMemories] = usePhotoMemories();
+  const [memories, setMemories, memoryLoadError] = usePhotoMemories();
   const [filter, setFilter] = usePersistentState<'all' | 'linked' | 'unlinked'>(PHOTO_FILTER_KEY, 'all');
   const [search, setSearch] = useState('');
   const [isComposerOpen, setIsComposerOpen] = useState(false);
@@ -210,7 +210,8 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
         </label>
       </div>
 
-      {visibleMemories.length === 0 ? (
+      {memoryLoadError && <div role="alert" className="rounded-xl border border-amber-500/50 p-4 text-sm text-[var(--ink-ivory)]">Photo memories could not be loaded on this device. Cloud records were not deleted. {memoryLoadError}</div>}
+      {!memoryLoadError && (visibleMemories.length === 0 ? (
         <div className="inkbound-panel rounded-3xl px-6 py-16 text-center">
           <Camera className="mx-auto h-10 w-10 text-[var(--ink-gold)]" />
           <h3 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">Your visual reading journal starts here</h3>
@@ -238,7 +239,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
             );
           })}
         </div>
-      )}
+      ))}
 
       {selectedMemory && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/90 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label={selectedMemory.caption || 'Photo memory'} onClick={() => setSelectedMemory(null)}>

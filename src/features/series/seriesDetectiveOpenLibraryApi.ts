@@ -162,6 +162,11 @@ export const parseDetectiveOpenLibrarySeries = (
     'first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth',
     'eleventh','twelfth','thirteenth','fourteenth','fifteenth','sixteenth','seventeenth','eighteenth','nineteenth','twentieth',
   ].join('|');
+  // Year-like suffixes can be part of the actual series name, not an
+  // installment ordinal (e.g. Goosebumps 2000).
+  if (/\s(?:19|20)\d{2}$/u.test(primary)) {
+    return { name: primary, position: null };
+  }
   const match = primary.match(new RegExp(
     `^(.*?)(?:\\s*,?\\s*)(?:#\\s*|book\\s*#?\\s*|vol(?:ume)?\\.?\\s*#?\\s*|part\\s*#?\\s*|,\\s*)(\\d+(?:\\.\\d+)?|${positionWords})\\s*$`,
     'i',
@@ -171,6 +176,14 @@ export const parseDetectiveOpenLibrarySeries = (
     name: match[1].replace(/[,:;\-]+$/g, '').trim() || primary,
     position: parseDetectivePositionToken(match[2]),
   };
+};
+
+// Publisher collection identifiers (e.g. "rororo 23230") are not literary series.
+export const plausibleOpenLibrarySeriesName = (name: string): boolean => {
+  const normalized = name.trim();
+  if (!normalized || /^\d+[\s./-]*\d*$/.test(normalized)) return false;
+  if (/^(?:rororo|isbn|issn|penguin classics|harpercollins|random house)\s*[#.: -]*\d+$/i.test(normalized)) return false;
+  return !/^(?:volume|book|part|series)\s*#?\d+$/i.test(normalized);
 };
 
 const mapCandidate = (
@@ -192,10 +205,10 @@ const mapCandidate = (
   ].flatMap((value) => value.split(';').map((part) => part.trim()).filter(Boolean));
   const memberships = seriesValues
     .map((value) => parseDetectiveOpenLibrarySeries([value]))
-    .filter((value): value is NonNullable<typeof value> => value !== null);
+    .filter((value): value is NonNullable<typeof value> => value !== null && plausibleOpenLibrarySeriesName(value.name));
   const metadata = wantedSeriesName
     ? memberships.find((value) => detectiveSeriesNamesCompatible(value.name, wantedSeriesName))
-    : memberships[0];
+    : memberships.find((value) => value.position !== null) ?? memberships[0];
   if (!metadata) return null;
 
   const authors = work.author_name?.length ? work.author_name : ['Unknown author'];
@@ -251,6 +264,25 @@ const mapCandidate = (
   };
 };
 
+// Every provider request has a finite deadline; caller cancellation remains authoritative.
+const fetchWithDeadline = async (url: string, signal?: AbortSignal): Promise<Response> => {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener('abort', onAbort, { once: true });
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+    // Read the response body before releasing the deadline. A stalled JSON
+    // stream must not leave discovery waiting indefinitely.
+    const body = await response.text();
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', onAbort);
+  }
+};
+
 const fetchOpenLibrary = async (
   params: URLSearchParams,
   signal?: AbortSignal,
@@ -259,10 +291,7 @@ const fetchOpenLibrary = async (
   params.set('limit', '100');
   params.set('page', String(Math.max(1, page)));
   params.set('fields', FIELDS);
-  const response = await fetch(`${ENDPOINT}?${params.toString()}`, {
-    signal,
-    headers: { Accept: 'application/json' },
-  });
+  const response = await fetchWithDeadline(`${ENDPOINT}?${params.toString()}`, signal);
   if (!response.ok) throw new Error(`Open Library Series Detective search failed (${response.status}).`);
   const payload = await response.json() as OpenLibraryResponse;
   return payload.docs ?? [];
@@ -289,12 +318,9 @@ const fetchWorkEditions = async (
 
   let pending = workEditionInFlight.get(path);
   if (!pending) {
-    pending = fetch(`https://openlibrary.org${path}/editions.json?limit=30`, {
-      signal,
-      headers: { Accept: 'application/json' },
-    })
+    pending = fetchWithDeadline(`https://openlibrary.org${path}/editions.json?limit=30`, signal)
       .then(async (response) => {
-        if (!response.ok) return [];
+        if (!response.ok) throw new Error(`Open Library edition lookup failed (${response.status}).`);
         const payload = await response.json() as { entries?: OpenLibraryEdition[] };
         const editions = payload.entries ?? [];
         workEditionCache.set(path, {
@@ -302,10 +328,6 @@ const fetchWorkEditions = async (
           editions,
         });
         return editions;
-      })
-      .catch((error) => {
-        if (signal?.aborted) throw error;
-        return [];
       })
       .finally(() => workEditionInFlight.delete(path));
     workEditionInFlight.set(path, pending);
@@ -317,7 +339,16 @@ const hydrateWorksFromEditionDetails = async (
   works: OpenLibraryWork[],
   limit: number,
   signal?: AbortSignal,
-): Promise<OpenLibraryWork[]> => Promise.all(works.map(async (work, index) => {
+  onFailure?: (error: unknown) => void,
+): Promise<OpenLibraryWork[]> => {
+  // Cap concurrent edition lookups. The previous Promise.all fan-out could
+  // launch 20-30 requests at once and trigger rate limits.
+  const hydrated: OpenLibraryWork[] = [];
+  const concurrency = 4;
+  for (let offset = 0; offset < works.length; offset += concurrency) {
+    if (signal?.aborted) throw signal.reason ?? new Error('Open Library lookup aborted');
+    const batch = await Promise.all(works.slice(offset, offset + concurrency).map(async (work, batchIndex) => {
+      const index = offset + batchIndex;
   if (index >= limit || !work.key) return work;
   const existing = work.editions?.docs ?? [];
   const hasSeries = Boolean(
@@ -325,9 +356,21 @@ const hydrateWorksFromEditionDetails = async (
     || existing.some((edition) => safeSeriesValues(edition.series).length > 0)
     || seriesSubjects(work.subject).length > 0,
   );
-  if (hasSeries && existing.length > 0) return work;
+  // A search result may carry an unnumbered series label while the edition
+  // endpoint carries its actual installment number. Do not skip hydration
+  // merely because a series name exists in the search payload.
+  const hasPositionedEdition = existing.some((edition) =>
+    parseDetectiveOpenLibrarySeries(safeSeriesValues(edition.series))?.position != null);
+  if (hasSeries && hasPositionedEdition) return work;
 
-  const detailed = await fetchWorkEditions(work.key, signal);
+  let detailed: OpenLibraryEdition[];
+  try {
+    detailed = await fetchWorkEditions(work.key, signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    onFailure?.(error);
+    return work;
+  }
   if (!detailed.length) return work;
 
   const seen = new Set(existing.map((edition) => edition.key).filter(Boolean));
@@ -340,7 +383,11 @@ const hydrateWorksFromEditionDetails = async (
       ],
     },
   };
-}));
+    }));
+    hydrated.push(...batch);
+  }
+  return hydrated;
+};
 
 const flattenCandidates = (
   works: OpenLibraryWork[],
@@ -359,10 +406,11 @@ export async function searchDetectiveOpenLibraryContext(
   author: string,
   signal?: AbortSignal,
   allowOtherAuthors = false,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveOpenLibraryContextCandidate[]> {
   const params = new URLSearchParams({ q: allowOtherAuthors ? seriesName : `${seriesName} ${author}`.trim() });
   try {
-    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 12, signal);
+    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 12, signal, onFailure);
     const wantedAuthor = canonicalDetectiveAuthor(author);
 
     return works.flatMap((work) => {
@@ -374,8 +422,18 @@ export async function searchDetectiveOpenLibraryContext(
       ) return [];
 
       const docs = work.editions?.docs?.length ? work.editions.docs : [{}];
-      const preferred = docs.find((edition) => parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series, seriesSubjects(work.subject))))
-        ?? docs[0];
+      // Prefer a positioned edition only when every explicit edition-level
+      // position agrees. Conflicting editions must not silently select the
+      // first numbered claim as authoritative.
+      const editionPositions = docs.map((edition) =>
+        parseDetectiveOpenLibrarySeries(safeSeriesValues(edition.series))?.position)
+        .filter((position): position is number => typeof position === 'number' && Number.isFinite(position));
+      const positionConflict = new Set(editionPositions).size > 1;
+      const preferred = !positionConflict
+        ? docs.find((edition) => parseDetectiveOpenLibrarySeries(safeSeriesValues(edition.series))?.position != null)
+          ?? docs.find((edition) => parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series, seriesSubjects(work.subject))))
+          ?? docs[0]
+        : docs[0];
       const title = (preferred.title ?? work.title)?.trim();
       if (!title) return [];
 
@@ -415,12 +473,13 @@ export async function searchDetectiveOpenLibraryContext(
         work: mappedWork,
         edition,
         seriesName: metadata?.name,
-        position: metadata?.position ?? null,
+        position: positionConflict ? null : metadata?.position ?? null,
       }];
     });
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective Open Library contextual lookup failed.', error);
+    onFailure?.(error);
     return [];
   }
 }
@@ -429,6 +488,7 @@ export async function searchDetectiveOpenLibrarySeries(
   seriesName: string,
   author?: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveOpenLibraryCandidate[]> {
   const escapedSeries = seriesName.replace(/"/g, '').trim();
   const queries = [
@@ -439,10 +499,11 @@ export async function searchDetectiveOpenLibrarySeries(
   const results = await Promise.all(queries.map(async (params) => {
     try {
       const works = await fetchOpenLibrary(params, signal);
-      return hydrateWorksFromEditionDetails(works, 12, signal);
+      return hydrateWorksFromEditionDetails(works, 12, signal, onFailure);
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn('Series Detective Open Library query failed.', error);
+    onFailure?.(error);
       return [];
     }
   }));
@@ -460,6 +521,7 @@ export async function searchDetectiveOpenLibrarySeries(
 export async function searchDetectiveOpenLibraryAuthor(
   author: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveOpenLibraryCandidate[]> {
   const trimmed = author.trim();
   if (!trimmed) return [];
@@ -472,11 +534,12 @@ export async function searchDetectiveOpenLibraryAuthor(
       works.push(...pageWorks);
       if (pageWorks.length < 100) break;
     }
-    const hydrated = await hydrateWorksFromEditionDetails(works, 20, signal);
+    const hydrated = await hydrateWorksFromEditionDetails(works, 20, signal, onFailure);
     return flattenCandidates(hydrated, undefined, author);
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective Open Library author lookup failed.', error);
+    onFailure?.(error);
     return [];
   }
 }
@@ -485,10 +548,11 @@ export async function searchDetectiveOpenLibraryBook(
   title: string,
   author: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<DetectiveOpenLibraryCandidate[]> {
   const params = new URLSearchParams({ title: title.trim(), author: author.trim() });
   try {
-    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 8, signal);
+    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 8, signal, onFailure);
     return flattenCandidates(works, undefined, author)
       .filter((candidate) =>
         comparableDetectiveTitle(candidate.work.title) === comparableDetectiveTitle(title)
@@ -497,6 +561,7 @@ export async function searchDetectiveOpenLibraryBook(
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective Open Library book lookup failed.', error);
+    onFailure?.(error);
     return [];
   }
 }

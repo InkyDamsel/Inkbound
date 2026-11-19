@@ -26,6 +26,7 @@ import {
   getSessionPagesRead,
 } from '../features/reading/sessionAnalytics';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { usePhotoMemories } from '../features/memories/usePhotoMemories';
 
 interface ReadingTimelineScreenProps {
   books: UserBookRecord[];
@@ -111,6 +112,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
   const [search, setSearch] = usePersistentState(SEARCH_KEY, '');
   const [collapsedMonths, setCollapsedMonths] = usePersistentState<string[]>(COLLAPSED_KEY, []);
   const [memories, setMemories] = usePersistentState<ManualMemory[]>(MEMORIES_KEY, []);
+  const [photoMemories] = usePhotoMemories();
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [memoryTitle, setMemoryTitle] = useState('');
   const [memoryBody, setMemoryBody] = useState('');
@@ -283,8 +285,23 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
       });
     });
 
+    photoMemories.forEach((photo) => {
+      const date = normalizeDate(photo.createdAt || photo.date);
+      if (!date) return;
+      const book = photo.bookId ? books.find((item) => item.id === photo.bookId) : undefined;
+      nextEvents.push({
+        id: `photo-memory-${photo.id}`,
+        date: date.toISOString(),
+        type: 'memories',
+        title: book ? `Added a photo memory for ${book.work.title}` : 'Added a photo memory',
+        description: photo.caption.trim() || 'A photo memory was saved in Photo Memories.',
+        bookId: photo.bookId,
+        meta: 'Photo memory',
+      });
+    });
+
     return nextEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [books, memories, sessions]);
+  }, [books, memories, photoMemories, sessions]);
 
   const filteredEvents = useMemo(() => {
     const query = search.trim().toLowerCase();

@@ -17,6 +17,8 @@ export interface SeriesQueryPlanInput {
   author: string;
   /** Series positions already known for books in the library (any numbers). */
   knownPositions: number[];
+  /** Actual owned titles to ground searches when a reader's custom series label differs from publishers. */
+  anchorTitles?: string[];
 }
 
 export interface SeriesQueryPlan {
@@ -68,6 +70,10 @@ export const planSeriesDiscoveryQueries = (input: SeriesQueryPlanInput): SeriesQ
     author ? `${seriesName} book ${position} ${author}` : `${seriesName} book ${position}`,
   ]);
 
+  const anchorQueries = (input.anchorTitles ?? []).filter(Boolean).slice(0, 3)
+    .flatMap((title) => [author ? `intitle:"${title.replace(/"/g, '')}" inauthor:"${author}"` : `intitle:"${title.replace(/"/g, '')}"`,
+      author ? `"${title.replace(/"/g, '')}" "${author}"` : `"${title.replace(/"/g, '')}"`]);
+
   const baseQueries = [
     `"${seriesName}"`,
     author ? `"${seriesName}" ${author}` : '',
@@ -85,7 +91,7 @@ export const planSeriesDiscoveryQueries = (input: SeriesQueryPlanInput): SeriesQ
 
   return {
     targetPositions,
-    queries: [...new Set([...baseQueries, ...positionQueries])],
+    queries: [...new Set([...anchorQueries, ...baseQueries, ...positionQueries])],
   };
 };
 

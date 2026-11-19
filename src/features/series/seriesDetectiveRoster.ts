@@ -137,10 +137,14 @@ export const buildSeriesRoster = (
 export interface SeriesRosterSummary {
   inLibrary: number;
   missing: number;
+  review: number;
+  libraryOnly: number;
   total: number;
 }
 
 export const summarizeSeriesRoster = (entries: SeriesRosterEntry[]): SeriesRosterSummary => {
-  const missing = entries.filter((entry) => entry.kind === 'missing').length;
-  return { inLibrary: entries.length - missing, missing, total: entries.length };
+  const missing = entries.filter((entry) => entry.kind === 'missing' && entry.candidate?.verification === 'verified').length;
+  const review = entries.filter((entry) => entry.kind === 'missing' && entry.candidate?.verification !== 'verified').length;
+  const libraryOnly = entries.filter((entry) => entry.kind === 'library-only').length;
+  return { inLibrary: entries.length - missing - review, missing, review, libraryOnly, total: entries.length };
 };

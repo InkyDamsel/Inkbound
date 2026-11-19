@@ -104,10 +104,13 @@ async function applyOperation(uid: string, operation: PhotoMemorySyncOperation) 
   const localPhotos = await readPhotoMemoriesFromDevice();
   const localPhoto = localPhotos.find((photo) => photo.id === operation.id);
 
-  if (operation.type === 'delete' || !localPhoto) {
+  if (operation.type === 'delete') {
     await deletePhoto(uid, operation.id);
     updateStoredRevision(operation.id);
   } else {
+    // Missing local media is never evidence of a user-requested deletion.
+    // Keep the queued upsert and the cloud original until hydration succeeds.
+    if (!localPhoto) throw new Error(`Photo memory ${operation.id} is unavailable locally; cloud original preserved.`);
     const revision = await uploadPhoto(uid, localPhoto);
     updateStoredRevision(operation.id, revision);
   }
@@ -131,12 +134,14 @@ async function hydrateCloudPhoto(id: string, photo: CloudPhotoMemory): Promise<P
     try {
       const bytes = await getBytes(storageRef(storage, photo.storagePath), MAX_PHOTO_MEMORY_BYTES);
       imageData = await bytesToDataUrl(bytes, photo.imageContentType ?? 'image/jpeg');
-    } catch {
-      // Keep a local or legacy copy instead of dropping the memory on a temporary
-      // Storage/network failure. Reconciliation supplies the local fallback below.
+    } catch (error) {
+      // Never interpret an inaccessible Storage object as an absent memory.
+      // Abort reconciliation rather than replacing the device inventory with
+      // a partial result. A later retry can restore the original image.
+      throw new Error(`Could not restore photo memory ${id} from Storage.`, { cause: error });
     }
   }
-  if (!imageData) return null;
+  if (!imageData) throw new Error(`Photo memory ${id} has no accessible image; refusing partial reconciliation.`);
 
   return {
     id,

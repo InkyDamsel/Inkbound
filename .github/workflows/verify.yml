@@ -1,15 +1,8 @@
 name: Verify Inkbound
 
+# Manual-only: commits and pull requests must never launch paid CI runners.
 on:
-  push:
-    branches:
-      - design/quiet-shelf-dashboard
-      - feature/series-library
-      - feature/build-27-reading-source-of-truth
-      - feature/build-28-library-building
-      - feature/build-29-social
-      - main
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: verify-${{ github.ref }}
