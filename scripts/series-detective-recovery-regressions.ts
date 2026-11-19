@@ -766,7 +766,10 @@ const conflictingOrder = mergeDetectiveCandidates([
 assert.equal(conflictingOrder.length, 1);
 assert.equal(detectiveSeriesNamesCompatible(conflictingOrder[0].seriesName, 'Example Saga'), true);
 assert.equal(conflictingOrder[0].position, null);
-assert.equal(conflictingOrder[0].seriesStructured, false, 'Conflicting structured installment numbers must remain review-only');
+assert.equal(conflictingOrder[0].seriesStructured, true,
+  'Disputed installment numbers must not erase structured series membership');
+assert.equal(conflictingOrder[0].position, null,
+  'Disputed installment numbers must never produce a trusted reading order');
 
 // Bibliographic suffixes may vary by provider without splitting one work.
 const suffixMerge = mergeDetectiveCandidates([
