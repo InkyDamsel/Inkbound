@@ -387,6 +387,19 @@ export const findLibraryBookForCandidate = (
     // ISBN alone must never establish ownership.
     if (book.work.seriesName?.trim() && candidate.seriesName?.trim()
       && !detectiveSeriesNamesCompatible(book.work.seriesName, candidate.seriesName)) return false;
+    // A boxed set may reuse one valid ISBN across distinct novels. For
+    // different titles, ISBN overlap is only supporting evidence: require
+    // an independent work-level or series-slot identity anchor as well.
+    const sameExternalWork = Boolean(book.work.externalWorkId?.trim()
+      && candidate.work.externalWorkId?.trim()
+      && book.work.externalWorkId === candidate.work.externalWorkId);
+    const sameEstablishedSlot = Boolean(book.work.seriesName?.trim()
+      && detectiveSeriesNamesCompatible(book.work.seriesName, candidate.seriesName)
+      && typeof book.work.seriesOrder === 'number'
+      && Number.isFinite(book.work.seriesOrder)
+      && typeof candidate.position === 'number'
+      && book.work.seriesOrder === candidate.position);
+    if (!sameExternalWork && !sameEstablishedSlot) return false;
     const candidateIsbns = new Set([candidate.edition.isbn13, candidate.edition.isbn10,
       ...candidate.work.editions.flatMap(edition => [edition.isbn13, edition.isbn10])]
       .map(canonicalDetectiveIsbn13).filter((isbn): isbn is string => Boolean(isbn)));
