@@ -93,9 +93,22 @@ export const detectiveWorkTitlesCompatible = (left?: string, right?: string, ser
   return genericVariant(left) === b || genericVariant(right) === a;
 };
 
+/** Provider placeholders are not evidence of an author's identity. */
+const NON_AUTHOR_IDENTITIES = new Set([
+  'unknown', 'unknown author', 'author unknown', 'anonymous', 'n a',
+  'not available', 'not specified', 'various', 'various authors',
+  'multiple authors', 'staff', 'editorial staff',
+]);
+
+export const isCredibleDetectiveAuthor = (value?: string): boolean => {
+  const identity = normalizeDetectiveText(value);
+  return Boolean(identity && !NON_AUTHOR_IDENTITIES.has(identity)
+    && !/^(?:unknown|anonymous|various|n\\s*a)\\s+(?:author|authors)$/.test(identity));
+};
+
 export const canonicalDetectiveAuthor = (value?: string): string => {
   const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw) return '';
+  if (!isCredibleDetectiveAuthor(raw)) return '';
 
   const commaIndex = raw.indexOf(',');
   if (commaIndex >= 0 && raw.indexOf(',', commaIndex + 1) < 0) {
