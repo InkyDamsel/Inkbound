@@ -124,15 +124,9 @@ export const SeriesDetectiveRoster: React.FC<Props> = ({ entries, onOpenBook }) 
           {summary.total} candidate/owned record(s): {summary.inLibrary} in your library, {summary.missing} verified missing, {summary.review} need review{summary.libraryOnly ? `, including ${summary.libraryOnly} library-only` : ''}.
         </p>
         {reviewCount > 0 && <p className="text-xs text-amber-200">{reviewCount} candidate(s) need independent series verification before adding.</p>}
-        {disconnectedEntries.length > 0 && <button type="button" onClick={() => {
-          const books = disconnectedEntries.map((entry) => ({
-            bookId: entry.book!.id,
-            seriesName: entry.candidate!.seriesName,
-            position: entry.candidate!.position,
-          }));
-          if (!window.confirm(`Connect ${books.length} existing book(s) to their verified series? Only empty series fields will be filled. No books will be added or removed.`)) return;
-          window.dispatchEvent(new CustomEvent('inkbound:series-detective-connect', { detail: { books } }));
-        }} className="rounded-xl border border-[#c5a059]/60 px-3 py-2 text-xs font-bold text-[#e5c158] hover:bg-[#c5a059]/10">Connect {disconnectedEntries.length} existing book(s) to series</button>}
+        {disconnectedEntries.length > 0 && <p className="text-xs text-amber-200">
+          {disconnectedEntries.length} owned book(s) have proposed series connections. Automatic connection is paused until independent evidence can be revalidated; use normal Book Details editing for manual corrections.
+        </p>}
         {missingEntries.length > 1 && (
           <button type="button" onClick={() => addEvent(missingEntries)} className="rounded-xl bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#211128] hover:bg-[#e4c47c]">Add All Missing</button>
         )}
