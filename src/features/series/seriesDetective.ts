@@ -308,6 +308,12 @@ export interface SeriesDetectiveCandidate {
   verification?: 'verified' | 'review';
 }
 
+// Only candidates emitted by a completed discovery may enter the automatic
+// add flow. An event's user-controlled verification string is never evidence.
+const issuedVerifiedCandidates = new WeakSet<SeriesDetectiveCandidate>();
+export const isIssuedVerifiedDetectiveCandidate = (candidate: SeriesDetectiveCandidate): boolean =>
+  Boolean(candidate && candidate.verification === 'verified' && issuedVerifiedCandidates.has(candidate));
+
 export interface SeriesDetectiveOwnedEntry {
   /** Catalog record that was recognised as already being in the library. */
   candidate: SeriesDetectiveCandidate;
@@ -1366,6 +1372,8 @@ export async function findMissingSeriesBooks(
   // pagination/completeness signals. Ownership is classified against the live
   // library for each request.
   const candidates = await discoverCandidates();
+  candidates.filter(candidate => candidate.verification === 'verified')
+    .forEach(candidate => issuedVerifiedCandidates.add(candidate));
   const result = classifySeriesCandidates(seriesName, candidates, libraryBooks);
   // These reports were collected during discovery but never attached to the
   // returned result, leaving production failures invisible to callers.
