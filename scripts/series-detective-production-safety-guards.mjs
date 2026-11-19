@@ -46,6 +46,8 @@ assert.match(legacy, /seriesStructured: false,/);
 assert.ok((legacy.match(/Number\.isSafeInteger\(displayPosition\) && displayPosition > 0/g) ?? []).length >= 2);
 assert.match(legacy, /decideDetectiveMembership\(/);
 assert.match(legacy, /issuedVerifiedCandidates\.add\(candidate\)/);
+assert.match(legacy, /const crossAuthorReview = candidate\.seriesStructured === true/);
+assert.match(legacy, /verification: crossAuthorReview \? 'review' : decision\.verification/);
 assert.match(app, /isIssuedVerifiedDetectiveCandidate\(candidate\)/);
 assert.doesNotMatch(bookLookup, /inkbound:series-detective-apply/);
 assert.match(decision, /hasCorroboratedOwnedSeed\(/);
