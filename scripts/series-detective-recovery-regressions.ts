@@ -1279,8 +1279,8 @@ const unifiedDecision = decideDetectiveMembership(
   [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
 );
 assert.deepEqual(unifiedDecision, {
-  verification: 'review', position: null, conflictingOrder: true,
-});
+  verification: 'verified', position: null, conflictingOrder: true,
+}, 'Verified membership survives conflicting provider order, but order remains unknown');
 const singleProviderDecision = decideDetectiveMembership(
   structuredSeriesEvidence.filter(candidate => candidate.provider === 'open-library'),
   structuredSeriesEvidence[2], [{ title: 'Icebreaker', author: 'Hannah Grace' }],
