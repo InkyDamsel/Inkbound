@@ -1,6 +1,6 @@
 import type { DetectiveMergeCandidate } from './seriesDetectiveMerge';
 import { detectiveCandidatesAreSameWork } from './seriesDetectiveMerge';
-import { comparableDetectiveTitle, detectiveWorkTitlesCompatible, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible } from './seriesDetectiveEvidence';
+import { comparableDetectiveTitle, detectiveWorkTitlesCompatible, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible, isCredibleDetectiveAuthor } from './seriesDetectiveEvidence';
 
 export interface DetectiveOwnedSeed {
   readonly title: string;
@@ -24,12 +24,12 @@ export function hasCorroboratedOwnedSeed(
   owned: readonly DetectiveOwnedSeed[],
   seriesName: string,
 ): boolean {
-  return owned.some(book => Boolean(book.author?.trim())
+  return owned.some(book => isCredibleDetectiveAuthor(book.author)
     && Boolean(comparableDetectiveTitle(book.title))
     && new Set(candidates.filter(candidate =>
       structuredForSeries(candidate, seriesName)
       && detectiveWorkTitlesCompatible(candidate.work.title, book.title, seriesName)
-      && candidate.work.authors.some(author => Boolean(author?.trim())
+      && candidate.work.authors.some(author => isCredibleDetectiveAuthor(author)
         && detectiveAuthorsCompatible(book.author, author)))
       .map(providerOf)).size >= 2);
 }
