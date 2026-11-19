@@ -1412,7 +1412,7 @@ export const searchSeriesDetectiveGoogleBooks = onCall(
       // Keep upstream availability distinct from a genuinely empty catalog.
       // The client uses these machine-readable codes for provider diagnostics.
       const message = error instanceof Error ? error.message : '';
-      const rateLimited = /\\b429\\b|rate.limit|resource.exhausted/i.test(message);
+      const rateLimited = /\b429\b|rate.limit|resource.exhausted/i.test(message);
       const timedOut = /timeout|timed.out|deadline.exceeded|aborterror/i.test(message);
       return {
         totalItems: 0, items: [], seriesMetadataById: {},
