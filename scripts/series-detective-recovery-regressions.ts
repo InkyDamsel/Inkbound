@@ -1322,6 +1322,14 @@ assert.deepEqual(inferKnownDetectiveSeriesFromDescription(
   'The third book in the Will Trent series.', 'Will Trent',
 ), { name: 'Will Trent', position: 3 });
 
+// Unknown author labels must not become independent author evidence.
+assert.equal(canonicalDetectiveAuthor('Unknown Author'), '');
+assert.equal(canonicalDetectiveAuthor('Various Authors'), '');
+assert.equal(canonicalDetectiveAuthor('Anonymous Author'), '');
+assert.equal(detectiveAuthorsCompatible('', 'Karin Slaughter'), false);
+assert.equal(detectiveAuthorsCompatible('Unknown Author', 'Karin Slaughter'), false);
+assert.equal(detectiveAuthorsCompatible('Karin Slaughter', 'Karin Slaughter'), true);
+
 // Empty provider author placeholders must not authenticate a work merge.
 const missingAuthorMerge = mergeDetectiveCandidates([
   { ...identityFixture, work: { ...identityFixture.work, authors: [''] } },
