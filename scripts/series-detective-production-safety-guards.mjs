@@ -15,6 +15,7 @@ const corroboration = read('src/features/series/seriesDetectiveCorroboration.ts'
 const canonicalAdapter = read('src/features/series/seriesDetectiveCanonicalAdapter.ts');
 const decision = read('src/features/series/seriesDetectiveDecision.ts');
 const bookLookup = read('src/components/library/SeriesDetectiveBookLookup.tsx');
+const app = read('src/App.tsx');
 assert.match(ol, /const hasPositionedEdition = existing\.some/);
 assert.match(ol, /const concurrency = 4;/);
 assert.match(ol, /const fetchWithDeadline = async/);
@@ -37,11 +38,16 @@ assert.match(decision, /verification: verified \? 'verified' : 'review'/);
 assert.match(legacy, /DERIVATIVE_ADAPTATION_PATTERN\.test\(value\)/);
 assert.match(legacy, /CATALOG_PLACEHOLDER_PATTERN\.test\(candidate\.work\.title\)/);
 // Work identity must govern ownership; ISBN-only matches are unsafe.
-assert.match(legacy, /if \(!sameAuthor \|\| !sameTitle\) return false;/);
+assert.match(legacy, /if \(!sameAuthor\) return false;/);
+assert.match(legacy, /if \(sameTitle\) return true;/);
+assert.match(legacy, /canonicalDetectiveIsbn13\(isbn\)/);
 assert.match(legacy, /detectiveWorkTitlesCompatible\(book\.work\.title, title, seriesName\)/);
 assert.match(legacy, /seriesStructured: false,/);
 assert.ok((legacy.match(/Number\.isSafeInteger\(displayPosition\) && displayPosition > 0/g) ?? []).length >= 2);
 assert.match(legacy, /decideDetectiveMembership\(/);
+assert.match(legacy, /issuedVerifiedCandidates\.add\(candidate\)/);
+assert.match(app, /isIssuedVerifiedDetectiveCandidate\(candidate\)/);
+assert.doesNotMatch(bookLookup, /inkbound:series-detective-apply/);
 assert.match(decision, /hasCorroboratedOwnedSeed\(/);
 // Assert the required guards directly; avoid fragile regex source matching.
 assert.ok(corroboration.includes('return owned.some(book => Boolean(book.author?.trim())'));
@@ -49,7 +55,7 @@ assert.ok(corroboration.includes('Boolean(comparableDetectiveTitle(book.title))'
 assert.ok(corroboration.includes('new Set(candidates.filter(candidate =>'));
 assert.ok(corroboration.includes('candidate.work.authors.some(author => Boolean(author?.trim())'));
 assert.match(legacy, /result\.discoveryDiagnostics = \{/);
-assert.doesNotMatch(bookLookup, /result\?\.providerReports/);
+assert.match(bookLookup, /result\?\.providerReports/);
 assert.match(legacy, /discoveryDiagnostics = \{ \.\.\.diagnostics, uniqueWorks: seen\.size \};/);
 assert.match(corroboration, /detectiveCandidatesAreSameWork\(candidate, target\)/);
 assert.ok(legacy.includes('if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName))'));
