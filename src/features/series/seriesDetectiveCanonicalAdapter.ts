@@ -1,6 +1,6 @@
 import type { DetectiveMergeCandidate } from './seriesDetectiveMerge';
 import { detectiveCandidatesAreSameWork } from './seriesDetectiveMerge';
-import { detectiveWorkTitlesCompatible, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible, canonicalDetectiveIsbn13 } from './seriesDetectiveEvidence';
+import { detectiveWorkTitlesCompatible, detectiveAuthorsCompatible, detectiveSeriesNamesCompatible, canonicalDetectiveIsbn13, isCredibleDetectiveAuthor } from './seriesDetectiveEvidence';
 
 type Provider = DetectiveMergeCandidate['provider'];
 
@@ -32,17 +32,17 @@ export function verifyCanonicalProductionMembership(
       .filter((isbn): isbn is string => Boolean(isbn)))];
   const matching = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
-    && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
+    && source.work.title.trim() && source.work.authors.some(author => isCredibleDetectiveAuthor(author))
     && detectiveCandidatesAreSameWork(source, target)
     && detectiveWorkTitlesCompatible(source.work.title, target.work.title, seriesName)
     && source.work.authors.some(author => target.work.authors.some(other =>
-      Boolean(author?.trim()) && Boolean(other?.trim()) && detectiveAuthorsCompatible(author, other))));
+      isCredibleDetectiveAuthor(author) && isCredibleDetectiveAuthor(other) && detectiveAuthorsCompatible(author, other))));
   const seedSources = sources.filter(source => source.seriesStructured === true
     && source.seriesName && detectiveSeriesNamesCompatible(source.seriesName, seriesName)
-    && source.work.title.trim() && source.work.authors.some(author => Boolean(author?.trim()))
-    && owned.some(book => Boolean(book.title?.trim()) && Boolean(book.author?.trim())
+    && source.work.title.trim() && source.work.authors.some(author => isCredibleDetectiveAuthor(author))
+    && owned.some(book => Boolean(book.title?.trim()) && isCredibleDetectiveAuthor(book.author)
       && detectiveWorkTitlesCompatible(source.work.title, book.title, seriesName)
-      && source.work.authors.some(author => Boolean(author?.trim())
+      && source.work.authors.some(author => isCredibleDetectiveAuthor(author)
         && detectiveAuthorsCompatible(author, book.author))));
   // ISBN corroboration proves an edition. Two independently identified native
   // catalog memberships can corroborate a work even across different editions.
@@ -75,9 +75,9 @@ export function verifyCanonicalProductionMembership(
   const independentlyCorroborated = (group: readonly DetectiveMergeCandidate[]): boolean =>
     independentWorkEvidence(group) || independentNativeWorkEvidence(group);
   const corroboratedOwnedSeed = owned.some(book => Boolean(book.title?.trim())
-    && Boolean(book.author?.trim()) && independentlyCorroborated(seedSources.filter(source =>
+    && isCredibleDetectiveAuthor(book.author) && independentlyCorroborated(seedSources.filter(source =>
       detectiveWorkTitlesCompatible(source.work.title, book.title, seriesName)
-      && source.work.authors.some(author => Boolean(author?.trim())
+      && source.work.authors.some(author => isCredibleDetectiveAuthor(author)
         && detectiveAuthorsCompatible(author, book.author)))));
   if (!independentlyCorroborated(matching) || !corroboratedOwnedSeed) {
     return { verified: false, agreedPosition: null, conflicting: false,
