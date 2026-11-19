@@ -100,6 +100,6 @@ export function verifyCanonicalProductionMembership(
     ? positions[0].position : null;
   // Membership and ordering are distinct evidence. The final decision engine
   // must keep disputed ordering review-only for safe bulk operations.
-  return { verified: anchored && providers.size >= 2 && !conflicting,
+  return { verified: anchored && providers.size >= 2,
     agreedPosition, conflicting, providerCount: providers.size };
 }
