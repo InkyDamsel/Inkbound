@@ -10,6 +10,7 @@ import {
   canonicalDetectiveSeries,
   detectiveAuthorsCompatible,
   compactDetectiveIsbn,
+  canonicalDetectiveIsbn13,
   detectiveWorkTitlesCompatible,
   comparableDetectiveTitle,
   detectiveSeriesNamesCompatible,
@@ -372,10 +373,22 @@ export const findLibraryBookForCandidate = (
     // title and author before considering ANY ownership identifier.
     const sameTitle = detectiveWorkTitlesCompatible(
       candidate.work.title, book.work.title, candidate.seriesName);
-    if (!sameAuthor || !sameTitle) return false;
-    // Cross-edition ownership is a work-level decision. Different valid ISBNs
-    // can describe the same book; a recycled ISBN cannot describe a new work.
-    return true;
+    if (!sameAuthor) return false;
+    if (sameTitle) return true;
+    // Different market titles can describe the SAME edition (Genesis/Undone).
+    // Require a checksum-valid ISBN shared with an actual owned edition,
+    // a credible matching author, and no contradictory saved series identity.
+    // ISBN alone must never establish ownership.
+    if (book.work.seriesName?.trim() && candidate.seriesName?.trim()
+      && !detectiveSeriesNamesCompatible(book.work.seriesName, candidate.seriesName)) return false;
+    const candidateIsbns = new Set([candidate.edition.isbn13, candidate.edition.isbn10,
+      ...candidate.work.editions.flatMap(edition => [edition.isbn13, edition.isbn10])]
+      .map(canonicalDetectiveIsbn13).filter((isbn): isbn is string => Boolean(isbn)));
+    return candidateIsbns.size > 0 && book.editions.some(edition =>
+      [edition.isbn, edition.isbn10, edition.isbn13].some(isbn => {
+        const normalized = canonicalDetectiveIsbn13(isbn);
+        return normalized !== null && candidateIsbns.has(normalized);
+      }));
   }) ?? null;
 };
 
