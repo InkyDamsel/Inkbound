@@ -293,10 +293,10 @@ export const mergeDetectiveCandidates = (
       // Divergent titles for an identical edition/work ID may be genuine
       // alternate titles or bad catalog metadata. Preserve the merged work,
       // but do not promote that disputed identity into automatic bulk-add.
-      seriesStructured: comparableWorkTitle(current.work.title) !== comparableWorkTitle(incoming.work.title)
-        || (current.seriesName && incoming.seriesName
-          && current.position !== null && incoming.position !== null
-          && current.position !== incoming.position)
+      // A position disagreement is about ordering, not whether the work
+      // belongs to the series. Preserve structured membership evidence.
+      // Unsafe title variants remain review-only until identity is resolved.
+      seriesStructured: !detectiveWorkTitlesCompatible(current.work.title, incoming.work.title)
         ? false : series.structured,
       providerSources: [...new Set([
         ...(current.providerSources ?? [current.provider]),
