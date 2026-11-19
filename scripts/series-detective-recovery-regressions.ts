@@ -1255,8 +1255,8 @@ const canonicalWithDisputedOrder = verifyCanonicalProductionMembership(
   structuredSeriesEvidence, structuredSeriesEvidence[2],
   [{ title: 'Icebreaker', author: 'Hannah Grace' }], 'Maple Hills',
 );
-assert.equal(canonicalWithDisputedOrder.verified, false,
-  'Conflicting provider reading orders must never be automatically verified');
+assert.equal(canonicalWithDisputedOrder.verified, true,
+  'Independently corroborated membership survives a disputed reading order');
 assert.equal(canonicalWithDisputedOrder.conflicting, true);
 assert.equal(canonicalWithDisputedOrder.agreedPosition, null);
 const disputedOrder = corroborateDetectiveMembership(
