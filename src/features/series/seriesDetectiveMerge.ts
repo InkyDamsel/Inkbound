@@ -3,7 +3,7 @@ import {
   canonicalDetectiveIsbn13,
   detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
-  normalizeDetectiveText,
+  comparableDetectiveTitle,
   detectiveWorkTitlesCompatible,
 } from './seriesDetectiveEvidence';
 
@@ -25,14 +25,7 @@ export interface DetectiveMergeCandidate {
 const nonEmpty = (value?: string): string | undefined =>
   typeof value === 'string' ? value.trim() || undefined : undefined;
 
-const comparableWorkTitle = (value?: string): string => {
-  const raw = nonEmpty(value) ?? '';
-  if (!raw) return '';
-  const withoutSeriesSuffix = raw.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
-  return normalizeDetectiveText(withoutSeriesSuffix);
-};
-
-
+const comparableWorkTitle = (value?: string): string => comparableDetectiveTitle(value);
 
 const sameAuthor = (left: string[], right: string[]): boolean =>
   left.some((leftAuthor) =>
