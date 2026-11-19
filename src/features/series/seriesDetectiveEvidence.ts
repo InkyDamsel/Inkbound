@@ -21,7 +21,7 @@ export interface SeriesDetectionEvidence {
 const GENERIC_SERIES_WORDS = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition', 'novel']);
 
 export const normalizeDetectiveText = (value?: string): string =>
-  typeof value === 'string' ? value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() : '';
+  typeof value === 'string' ? value.trim().normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim() : '';
 
 export const compactDetectiveIsbn = (value?: string): string =>
   typeof value === 'string' ? value.replace(/[^0-9X]/gi, '').toUpperCase() : '';
@@ -69,29 +69,28 @@ export const comparableDetectiveTitle = (value?: string, seriesName?: string): s
   return normalizeDetectiveText(title);
 };
 
-/** Same-work title variants must agree across merge and verification.
- * Only a literal colon-delimited subtitle may be omitted; never use broad
- * prefix matching, which would collapse distinct franchise installments. */
+/** Only harmless publisher labels may be omitted from a work title.
+ * Series names, adaptations, and numbered volumes are NOT generic subtitles. */
+const GENERIC_WORK_SUBTITLES = new Set([
+  'a novel', 'novel', 'a novella', 'novella', 'a story', 'a romance novel',
+  'a thriller', 'a mystery', 'a fantasy novel',
+]);
+const UNSAFE_EDITION_TERMS = /\b(?:manga|graphic novel|adaptation|adapted|volume|vol|omnibus|collection|boxed set|box set|illustrated|deluxe|hardcover|paperback)\b/i;
+
 export const detectiveWorkTitlesCompatible = (left?: string, right?: string, seriesName?: string): boolean => {
-  const a = comparableDetectiveTitle(left);
-  const b = comparableDetectiveTitle(right);
+  const a = comparableDetectiveTitle(left, seriesName);
+  const b = comparableDetectiveTitle(right, seriesName);
   if (!a || !b) return false;
   if (a === b) return true;
-  const colonBase = (value?: string): { base: string; suffix: string } | null => {
+  const genericVariant = (value?: string): string | null => {
     const raw = typeof value === 'string' ? value.trim() : '';
     const index = raw.indexOf(':');
-    return index < 0 ? null : {
-      base: comparableDetectiveTitle(raw.slice(0, index)),
-      suffix: normalizeDetectiveText(raw.slice(index + 1)),
-    };
+    if (index < 0) return null;
+    const suffix = normalizeDetectiveText(raw.slice(index + 1));
+    if (!GENERIC_WORK_SUBTITLES.has(suffix) || UNSAFE_EDITION_TERMS.test(suffix)) return null;
+    return comparableDetectiveTitle(raw.slice(0, index), seriesName);
   };
-  const anchored = (variant: { base: string; suffix: string } | null, base: string): boolean => {
-    if (!variant || variant.base !== base) return false;
-    if (!seriesName) return true; // Merge only: verification requires a series-anchored subtitle.
-    const series = canonicalDetectiveSeries(seriesName);
-    return Boolean(series && (' ' + variant.suffix + ' ').includes(' ' + series + ' '));
-  };
-  return anchored(colonBase(left), b) || anchored(colonBase(right), a);
+  return genericVariant(left) === b || genericVariant(right) === a;
 };
 
 export const canonicalDetectiveAuthor = (value?: string): string => {
