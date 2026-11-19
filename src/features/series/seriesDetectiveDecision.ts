@@ -19,14 +19,13 @@ export function decideDetectiveMembership(
   const verified = candidate.seriesStructured === true
     && hasCorroboratedOwnedSeed(sources, owned, seriesName)
     && membership.providers >= 2
-    && canonical.verified
-    && !membership.conflictingOrder
-    && !canonical.conflicting;
+    && canonical.verified;
   return {
     verification: verified ? 'verified' : 'review',
     // Review-only candidates must never export a verified-looking ordinal.
     // Preserve ordering only after every independent evidence gate succeeds.
-    position: verified ? canonical.agreedPosition : null,
+    position: verified && !membership.conflictingOrder && !canonical.conflicting
+      ? canonical.agreedPosition : null,
     conflictingOrder: membership.conflictingOrder || canonical.conflicting,
   };
 }
