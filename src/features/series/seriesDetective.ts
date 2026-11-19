@@ -1296,7 +1296,13 @@ export async function findMissingSeriesBooks(
       // is not enough to admit a different author's unrelated work.
       const compatibleSeries = detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName);
       const crossAuthorMembership = candidate.seriesStructured && compatibleSeries && verifiedMultiAuthorBrand;
-      if (!matchingAuthor && !crossAuthorMembership && !(candidate.seriesStructured && anchoredAlias)) {
+      // A single owned author cannot bootstrap a multi-author family, but
+      // explicit structured membership for another author is still useful
+      // discovery. Show it for review; never promote it to an automatic add
+      // until the multi-author family is independently established.
+      const crossAuthorReview = candidate.seriesStructured === true
+        && compatibleSeries && !matchingAuthor && !verifiedMultiAuthorBrand;
+      if (!matchingAuthor && !crossAuthorMembership && !crossAuthorReview) {
         diagnostics.rejectedAuthor += 1;
         return;
       }
@@ -1329,7 +1335,7 @@ export async function findMissingSeriesBooks(
         // A single catalog's ordinal is not a verified reading order.
         // Retain unknown order instead of presenting a misleading number.
         position: decision.position,
-        verification: decision.verification,
+        verification: crossAuthorReview ? 'review' : decision.verification,
 
       });
     });
