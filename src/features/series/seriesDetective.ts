@@ -1331,7 +1331,17 @@ export async function findMissingSeriesBooks(
   // library for each request.
   const candidates = await discoverCandidates();
   const result = classifySeriesCandidates(seriesName, candidates, libraryBooks);
-  result.completeness = providerReports.every((report) => report.status === 'unavailable')
+  // These reports were collected during discovery but never attached to the
+  // returned result, leaving production failures invisible to callers.
+  result.providerReports = [...providerReports];
+  if (discoveryDiagnostics) {
+    result.discoveryDiagnostics = {
+      ...discoveryDiagnostics,
+      providerCounts: { ...discoveryDiagnostics.providerCounts },
+    };
+  }
+  result.completeness = providerReports.length > 0
+    && providerReports.every((report) => report.status === 'unavailable')
     ? 'unavailable' : 'partial';
   return result;
 }
