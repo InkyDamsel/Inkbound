@@ -1341,8 +1341,12 @@ export async function findMissingSeriesBooks(
       // explicit structured membership for another author is still useful
       // discovery. Show it for review; never promote it to an automatic add
       // until the multi-author family is independently established.
-      const crossAuthorReview = candidate.seriesStructured === true
-        && compatibleSeries && !matchingAuthor && !verifiedMultiAuthorBrand;
+      // A different author's explicitly branded edition is a discovery lead,
+      // even before the shared-world family is independently established.
+      // Keep it review-only: a branded subtitle never verifies membership.
+      const crossAuthorReview = !matchingAuthor && compatibleSeries
+        && ((candidate.seriesStructured === true && !verifiedMultiAuthorBrand)
+          || explicitBrand);
       if (!matchingAuthor && !crossAuthorMembership && !crossAuthorReview) {
         diagnostics.rejectedAuthor += 1;
         return;
