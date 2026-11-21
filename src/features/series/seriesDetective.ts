@@ -1192,24 +1192,53 @@ export async function findMissingSeriesBooks(
     // Supplement only with explicit series metadata or branding on the
     // individual record. Search-result co-occurrence is NOT membership.
     // Same-author and cross-author records use the same evidence gate.
-    forkedLibraryCatalog.groups.slice(0, 40).forEach((work) => {
-      work.editions.forEach((edition) => {
-        const seriesClaim = edition.seriesName?.trim();
-        const branded = hasExplicitDetectiveSeriesBrand({
-          work, edition, seriesName: seriesClaim ?? '', position: null,
-          provider: edition.source, seriesStructured: false,
-        }, seriesName);
-        if (!((seriesClaim && detectiveSeriesNamesCompatible(seriesClaim, seriesName)) || branded)) return;
-        providerCandidates.push({
-          work, edition, seriesName: seriesClaim && detectiveSeriesNamesCompatible(seriesClaim, seriesName)
-            ? seriesClaim : seriesName,
-          position: edition.seriesOrder ?? null,
-          provider: edition.source,
-          seriesProvider: seriesClaim ? edition.source : undefined,
-          seriesStructured: false,
+    const appendForkedDiscovery = (groups: SeriesDetectiveWorkGroup[]) => {
+      groups.forEach((work) => {
+        work.editions.forEach((edition) => {
+          const seriesClaim = edition.seriesName?.trim();
+          const branded = hasExplicitDetectiveSeriesBrand({
+            work, edition, seriesName: seriesClaim ?? '', position: null,
+            provider: edition.source, seriesStructured: false,
+          }, seriesName);
+          if (!((seriesClaim && detectiveSeriesNamesCompatible(seriesClaim, seriesName)) || branded)) return;
+          providerCandidates.push({
+            work, edition, seriesName: seriesClaim && detectiveSeriesNamesCompatible(seriesClaim, seriesName)
+              ? seriesClaim : seriesName,
+            position: edition.seriesOrder ?? null,
+            provider: edition.source,
+            seriesProvider: seriesClaim ? edition.source : undefined,
+            seriesStructured: false,
+          });
         });
       });
+    };
+    appendForkedDiscovery(forkedLibraryCatalog.groups.slice(0, 40));
+
+    // A bounded second discovery pass follows author leads found on records
+    // explicitly associated with this series. This is especially important
+    // for shared worlds: the seed author's bibliography is not sufficient.
+    // Do not treat author/query co-occurrence as membership; each new record
+    // must still pass appendForkedDiscovery and the final evidence gates.
+    const seedAuthorKey = canonicalDetectiveAuthor(author);
+    const discoveredAuthors = [...new Set(providerCandidates
+      .filter((candidate) => candidate.seriesName
+        && detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)
+        && (candidate.seriesStructured || hasExplicitDetectiveSeriesBrand(candidate, seriesName)))
+      .flatMap((candidate) => candidate.work.authors)
+      .map((name) => name.trim())
+      .filter((name) => Boolean(name) && canonicalDetectiveAuthor(name) !== seedAuthorKey))]
+      .slice(0, 6);
+    const followupQueries = discoveredAuthors.map((name) => `"${seriesName}" "${name}"`);
+    const followupResults = await mapWithConcurrency(followupQueries, 2, async (query) => {
+      try {
+        return await searchDetectiveForkedLibraryCatalog(query, signal);
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        console.warn('Series Detective follow-up search unavailable.', error);
+        return { groups: [], totalItems: 0, partial: true };
+      }
     });
+    followupResults.forEach((result) => appendForkedDiscovery(result.groups.slice(0, 40)));
 
     const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates)
       .filter((candidate) => !isDerivativeSeriesProduct(candidate));
