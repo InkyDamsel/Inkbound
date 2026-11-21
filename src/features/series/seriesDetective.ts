@@ -1195,7 +1195,6 @@ export async function findMissingSeriesBooks(
     forkedLibraryCatalog.groups.slice(0, 40).forEach((work) => {
       work.editions.forEach((edition) => {
         const seriesClaim = edition.seriesName?.trim();
-        const subtitle = [edition.subtitle, work.subtitle].filter(Boolean).join(' ');
         const branded = hasExplicitDetectiveSeriesBrand({
           work, edition, seriesName: seriesClaim ?? '', position: null,
           provider: edition.source, seriesStructured: false,
