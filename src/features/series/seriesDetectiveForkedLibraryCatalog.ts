@@ -2,7 +2,7 @@
  * This module never imports library mutation actions, Firestore writes, or UI state.
  * A provider's failure is not evidence that a series is empty.
  */
-import { searchGoogleBooks as searchDetectiveForkedCatalog } from '../book-search/data/seriesDetectiveSearchFork';
+import { searchGoogleBooks as searchDetectiveForkedCatalog } from './seriesDetectiveSearchFork';
 import type { SeriesDetectiveWorkGroup } from './seriesDetectiveCatalogTypes';
 import type { BookSearchWorkGroup } from '../book-search/model/bookSearch';
 
