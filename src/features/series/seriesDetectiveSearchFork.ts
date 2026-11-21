@@ -13,7 +13,6 @@ import { auth, functions } from '../../lib/firebase';
 import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { getNativeAppCheckToken } from '../../platform/runtimeNativeAppCheck';
 import { requireCatalogResponse } from '../book-search/data/catalogRequestDeadline';
-import { readRuntimeJson } from '../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../catalog/metadataContributions';
 import { searchHardcover, searchHardcoverAuthorBibliography } from '../book-search/data/hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryAuthorBibliography } from '../book-search/data/openLibraryApi';
@@ -130,7 +129,6 @@ function boundedCatalogRequest<T>(
     );
   });
 }
-const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
 const googleAuthorPageCache = new Map<string, { expiresAt: number; payload: GoogleVolumesResponse }>();
 const googleAuthorPageInFlight = new Map<string, Promise<GoogleVolumesResponse>>();
@@ -142,20 +140,6 @@ const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
 const compactIsbn = compactCatalogIsbn;
-
-const isAdministrationActive = (): boolean =>
-  readRuntimeJson<string>(ACTIVE_TAB_STORAGE_KEY, 'home') === 'admin';
-
-const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<void> => {
-  // A stale navigation preference must never block manual catalog searches.
-  // Keep the short admin throttle, but release it after a bounded grace period.
-  const deadline = Date.now() + 2000;
-  while (isAdministrationActive() && Date.now() < deadline) {
-    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
-  }
-  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-};
 
 const shouldBackOffCatalog = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
@@ -421,7 +405,7 @@ export async function searchGoogleBooksAuthorPage(
   }
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  await waitUntilAdministrationInactive(signal);
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   const authorQuery = buildGoogleBooksAuthorQuery(trimmedAuthor);
   let payload: GoogleVolumesResponse = { totalItems: 0, items: [] };
@@ -779,7 +763,7 @@ export async function searchScannerCoverTitleCatalog(
   if (!trimmed) return { groups: [], totalItems: 0 };
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  await waitUntilAdministrationInactive(signal);
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   const escaped = trimmed.replace(/"/g, '');
   let payload: GoogleVolumesResponse;
@@ -809,7 +793,7 @@ export async function searchScannerAuthorCatalog(
   if (!trimmed) return { groups: [], totalItems: 0 };
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  await waitUntilAdministrationInactive(signal);
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   // Scanner-only bibliography recovery. Broad text searches can stop after a
   // handful of relevance-ranked works, which hides newer/less-indexed titles.
@@ -892,7 +876,7 @@ export async function searchScannerCoverCatalog(
   if (!trimmed) return { groups: [], totalItems: 0 };
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  await waitUntilAdministrationInactive(signal);
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   const [google, openLibrary, hardcover, prh, trusted] = await Promise.all([
     searchGoogleBaseline(trimmed, signal),
@@ -938,7 +922,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (!trimmed) return { groups: [], totalItems: 0 };
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  await waitUntilAdministrationInactive(signal);
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   const cacheKey = normalizeText(trimmed);
   const cached = searchCache.get(cacheKey);
