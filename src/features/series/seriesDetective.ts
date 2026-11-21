@@ -1,3 +1,4 @@
+import { searchDetectiveForkedLibraryCatalog } from './seriesDetectiveForkedLibraryCatalog';
 import type { Format, UserBookRecord } from '../../types';
 import type { SeriesDetectiveEdition, SeriesDetectiveWorkGroup } from './seriesDetectiveCatalogTypes';
 import { searchSeriesDetectiveHardcover } from './seriesDetectiveHardcoverApi';
@@ -978,6 +979,7 @@ export async function findMissingSeriesBooks(
       prhSeriesAndAuthor,
       prhSeriesOnly,
       prhAuthor,
+      forkedLibraryCatalog,
     ] = await Promise.all([
       // Bounded fan-out: the planner may emit ~25 queries, and firing them all
       // at once alongside the other providers trips Google Books rate limits.
@@ -1010,6 +1012,13 @@ export async function findMissingSeriesBooks(
       ),
       searchSeriesDetectivePenguinRandomHouse(seriesName),
       searchSeriesDetectivePenguinRandomHouse(author),
+      // Use the independent library-search snapshot as a discovery supplement.
+      // One bounded series-name lookup; never invoke library add/save actions.
+      searchDetectiveForkedLibraryCatalog(seriesName, signal).catch((error) => {
+        if (signal?.aborted) throw error;
+        console.warn('Series Detective isolated search supplement unavailable.', error);
+        return { groups: [], totalItems: 0, partial: true };
+      }),
     ]);
     const retrievedAt = new Date().toISOString();
     const summarizeProvider = (
@@ -1180,6 +1189,29 @@ export async function findMissingSeriesBooks(
     // Position is ordering metadata, never work identity. Providers frequently
     // omit or misreport it, so pruning to one candidate per position can delete
     // legitimate sibling works. Merge/dedupe by work identity and ISBN only.
+    // Supplement only with explicit series metadata or branding on the
+    // individual record. Search-result co-occurrence is NOT membership.
+    // Same-author and cross-author records use the same evidence gate.
+    forkedLibraryCatalog.groups.slice(0, 40).forEach((work) => {
+      work.editions.forEach((edition) => {
+        const seriesClaim = edition.seriesName?.trim();
+        const subtitle = [edition.subtitle, work.subtitle].filter(Boolean).join(' ');
+        const branded = hasExplicitDetectiveSeriesBrand({
+          work, edition, seriesName: seriesClaim ?? '', position: null,
+          provider: edition.source, seriesStructured: false,
+        }, seriesName);
+        if (!((seriesClaim && detectiveSeriesNamesCompatible(seriesClaim, seriesName)) || branded)) return;
+        providerCandidates.push({
+          work, edition, seriesName: seriesClaim && detectiveSeriesNamesCompatible(seriesClaim, seriesName)
+            ? seriesClaim : seriesName,
+          position: edition.seriesOrder ?? null,
+          provider: edition.source,
+          seriesProvider: seriesClaim ? edition.source : undefined,
+          seriesStructured: false,
+        });
+      });
+    });
+
     const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates)
       .filter((candidate) => !isDerivativeSeriesProduct(candidate));
 
