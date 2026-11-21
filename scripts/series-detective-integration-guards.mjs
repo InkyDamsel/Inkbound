@@ -30,9 +30,9 @@ assert.equal(fs.existsSync('src/features/book-search/data/seriesDetectiveSearchF
   'Detective fork must not modify the protected book-search tree');
 assert.doesNotMatch(read(forkPath), /inkbound_active_tab|readRuntimeJson|waitUntilAdministrationInactive/,
   'Detective search must not depend on library navigation state');
-assert.doesNotMatch(read(forkPath), /from ['"](?:\\.\\.\\/)*.*(?:AddBookModal|bookReadingState|seriesDetectiveToLibrary)/,
+assert.doesNotMatch(read(forkPath), /from ['"][^'"]*(?:AddBookModal|bookReadingState|seriesDetectiveToLibrary)/,
   'Detective search must not import library UI or mutation modules');
-assert.match(read(adapterPath), /from '\\.\/seriesDetectiveSearchFork'/,
+assert.match(read(adapterPath), /from '\.\/seriesDetectiveSearchFork'/,
   'Detective adapter must use its isolated search fork');
 assert.match(read('src/features/series/seriesDetective.ts'), /searchDetectiveForkedLibraryCatalog/,
   'Series Detective must invoke its isolated search adapter');
