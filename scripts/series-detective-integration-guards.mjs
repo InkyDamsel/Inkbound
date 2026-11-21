@@ -41,6 +41,21 @@ for (const file of [forkPath, adapterPath]) {
     'Detective search must not invoke library mutation paths: ' + file);
 }
 
+// Guard the direction of the dependency: regular library search must never
+// depend on Detective discovery, even accidentally through a later refactor.
+const regularSearch = read('src/features/book-search/data/googleBooksApi.ts');
+const addBookModal = read('src/components/AddBookModal.tsx');
+for (const [file, source] of [
+  ['src/features/book-search/data/googleBooksApi.ts', regularSearch],
+  ['src/components/AddBookModal.tsx', addBookModal],
+]) {
+  assert.doesNotMatch(source, /seriesDetectiveSearchFork|seriesDetectiveForkedLibraryCatalog/,
+    'Protected library search must not depend on Detective search: ' + file);
+}
+// The fork may query catalog providers but cannot write user-owned books.
+assert.doesNotMatch(read(forkPath), /from ['"]firebase\\/firestore['"]|from ['"]\\.\\.\\/\\.\\.\\/services\\/userBooks/,
+  'Detective fork must not import Firestore writes or user-book services');
+
 const index = read('functions/src/index.ts');
 for (const name of ['searchSeriesDetectiveHardcover', 'searchSeriesDetectiveGoogleBooks', 'searchSeriesDetectivePenguinRandomHouse']) {
   assert.match(index, new RegExp('\\b' + name + '\\b'), `Missing Series Detective callable export: ${name}`);
