@@ -19,6 +19,24 @@ for (const file of detectiveFiles) {
   assert.doesNotMatch(read(file), /(?:features\/book-search|\.\.\/book-search|book-search\/)/,
     `Series Detective must not depend on protected Search internals: ${file}`);
 }
+// The search fork is intentionally inside Series Detective, never inside the
+// protected book-search tree. It may read catalog adapters, but must not
+// import library UI, user-book persistence, or mutation entrypoints.
+const forkPath = 'src/features/series/seriesDetectiveSearchFork.ts';
+const adapterPath = 'src/features/series/seriesDetectiveForkedLibraryCatalog.ts';
+assert.ok(fs.existsSync(forkPath), 'Missing isolated Detective search fork');
+assert.ok(fs.existsSync(adapterPath), 'Missing Detective-only search adapter');
+assert.equal(fs.existsSync('src/features/book-search/data/seriesDetectiveSearchFork.ts'), false,
+  'Detective fork must not modify the protected book-search tree');
+assert.match(read(adapterPath), /from '\\.\/seriesDetectiveSearchFork'/,
+  'Detective adapter must use its isolated search fork');
+assert.match(read('src/features/series/seriesDetective.ts'), /searchDetectiveForkedLibraryCatalog/,
+  'Series Detective must invoke its isolated search adapter');
+for (const file of [forkPath, adapterPath]) {
+  assert.doesNotMatch(read(file), /(?:onAddBook|onAddMultipleBooks|addDoc\s*\(|setDoc\s*\(|updateDoc\s*\(|deleteDoc\s*\()/,
+    'Detective search must not invoke library mutation paths: ' + file);
+}
+
 const index = read('functions/src/index.ts');
 for (const name of ['searchSeriesDetectiveHardcover', 'searchSeriesDetectiveGoogleBooks', 'searchSeriesDetectivePenguinRandomHouse']) {
   assert.match(index, new RegExp('\\b' + name + '\\b'), `Missing Series Detective callable export: ${name}`);
