@@ -53,8 +53,15 @@ for (const [file, source] of [
     'Protected library search must not depend on Detective search: ' + file);
 }
 // The fork may query catalog providers but cannot write user-owned books.
-assert.doesNotMatch(read(forkPath), /from ['"]firebase\\/firestore['"]|from ['"]\\.\\.\\/\\.\\.\\/services\\/userBooks/,
-  'Detective fork must not import Firestore writes or user-book services');
+const forkSource = read(forkPath);
+for (const forbiddenImport of [
+  "from 'firebase/firestore'",
+  'from "firebase/firestore"',
+  'services/userBooks',
+]) {
+  assert.equal(forkSource.includes(forbiddenImport), false,
+    'Detective fork must not import Firestore writes or user-book services: ' + forbiddenImport);
+}
 
 const index = read('functions/src/index.ts');
 for (const name of ['searchSeriesDetectiveHardcover', 'searchSeriesDetectiveGoogleBooks', 'searchSeriesDetectivePenguinRandomHouse']) {
