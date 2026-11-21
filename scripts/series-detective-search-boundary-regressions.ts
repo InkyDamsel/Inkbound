@@ -102,8 +102,14 @@ assert.match(
 const appSource = fs.readFileSync(path.join(ROOT, 'src/App.tsx'), 'utf8');
 assert.match(appSource, /const addDetectiveBooks = \(event: Event\) =>/,
   'Detective bulk writes must remain App-owned.');
-assert.match(appSource, /candidate\?\.verification !== 'verified'/,
-  'App must reject unverified Detective candidates at the mutation boundary.');
+assert.match(appSource, /isIssuedVerifiedDetectiveCandidate\(candidate\)/,
+  'App must require a Detective-issued verified candidate at the mutation boundary.');
+const detectiveEngineSource = fs.readFileSync(
+  path.join(ROOT, 'src/features/series/seriesDetective.ts'),
+  'utf8',
+);
+assert.match(detectiveEngineSource, /candidate\.verification === 'verified' && issuedVerifiedCandidates\.has\(candidate\)/,
+  'Detective-issued candidate authorization must require verified status and issued identity.');
 assert.match(appSource, /findLibraryBookForCandidate\(candidate, \[\.\.\.current, \.\.\.pendingWorks\]\)/,
   'Detective bulk writes must deduplicate against existing and pending works.');
 assert.match(appSource, /commitCanonicalBooks\(next\)/,
@@ -127,10 +133,7 @@ assert.match(
   'Detective must preserve plain bibliographic series labels as weak evidence.',
 );
 
-const detectiveEngineSource = fs.readFileSync(
-  path.join(ROOT, 'src/features/series/seriesDetective.ts'),
-  'utf8',
-);
+
 assert.match(
   detectiveEngineSource,
   /weakBibliographicSeriesMatch && !exactAuthor/,
