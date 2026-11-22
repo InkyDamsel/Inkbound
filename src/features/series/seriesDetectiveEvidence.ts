@@ -60,7 +60,7 @@ export const comparableDetectiveTitle = (value?: string, seriesName?: string): s
   // Strip an unnumbered series label only when it matches the explicitly
   // investigated series. Never treat arbitrary parentheticals as disposable.
   if (seriesName) {
-    title = title.replace(/\\s*\\(([^()]*)\\)\\s*$/, (whole, inner: string) =>
+    title = title.replace(/\s*\(([^()]*)\)\s*$/, (whole, inner: string) =>
       detectiveSeriesNamesCompatible(inner.trim(), seriesName) ? '' : whole);
     // Providers also attach a series as a colon subtitle. Keep genuine
     // subtitles and unrelated series names intact.
