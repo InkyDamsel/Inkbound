@@ -39,28 +39,36 @@ export const detectiveCandidatesAreSameWork = (
   right: DetectiveMergeCandidate,
 ): boolean => {
   if (!sameAuthor(left.work.authors, right.work.authors)) return false;
+  // Never collapse works with conflicting explicit series identities.
+  if (left.seriesName && right.seriesName
+    && !detectiveSeriesNamesCompatible(left.seriesName, right.seriesName)) return false;
+  const matchingSeries = left.seriesName && right.seriesName
+    && detectiveSeriesNamesCompatible(left.seriesName, right.seriesName)
+    ? left.seriesName : undefined;
+  const titlesCompatible = detectiveWorkTitlesCompatible(left.work.title, right.work.title, matchingSeries);
+
   // A provider's work identifier is stronger than its display title. Only
   // compare identifiers within the same namespace; cross-provider IDs can
   // collide accidentally. An edition ISBN is also exact shared evidence.
   if (left.work.key && right.work.key && left.work.key === right.work.key
     && left.work.key.startsWith(`${left.provider}:`)
     && right.work.key.startsWith(`${right.provider}:`)
-    && detectiveWorkTitlesCompatible(left.work.title, right.work.title)
+    && titlesCompatible
     && editionIdentifiersCompatible(left.edition, right.edition)) return true;
   // A recycled or incorrect ISBN must not merge unrelated works. For
   // different titles, require compatible explicit series membership on both
   // records before accepting shared edition identifiers as work identity.
   if (exactIsbnMatch(left.edition, right.edition)) {
-    const sameTitle = comparableWorkTitle(left.work.title) === comparableWorkTitle(right.work.title);
+    const sameTitle = comparableDetectiveTitle(left.work.title, matchingSeries) === comparableDetectiveTitle(right.work.title, matchingSeries);
     if (sameTitle) return true;
     // An ISBN can be misassigned or reused in provider metadata. Two
     // differently titled works must not collapse merely because they share
     // a series label; this hides legitimate installments from discovery.
   }
-  const leftTitle = comparableWorkTitle(left.work.title);
-  const rightTitle = comparableWorkTitle(right.work.title);
+  const leftTitle = comparableDetectiveTitle(left.work.title, matchingSeries);
+  const rightTitle = comparableDetectiveTitle(right.work.title, matchingSeries);
   if (!leftTitle || !rightTitle) return false;
-  if (detectiveWorkTitlesCompatible(left.work.title, right.work.title)) return true;
+  if (titlesCompatible) return true;
 
   return false;
 };
