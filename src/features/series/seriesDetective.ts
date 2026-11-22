@@ -1378,7 +1378,7 @@ export async function findMissingSeriesBooks(
       // Keep it review-only: a branded subtitle never verifies membership.
       const crossAuthorReview = !matchingAuthor && compatibleSeries
         && ((candidate.seriesStructured === true && !verifiedMultiAuthorBrand)
-          || explicitBrand);
+          || hasExplicitCrossAuthorSeriesBrand(candidate, seriesName));
       if (!matchingAuthor && !crossAuthorMembership && !crossAuthorReview) {
         diagnostics.rejectedAuthor += 1;
         return;
