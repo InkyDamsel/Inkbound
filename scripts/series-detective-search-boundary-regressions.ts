@@ -132,6 +132,12 @@ assert.match(detectiveEngineSource, /searchSeriesDetectivePenguinRandomHouse\(au
   'PRH series discovery must use the author bibliography endpoint.');
 assert.match(detectiveEngineSource, /searchSeriesDetectivePenguinRandomHouse\(book\.work\.author, false, \{ authorBibliography: true \}\)/,
   'PRH seed detection must use the author bibliography endpoint.');
+// Cross-author review may not use weak geographical colon branding to
+// bootstrap a multi-author family or admit an unrelated author's work.
+assert.match(detectiveEngineSource, /hasExplicitCrossAuthorSeriesBrand\(candidate, seriesName\)/,
+  'Cross-author review must use the strict bibliographic branding gate.');
+assert.match(detectiveEngineSource, /\.filter\(\(candidate\) => hasExplicitCrossAuthorSeriesBrand\(candidate, seriesName\)/,
+  'Multi-author branding bootstrap must not use weak title suffixes.');
 assert.match(detectiveEngineSource, /candidate\.verification === 'verified' && issuedVerifiedCandidates\.has\(candidate\)/,
   'Detective-issued candidate authorization must require verified status and issued identity.');
 assert.match(appSource, /findLibraryBookForCandidate\(candidate, \[\.\.\.current, \.\.\.pendingWorks\]\)/,
