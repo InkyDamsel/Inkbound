@@ -31,3 +31,23 @@ export const hasExplicitDetectiveSeriesBrand = (
     });
 };
 
+
+/** Cross-author admission requires stronger branding than a bare colon suffix.
+ * "Postmarks Washington: Grant County" is geographical text, not a series
+ * membership assertion. Exact parenthetical labels and bibliographic
+ * "Series"/"Saga" declarations remain review-only leads. */
+export const hasExplicitCrossAuthorSeriesBrand = (
+  candidate: DetectiveMergeCandidate,
+  wantedSeriesName: string,
+): boolean => {
+  const wanted = canonicalDetectiveSeries(wantedSeriesName);
+  if (!wanted) return false;
+  const values = [candidate.work.title, candidate.edition.title, candidate.work.subtitle, candidate.edition.subtitle]
+    .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+  return values.some((value) => {
+    const parenthetical = value.match(/\\(([^()]*)\\)\\s*$/)?.[1]?.trim();
+    if (parenthetical && canonicalDetectiveSeries(parenthetical) === wanted) return true;
+    const explicit = value.match(/(?:^|[:(\\[])\\s*([^:)\\]]+?)\\s+(?:series|saga)(?:\\s+(?:book\\s*)?#?\\d+)?\\s*[)\\]]?\\s*$/i)?.[1]?.trim();
+    return Boolean(explicit && canonicalDetectiveSeries(explicit) === wanted);
+  });
+};
