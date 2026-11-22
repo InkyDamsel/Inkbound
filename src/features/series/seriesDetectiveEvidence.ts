@@ -364,15 +364,15 @@ export const inferDetectiveSeriesLeadFromTitle = (
   value?: string,
 ): { name: string; position: number | null } | null => {
   const title = typeof value === 'string' ? value.trim() : '';
-  const suffix = title.match(/\\(([^()]*)\\)\\s*$/)?.[1]?.trim();
+  const suffix = title.match(/\(([^()]*)\)\s*$/)?.[1]?.trim();
   if (!suffix || !title.slice(0, title.lastIndexOf('(')).trim()) return null;
   const numbered = inferDetectiveSeriesFromTitle(title);
   if (numbered) return numbered;
-  const cleaned = suffix.replace(/\\s*(?:#|book\\s*#?|vol(?:ume)?\\.?\\s*#?)\\s*\\d+(?:\\.\\d+)?\\s*$/i, '').trim();
+  const cleaned = suffix.replace(/\s*(?:#|book\s*#?|vol(?:ume)?\.?\s*#?)\s*\d+(?:\.\d+)?\s*$/i, '').trim();
   const normalized = canonicalDetectiveSeries(cleaned);
   if (!normalized || normalized.length < 5 || normalized.split(' ').length < 2
     || GENERIC_SERIES_WORDS.has(normalized)
-    || /^(?:a\\s+)?(?:novel|novella|ebook|paperback|hardcover|edition|special edition|large print|illustrated edition)$/i.test(cleaned)) return null;
+    || /^(?:a\s+)?(?:novel|novella|ebook|paperback|hardcover|edition|special edition|large print|illustrated edition)$/i.test(cleaned)) return null;
   return { name: cleaned, position: null };
 };
 
