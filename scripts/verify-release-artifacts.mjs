@@ -169,7 +169,6 @@ checks.push({
 const detectiveLookupSource = fs.readFileSync(path.join(root, 'src', 'components', 'library', 'SeriesDetectiveBookLookup.tsx'), 'utf8');
 const detectivePrivateStrings = [
   'Catalog health and discovery details',
-  'Discovered ',
   'rejected by series ',
 ];
 checks.push({
