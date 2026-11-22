@@ -116,10 +116,22 @@ assert.match(lookupSource, /saved \?\? found \?\? lead/,
   'Unverified leads must be considered only after saved and verified series.');
 assert.doesNotMatch(lookupSource, /(?:onAddBook|onAddMultipleBooks|commitCanonicalBooks|addDoc\s*\(|setDoc\s*\()/,
   'Read-only Detective lookup must not gain a direct library mutation path.');
+// PRH author discovery must use the backend bibliography endpoint, not a
+// generic title search for the author's name.
+const prhClientSource = fs.readFileSync(
+  path.join(ROOT, 'src/features/series/seriesDetectivePenguinRandomHouseApi.ts'),
+  'utf8',
+);
+assert.match(prhClientSource, /authorBibliography: options\.authorBibliography === true/,
+  'PRH client must forward the explicit bibliography option.');
 const detectiveEngineSource = fs.readFileSync(
   path.join(ROOT, 'src/features/series/seriesDetective.ts'),
   'utf8',
 );
+assert.match(detectiveEngineSource, /searchSeriesDetectivePenguinRandomHouse\(author, false, \{ authorBibliography: true \}\)/,
+  'PRH series discovery must use the author bibliography endpoint.');
+assert.match(detectiveEngineSource, /searchSeriesDetectivePenguinRandomHouse\(book\.work\.author, false, \{ authorBibliography: true \}\)/,
+  'PRH seed detection must use the author bibliography endpoint.');
 assert.match(detectiveEngineSource, /candidate\.verification === 'verified' && issuedVerifiedCandidates\.has\(candidate\)/,
   'Detective-issued candidate authorization must require verified status and issued identity.');
 assert.match(appSource, /findLibraryBookForCandidate\(candidate, \[\.\.\.current, \.\.\.pendingWorks\]\)/,
