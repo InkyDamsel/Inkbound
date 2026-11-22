@@ -48,6 +48,7 @@ import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiv
 import { hasExplicitDetectiveSeriesBrand, hasExplicitCrossAuthorSeriesBrand } from './seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
 import { decideDetectiveMembership } from './seriesDetectiveDecision';
+import { evaluateCrossAuthorMembership } from './seriesDetectiveMembershipGate';
 
 import { discoverDetectiveWikidata } from './seriesDetectiveWikidataApi';
 
@@ -1367,22 +1368,14 @@ export async function findMissingSeriesBooks(
           && detectiveAuthorsCompatible(ownedAuthor, name)));
       // Cross-author anthologies are legitimate, but a shared title phrase
       // is not enough to admit a different author's unrelated work.
-      const compatibleSeries = detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName);
-      const crossAuthorMembership = candidate.seriesStructured && compatibleSeries && verifiedMultiAuthorBrand;
-      // A single owned author cannot bootstrap a multi-author family, but
-      // explicit structured membership for another author is still useful
-      // discovery. Show it for review; never promote it to an automatic add
-      // until the multi-author family is independently established.
-      // A different author's explicitly branded edition is a discovery lead,
-      // even before the shared-world family is independently established.
-      // Keep it review-only: a branded subtitle never verifies membership.
-      const crossAuthorReview = !matchingAuthor && compatibleSeries
-        && ((candidate.seriesStructured === true && !verifiedMultiAuthorBrand)
-          || hasExplicitCrossAuthorSeriesBrand(candidate, seriesName));
-      if (!matchingAuthor && !crossAuthorMembership && !crossAuthorReview) {
+      const crossAuthor = evaluateCrossAuthorMembership(
+        candidate, seriesName, resolvedSeriesName, matchingAuthor, verifiedMultiAuthorBrand,
+      );
+      if (!crossAuthor.admitted) {
         diagnostics.rejectedAuthor += 1;
         return;
       }
+      const crossAuthorReview = crossAuthor.reviewOnly;
       if (!candidate.seriesStructured && !independentlyCorroborated && !explicitBrand) {
         diagnostics.rejectedEvidence += 1;
         return;
