@@ -73,10 +73,19 @@ for (const name of ['searchSeriesDetectiveHardcover', 'searchSeriesDetectiveGoog
 // changes. Pin the approved protected objects instead of reconstructing the
 // entire AddBookModal from an obsolete scanner snapshot.
 //
+// AddBookModal was explicitly updated in 53dfd87 to replace provider-specific
+// warnings and raw search errors with reader-safe messages. This is a
+// reviewed presentation-only exception, not a scanner/search pipeline change.
 // Tree/blob hashes work in shallow CI checkouts and on Windows. Any later
 // protected Search/scanner edit must be reviewed and deliberately re-baselined.
+const addBookModalSource = read('src/components/AddBookModal.tsx');
+assert.ok(addBookModalSource.includes('Some results may be missing right now. You can try again later.'),
+  'Reader search must not display provider-specific outage warnings');
+assert.equal(addBookModalSource.includes('setSearchError(response.warning'), false,
+  'Reader search must not display raw provider warnings');
+
 const approvedProtectedObjects = {
-  'src/components/AddBookModal.tsx': 'ed171f733a9c038a24da50c7276a6314e6af7f33',
+  'src/components/AddBookModal.tsx': 'ef62ee58fa0dba2134e04688f77dad5fe2a20399',
   'src/features/book-search': '3a13d0f8240cb0f91b745752b6a1481d1ac1d47a',
   'src/platform/runtimeBarcodeScanner.ts': 'c0f26bddbffccde10bff523b2b5fdb34190a059d',
   'scripts/scanner-cover-regressions.ts': '2b81d5dc041dbd1b651124cdcf6856d24db03e63',
