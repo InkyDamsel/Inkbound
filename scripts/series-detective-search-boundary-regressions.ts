@@ -104,6 +104,18 @@ assert.match(appSource, /const addDetectiveBooks = \(event: Event\) =>/,
   'Detective bulk writes must remain App-owned.');
 assert.match(appSource, /isIssuedVerifiedDetectiveCandidate\(candidate\)/,
   'App must require a Detective-issued verified candidate at the mutation boundary.');
+// Unverified title leads may start read-only discovery, but must not
+// bypass the App-owned verified-candidate mutation gate.
+const lookupSource = fs.readFileSync(
+  path.join(ROOT, 'src/components/library/SeriesDetectiveBookLookup.tsx'),
+  'utf8',
+);
+assert.match(lookupSource, /inferDetectiveSeriesLeadFromTitle\(currentBook\.work\.title\)/,
+  'Detective lookup must retain its explicit unverified-title discovery path.');
+assert.match(lookupSource, /saved \?\? found \?\? lead/,
+  'Unverified leads must be considered only after saved and verified series.');
+assert.doesNotMatch(lookupSource, /(?:onAddBook|onAddMultipleBooks|commitCanonicalBooks|addDoc\s*\(|setDoc\s*\()/,
+  'Read-only Detective lookup must not gain a direct library mutation path.');
 const detectiveEngineSource = fs.readFileSync(
   path.join(ROOT, 'src/features/series/seriesDetective.ts'),
   'utf8',
