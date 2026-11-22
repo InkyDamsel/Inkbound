@@ -109,7 +109,10 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
         if (!controller.signal.aborted) setResult(missing);
       }
     })().catch((reason: unknown) => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Series discovery failed.');
+      if (!controller.signal.aborted) {
+        console.warn('Series Detective discovery failed.', reason);
+        setError('Series discovery could not be completed right now. Please try again.');
+      }
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [run]);
