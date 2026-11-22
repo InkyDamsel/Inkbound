@@ -390,8 +390,7 @@ export const findLibraryBookForCandidate = (
     // Require a checksum-valid ISBN shared with an actual owned edition,
     // a credible matching author, and no contradictory saved series identity.
     // ISBN alone must never establish ownership.
-    if (book.work.seriesName?.trim() && candidate.seriesName?.trim()
-      && !detectiveSeriesNamesCompatible(book.work.seriesName, candidate.seriesName)) return false;
+
     // A boxed set may reuse one valid ISBN across distinct novels. For
     // different titles, ISBN overlap is only supporting evidence: require
     // an independently saved series-slot identity anchor as well.
