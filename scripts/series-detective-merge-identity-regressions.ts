@@ -76,4 +76,18 @@ assert.equal(detectiveWorkTitlesCompatible('As Old as Time: A Twisted Tale Manga
   'Adaptations must not corroborate original novels');
 assert.equal(detectiveWorkTitlesCompatible('Daydream: Deluxe Edition Hardcover', 'Daydream'), false,
   'Deluxe editions must not automatically count as the same verified identity');
+assert.equal(detectiveWorkTitlesCompatible('Lethal (Wellard Asylum)', 'Lethal', 'Wellard Asylum'), true,
+  'Matching unnumbered series branding must not create a second work');
+assert.equal(detectiveWorkTitlesCompatible('Part of Your World: A Twisted Tale', 'Part of Your World', 'A Twisted Tale'), true,
+  'Matching colon series branding must not create a second work');
+assert.equal(detectiveWorkTitlesCompatible('Lethal (Other Series)', 'Lethal', 'Wellard Asylum'), false,
+  'Unrelated parentheticals must remain identity-bearing');
+assert.equal(detectiveWorkTitlesCompatible('Dune: Messiah', 'Dune', 'Dune'), false,
+  'A real installment subtitle must not disappear when matching a series name');
+const brandedLethal = { ...candidate('Lethal (Wellard Asylum)', 'open-library'), seriesName: 'Wellard Asylum' };
+const bareLethal = { ...candidate('Lethal', 'hardcover'), seriesName: 'Wellard Asylum' };
+assert.equal(detectiveCandidatesAreSameWork(brandedLethal, bareLethal), true,
+  'Branded and bare versions of one work must merge under the same series');
+assert.equal(detectiveCandidatesAreSameWork(brandedLethal, { ...bareLethal, seriesName: 'Other Series' }), false,
+  'Conflicting series identities must not merge');
 console.log('Series Detective merge identity regressions passed.');
