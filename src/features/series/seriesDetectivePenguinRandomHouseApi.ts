@@ -14,6 +14,7 @@ export async function searchSeriesDetectivePenguinRandomHouse(
   expandSeries = false,
   options: {
     exactTitle?: string;
+    authorBibliography?: boolean;
     seriesName?: string;
     anchorTitles?: string[];
   } = {},
@@ -27,6 +28,7 @@ export async function searchSeriesDetectivePenguinRandomHouse(
       query: string;
       expandSeries?: boolean;
       exactTitle?: string;
+      authorBibliography?: boolean;
       seriesName?: string;
       anchorTitles?: string[];
     }, SeriesDetectivePrhPayload>(
@@ -36,6 +38,7 @@ export async function searchSeriesDetectivePenguinRandomHouse(
     const response = await callable({
       query: trimmed,
       expandSeries,
+      authorBibliography: options.authorBibliography === true,
       exactTitle: options.exactTitle?.trim() || undefined,
       seriesName: options.seriesName?.trim() || undefined,
       anchorTitles: options.anchorTitles?.map((title) => title.trim()).filter(Boolean).slice(0, 12),
