@@ -60,7 +60,9 @@ assert.ok(corroboration.includes('Boolean(comparableDetectiveTitle(book.title))'
 assert.ok(corroboration.includes('new Set(candidates.filter(candidate =>'));
 assert.ok(corroboration.includes('candidate.work.authors.some(author => isCredibleDetectiveAuthor(author)'));
 assert.match(legacy, /result\.discoveryDiagnostics = \{/);
-assert.match(bookLookup, /result\?\.providerReports/);
+// Reader-facing UI must not expose provider failures or internal counters.
+assert.doesNotMatch(bookLookup, /Catalog health and discovery details|result\\?\\.providerReports|result\\.discoveryDiagnostics/);
+assert.match(bookLookup, /Discovery may be incomplete\\./);
 assert.match(legacy, /discoveryDiagnostics = \{ \.\.\.diagnostics, uniqueWorks: seen\.size \};/);
 assert.match(corroboration, /detectiveCandidatesAreSameWork\(candidate, target\)/);
 assert.ok(legacy.includes('if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName))'));
