@@ -40,11 +40,17 @@ export const hasExplicitCrossAuthorSeriesBrand = (
 ): boolean => {
   const wanted = canonicalDetectiveSeries(wantedSeriesName);
   if (!wanted) return false;
-  const values = [candidate.work.title, candidate.edition.title, candidate.work.subtitle, candidate.edition.subtitle]
+  const titles = [candidate.work.title, candidate.edition.title]
     .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()));
-  return values.some((value) => {
+  const subtitles = [candidate.work.subtitle, candidate.edition.subtitle]
+    .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+  return [...titles, ...subtitles].some((value) => {
     const parenthetical = value.match(/\(([^()]*)\)\s*$/)?.[1]?.trim();
-    if (parenthetical && canonicalDetectiveSeries(parenthetical) === wanted) return true;
+    // A title's terminal series label is a useful review lead. In a subtitle,
+    // "(Hades x Persephone)" after "PNR Retelling" describes subject matter,
+    // not membership in the named author's series.
+    if (parenthetical && canonicalDetectiveSeries(parenthetical) === wanted
+      && (titles.includes(value) || canonicalDetectiveSeries(value) === wanted)) return true;
     // Match a bibliographic declaration in the whole subtitle, a colon
     // suffix, or parentheses. Never infer membership from a bare colon label.
     const label = (parenthetical ?? value.slice(value.lastIndexOf(':') + 1)).trim();
