@@ -23,7 +23,7 @@ assert.equal(distantPlan.targetPositions.length, MAX_GAP_QUERY_TARGETS + FORWARD
 assert.ok(!distantPlan.targetPositions.includes(1000000000));
 
 import { planSeriesDiscoveryQueries, MAX_GAP_QUERY_TARGETS, FORWARD_QUERY_TARGETS } from '../src/features/series/seriesDetectiveQueryPlan';
-import { hasExplicitDetectiveSeriesBrand } from '../src/features/series/seriesDetectiveBranding';
+import { hasExplicitDetectiveSeriesBrand, hasExplicitCrossAuthorSeriesBrand } from '../src/features/series/seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from '../src/features/series/seriesDetectiveGoogleSeriesIds';
 import { parseDetectiveOpenLibrarySeries, plausibleOpenLibrarySeriesName } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
@@ -54,6 +54,21 @@ assert.equal(inferDetectiveSeriesLeadFromTitle('Lethal (Special Edition)'), null
 assert.equal(inferDetectiveSeriesLeadFromTitle('Lethal (Wellard Asylum'), null);
 assert.equal(inferDetectiveSeriesLeadFromTitle('Dune: Messiah'), null);
 assert.equal(inferDetectiveSeriesLeadFromTitle('Lethal'), null);
+
+// Bare geographical colon suffixes must never bootstrap cross-author families.
+const crossAuthorBrandFixture = (title: string, subtitle = '') => ({
+  work: { title, subtitle }, edition: { title, subtitle },
+}) as Parameters<typeof hasExplicitCrossAuthorSeriesBrand>[0];
+assert.equal(hasExplicitCrossAuthorSeriesBrand(
+  crossAuthorBrandFixture('Postmarks Washington: Grant County'), 'Grant County'), false);
+assert.equal(hasExplicitCrossAuthorSeriesBrand(
+  crossAuthorBrandFixture('Lethal (Wellard Asylum)'), 'Wellard Asylum'), true);
+assert.equal(hasExplicitCrossAuthorSeriesBrand(
+  crossAuthorBrandFixture('Lethal: Wellard Asylum Series'), 'Wellard Asylum'), true);
+assert.equal(hasExplicitCrossAuthorSeriesBrand(
+  crossAuthorBrandFixture('Lethal', 'Wellard Asylum Series'), 'Wellard Asylum'), true);
+assert.equal(hasExplicitCrossAuthorSeriesBrand(
+  crossAuthorBrandFixture('A Touch of Darkness: A Hades and Persephone Romance'), 'Hades x Persephone'), false);
 
 const divergent = {
   work: { title: 'Divergent', author: 'Veronica Roth' },
