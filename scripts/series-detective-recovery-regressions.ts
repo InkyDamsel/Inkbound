@@ -66,6 +66,8 @@ assert.equal(hasExplicitCrossAuthorSeriesBrand(
 assert.equal(hasExplicitCrossAuthorSeriesBrand(
   crossAuthorBrandFixture('Lethal: Wellard Asylum Series'), 'Wellard Asylum'), true);
 assert.equal(hasExplicitCrossAuthorSeriesBrand(
+  crossAuthorBrandFixture('Lethal (Wellard Asylum Series)'), 'Wellard Asylum'), true);
+assert.equal(hasExplicitCrossAuthorSeriesBrand(
   crossAuthorBrandFixture('Lethal', 'Wellard Asylum Series'), 'Wellard Asylum'), true);
 assert.equal(hasExplicitCrossAuthorSeriesBrand(
   crossAuthorBrandFixture('A Touch of Darkness: A Hades and Persephone Romance'), 'Hades x Persephone'), false);
