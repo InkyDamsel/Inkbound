@@ -48,7 +48,9 @@ assert.match(legacy, /decideDetectiveMembership\(/);
 assert.match(legacy, /issuedVerifiedCandidates\.add\(candidate\)/);
 assert.match(legacy, /const crossAuthorReview = !matchingAuthor && compatibleSeries/);
 assert.match(legacy, /candidate\.seriesStructured === true && !verifiedMultiAuthorBrand/);
-assert.match(legacy, /\|\| explicitBrand\);/);
+assert.match(legacy, /\|\| hasExplicitCrossAuthorSeriesBrand\(candidate, seriesName\)\);/);
+assert.doesNotMatch(legacy, /\|\| explicitBrand\);/,
+  'Weak branding must not authorize cross-author review.');
 assert.match(legacy, /if \(!matchingAuthor && !crossAuthorMembership && !crossAuthorReview\)/);
 assert.match(legacy, /verification: crossAuthorReview \? 'review' : decision\.verification/);
 assert.match(app, /isIssuedVerifiedDetectiveCandidate\(candidate\)/);
