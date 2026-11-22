@@ -112,7 +112,7 @@ const lookupSource = fs.readFileSync(
 );
 assert.match(lookupSource, /inferDetectiveSeriesLeadFromTitle\(currentBook\.work\.title\)/,
   'Detective lookup must retain its explicit unverified-title discovery path.');
-assert.match(lookupSource, /saved \?\? found \?\? lead/,
+assert.match(lookupSource, /const seriesToInvestigate = saved \\?\\? found \\?\\? lead/,
   'Unverified leads must be considered only after saved and verified series.');
 assert.doesNotMatch(lookupSource, /(?:onAddBook|onAddMultipleBooks|commitCanonicalBooks|addDoc\s*\(|setDoc\s*\()/,
   'Read-only Detective lookup must not gain a direct library mutation path.');
