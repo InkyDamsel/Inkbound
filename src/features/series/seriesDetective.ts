@@ -1302,7 +1302,7 @@ export async function findMissingSeriesBooks(
         && detectiveSeriesNamesCompatible(candidate.seriesName, seriesName))
       .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
     const brandedAuthors = new Set(mergedProviderCandidates
-      .filter((candidate) => hasExplicitDetectiveSeriesBrand(candidate, seriesName)
+      .filter((candidate) => hasExplicitCrossAuthorSeriesBrand(candidate, seriesName)
         && (!candidate.seriesName || detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)))
       .flatMap((candidate) => candidate.work.authors.map(canonicalDetectiveAuthor).filter(Boolean)));
     // Owned books already assigned to this series are a separate, local
