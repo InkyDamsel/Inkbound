@@ -57,6 +57,18 @@ export const comparableDetectiveTitle = (value?: string, seriesName?: string): s
     // Never strip arbitrary parentheticals: they may be part of the title.
     return whole;
   });
+  // Strip an unnumbered series label only when it matches the explicitly
+  // investigated series. Never treat arbitrary parentheticals as disposable.
+  if (seriesName) {
+    title = title.replace(/\\s*\\(([^()]*)\\)\\s*$/, (whole, inner: string) =>
+      detectiveSeriesNamesCompatible(inner.trim(), seriesName) ? '' : whole);
+    // Providers also attach a series as a colon subtitle. Keep genuine
+    // subtitles and unrelated series names intact.
+    const colon = title.lastIndexOf(':');
+    if (colon > 0 && detectiveSeriesNamesCompatible(title.slice(colon + 1).trim(), seriesName)) {
+      title = title.slice(0, colon).trim();
+    }
+  }
   // Catalogs sometimes append "(Series Name 4)" without a Book/# marker.
   // Only strip that suffix when the caller supplies the matching series;
   // stripping arbitrary numeric parentheticals would merge unrelated works.
