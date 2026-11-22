@@ -381,6 +381,10 @@ export const findLibraryBookForCandidate = (
     const sameTitle = detectiveWorkTitlesCompatible(
       candidate.work.title, book.work.title, candidate.seriesName);
     if (!sameAuthor) return false;
+    // A matching title cannot override an explicitly conflicting saved series.
+    // Otherwise an unrelated work with the same name is falsely marked owned.
+    if (book.work.seriesName?.trim() && candidate.seriesName?.trim()
+      && !detectiveSeriesNamesCompatible(book.work.seriesName, candidate.seriesName)) return false;
     if (sameTitle) return true;
     // Different market titles can describe the SAME edition (Genesis/Undone).
     // Require a checksum-valid ISBN shared with an actual owned edition,
