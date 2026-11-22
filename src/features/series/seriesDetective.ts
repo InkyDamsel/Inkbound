@@ -45,7 +45,7 @@ import {
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
 import { mapWithConcurrency, planSeriesDiscoveryQueries } from './seriesDetectiveQueryPlan';
-import { hasExplicitDetectiveSeriesBrand } from './seriesDetectiveBranding';
+import { hasExplicitDetectiveSeriesBrand, hasExplicitCrossAuthorSeriesBrand } from './seriesDetectiveBranding';
 import { confirmedGoogleMembershipIds } from './seriesDetectiveGoogleSeriesIds';
 import { decideDetectiveMembership } from './seriesDetectiveDecision';
 
@@ -1348,7 +1348,7 @@ export async function findMissingSeriesBooks(
       const explicitBrand = hasExplicitDetectiveSeriesBrand(candidate, seriesName);
       const contextual = !candidate.seriesName
         && (hasMergedKnownSeriesContext(candidate, seriesName)
-          || explicitBrand);
+          || hasExplicitCrossAuthorSeriesBrand(candidate, seriesName));
       const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
       // A seed work may belong to multiple related series. Its membership in
       // another series cannot authorize relabeling all sibling works into the
