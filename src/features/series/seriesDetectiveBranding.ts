@@ -45,7 +45,10 @@ export const hasExplicitCrossAuthorSeriesBrand = (
   return values.some((value) => {
     const parenthetical = value.match(/\(([^()]*)\)\s*$/)?.[1]?.trim();
     if (parenthetical && canonicalDetectiveSeries(parenthetical) === wanted) return true;
-    const explicit = value.match(/(?:^|[:(\[])\s*([^:)\]]+?)\s+(?:series|saga)(?:\s+(?:book\s*)?#?\d+)?\s*[)\]]?\s*$/i)?.[1]?.trim();
-    return Boolean(explicit && canonicalDetectiveSeries(explicit) === wanted);
+    // Match a bibliographic declaration in the whole subtitle, a colon
+    // suffix, or parentheses. Never infer membership from a bare colon label.
+    const label = (parenthetical ?? value.slice(value.lastIndexOf(':') + 1)).trim();
+    const declared = label.match(/^(.+?)\s+(?:series|saga)(?:\s+(?:book\s*)?#?\d+)?$/i)?.[1]?.trim();
+    return Boolean(declared && canonicalDetectiveSeries(declared) === wanted);
   });
 };
