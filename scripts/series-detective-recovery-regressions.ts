@@ -64,6 +64,12 @@ assert.equal(hasExplicitCrossAuthorSeriesBrand(
 assert.equal(hasExplicitCrossAuthorSeriesBrand(
   crossAuthorBrandFixture('Lethal (Wellard Asylum)'), 'Wellard Asylum'), true);
 assert.equal(hasExplicitCrossAuthorSeriesBrand(
+  crossAuthorBrandFixture('Did I Lie?', 'A Dark Romance / PNR Retelling (Hades x Persephone)'),
+  'Hades x Persephone Saga'), false);
+assert.equal(hasExplicitCrossAuthorSeriesBrand(
+  crossAuthorBrandFixture('Would I Lie to You?', 'A Dark Romance / PNR Retelling (Hades x Persephone)'),
+  'Hades x Persephone Saga'), false);
+assert.equal(hasExplicitCrossAuthorSeriesBrand(
   crossAuthorBrandFixture('Lethal: Wellard Asylum Series'), 'Wellard Asylum'), true);
 assert.equal(hasExplicitCrossAuthorSeriesBrand(
   crossAuthorBrandFixture('Lethal (Wellard Asylum Series)'), 'Wellard Asylum'), true);
