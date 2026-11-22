@@ -4,7 +4,8 @@
     "cleanUrls": true,
     "trailingSlash": false,
     "predeploy": [
-      "npm run build"
+      "npm run build",
+      "npm run verify:release-artifacts"
     ],
     "ignore": [
       "firebase.json",
