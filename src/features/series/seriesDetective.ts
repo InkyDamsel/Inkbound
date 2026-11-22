@@ -674,7 +674,7 @@ export async function detectSeriesForBook(
       false,
       { exactTitle: book.work.title },
     ),
-    searchSeriesDetectivePenguinRandomHouse(book.work.author),
+    searchSeriesDetectivePenguinRandomHouse(book.work.author, false, { authorBibliography: true }),
   ]);
 
   const catalogs = [
@@ -1015,7 +1015,7 @@ export async function findMissingSeriesBooks(
         },
       ),
       searchSeriesDetectivePenguinRandomHouse(seriesName),
-      searchSeriesDetectivePenguinRandomHouse(author),
+      searchSeriesDetectivePenguinRandomHouse(author, false, { authorBibliography: true }),
       // Use the independent library-search snapshot as a discovery supplement.
       // One bounded series-name lookup; never invoke library add/save actions.
       searchDetectiveForkedLibraryCatalog(seriesName, signal).catch((error) => {
