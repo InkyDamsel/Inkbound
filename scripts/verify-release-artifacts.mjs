@@ -164,6 +164,27 @@ checks.push({
     ? 'production bundle JavaScript was not found in dist/assets; build before verifying artifacts'
     : `production bundle contains development-only diagnostics or a development build: ${leakedDiagnostics.join(' | ')}`,
 });
+// Prevent a stale or accidental reader-facing Series Detective diagnostic panel
+// from being shipped, even when Firebase Hosting is deployed directly.
+const detectiveLookupSource = fs.readFileSync(path.join(root, 'src', 'components', 'library', 'SeriesDetectiveBookLookup.tsx'), 'utf8');
+const detectivePrivateStrings = [
+  'Catalog health and discovery details',
+  'Discovered ',
+  'rejected by series ',
+];
+checks.push({
+  ok: !detectiveLookupSource.includes('result?.providerReports')
+    && !detectiveLookupSource.includes('result?.discoveryDiagnostics')
+    && detectiveLookupSource.includes('Discovery may be incomplete.'),
+  message: 'Series Detective reader lookup must not render internal provider diagnostics',
+});
+checks.push({
+  ok: builtJavaScript.length > 0
+    && detectivePrivateStrings.every((value) => !builtJavaScript.includes(value))
+    && builtJavaScript.includes('Discovery may be incomplete.'),
+  message: 'built frontend contains stale Series Detective diagnostics or lacks the reader-safe incomplete-discovery notice',
+});
+
 const failures = checks.filter((check) => !check.ok).map((check) => check.message);
 if (failures.length > 0) {
   console.error('Inkbound release artifact verification failed:');
