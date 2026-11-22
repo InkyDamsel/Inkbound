@@ -1,5 +1,8 @@
 import { isSeriesDetectiveAvailable } from '../../features/series/seriesDetectiveAvailability';
-import { allowProductionFirebaseFunctions } from '../../lib/firebase';
+import { allowProductionFirebaseFunctions, functions } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { useAccountSync } from '../../context/AccountSyncContext';
+import { OWNER_EMAILS } from '../../features/admin/approvedOwners';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { resolveEffectiveSeriesMetadata } from '../../features/series/seriesLibrary';
@@ -19,6 +22,8 @@ interface Props { book: UserBookRecord; libraryBooks?: UserBookRecord[]; }
 
 /** User-triggered, read-only discovery; never updates library metadata automatically. */
 export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks }) => {
+  const { user } = useAccountSync();
+  const [adminDiagnosticsAllowed, setAdminDiagnosticsAllowed] = useState(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26,6 +31,24 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
   const [result, setResult] = useState<SeriesDetectiveResult | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [run, setRun] = useState(0);
+
+  // An email match is only a hint to request authorization. The existing
+  // server-protected admin callable makes the final decision; failures hide diagnostics.
+  useEffect(() => {
+    setAdminDiagnosticsAllowed(false);
+    if (!open || !functions || !user?.email || !OWNER_EMAILS.has(user.email.toLowerCase())) return;
+    let cancelled = false;
+    const getAdminDashboard = httpsCallable<{ query: string }, unknown>(functions, 'getAdminDashboard');
+    void getAdminDashboard({ query: '' }).then((response) => {
+      if (cancelled) return;
+      const payload = response.data as Record<string, unknown> | null;
+      const data = payload?.result ?? payload?.data ?? payload;
+      if (data && typeof data === 'object' && typeof (data as { role?: unknown }).role === 'string') {
+        setAdminDiagnosticsAllowed(true);
+      }
+    }).catch(() => { if (!cancelled) setAdminDiagnosticsAllowed(false); });
+    return () => { cancelled = true; };
+  }, [open, user?.uid, user?.email]);
 
   // Canonical resolver: manual corrections first, explicit metadata second.
   const overrides = useMemo(() => readSeriesOverrides(), [book.id, open]);
@@ -121,6 +144,16 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
         <p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p>
         <p className="text-xs text-stone-400">Catalog suggestion only. This match has not passed Series Detective's independent verification gate and cannot be saved automatically.</p>
       </div>}
+      {adminDiagnosticsAllowed && result && (
+        <details className="mt-3 rounded-lg border border-white/15 p-3 text-xs text-stone-300">
+          <summary className="cursor-pointer font-semibold text-[#e5c158]">Admin · Catalog health and discovery details</summary>
+          <p className="mt-2">Coverage: {result.completeness ?? 'unknown'}</p>
+          {result.providerReports && Object.entries(result.providerReports).map(([provider, report]) => (
+            <p key={provider}>{provider}: {typeof report === 'string' ? report : JSON.stringify(report)}</p>
+          ))}
+          {result.discoveryDiagnostics && <pre className="mt-2 overflow-auto whitespace-pre-wrap">{JSON.stringify(result.discoveryDiagnostics, null, 2)}</pre>}
+        </details>
+      )}
       {result?.completeness && result.completeness !== 'complete' && (
         <p className="mt-3 text-xs text-stone-400" role="status">
           Discovery may be incomplete. Books not found here may still belong to this series.
