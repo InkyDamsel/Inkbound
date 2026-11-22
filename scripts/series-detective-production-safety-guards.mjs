@@ -60,11 +60,11 @@ assert.ok(corroboration.includes('Boolean(comparableDetectiveTitle(book.title))'
 assert.ok(corroboration.includes('new Set(candidates.filter(candidate =>'));
 assert.ok(corroboration.includes('candidate.work.authors.some(author => isCredibleDetectiveAuthor(author)'));
 assert.match(legacy, /result\.discoveryDiagnostics = \{/);
-// Reader-facing UI must not expose provider failures or internal counters.
-for (const forbidden of ['Catalog health and discovery details', 'result?.providerReports', 'result.discoveryDiagnostics']) {
-  assert.equal(bookLookup.includes(forbidden), false, 'Reader UI exposes internal diagnostics: ' + forbidden);
-}
-assert.ok(bookLookup.includes('Discovery may be incomplete.'), 'Reader UI must explain incomplete discovery without internal details');
+// Admin diagnostics must be server-authorized; reader view remains safe.
+assert.ok(bookLookup.includes('adminDiagnosticsAllowed && result && ('));
+assert.ok(bookLookup.includes('getAdminDashboard'));
+assert.ok(bookLookup.includes('setAdminDiagnosticsAllowed(false)'));
+assert.ok(bookLookup.includes('Discovery may be incomplete.'));
 assert.match(legacy, /discoveryDiagnostics = \{ \.\.\.diagnostics, uniqueWorks: seen\.size \};/);
 assert.match(corroboration, /detectiveCandidatesAreSameWork\(candidate, target\)/);
 assert.ok(legacy.includes('if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName))'));
