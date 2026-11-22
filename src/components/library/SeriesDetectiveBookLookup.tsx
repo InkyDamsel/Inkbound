@@ -14,7 +14,7 @@ import {
   type SeriesDetectiveMatch,
   type SeriesDetectiveResult,
 } from '../../features/series/seriesDetective';
-import { detectiveSeriesNamesCompatible } from '../../features/series/seriesDetectiveEvidence';
+import { detectiveSeriesNamesCompatible, inferDetectiveSeriesLeadFromTitle } from '../../features/series/seriesDetectiveEvidence';
 import { buildSeriesRoster } from '../../features/series/seriesDetectiveRoster';
 import { SeriesDetectiveRoster } from './SeriesDetectiveRoster';
 
@@ -28,6 +28,7 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [match, setMatch] = useState<SeriesDetectiveMatch | null>(null);
+  const [unverifiedLead, setUnverifiedLead] = useState<SeriesDetectiveMatch | null>(null);
   const [result, setResult] = useState<SeriesDetectiveResult | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [run, setRun] = useState(0);
@@ -67,14 +68,14 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
   overridesRef.current = overrides;
 
   useEffect(() => {
-    setOpen(false); setMatch(null); setResult(null); setAttempted(false); setError(''); setRun(0);
+    setOpen(false); setMatch(null); setUnverifiedLead(null); setResult(null); setAttempted(false); setError(''); setRun(0);
   }, [book.id]);
 
   useEffect(() => {
     if (!run) return;
     const controller = new AbortController();
     const currentBook = bookRef.current;
-    setLoading(true); setError(''); setMatch(null); setResult(null); setAttempted(true);
+    setLoading(true); setError(''); setMatch(null); setUnverifiedLead(null); setResult(null); setAttempted(true);
     void (async () => {
       // The Series tab and Book Details must share the same series-first
       // discovery path. A catalog guess for an individual edition must never
@@ -84,7 +85,10 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
       const found = saved ? null : await detectSeriesForBook(currentBook, controller.signal);
       if (controller.signal.aborted) return;
       setMatch(found);
-      const seriesToInvestigate = saved ?? found;
+      // An explicit title label is only a discovery lead, never a verified match.
+      const lead = !saved && !found ? inferDetectiveSeriesLeadFromTitle(currentBook.work.title) : null;
+      setUnverifiedLead(lead);
+      const seriesToInvestigate = saved ?? found ?? lead;
       if (seriesToInvestigate && library) {
         const scopedBooks = library.filter((candidate) => {
           const metadata = resolveEffectiveSeriesMetadata(candidate, overridesRef.current);
@@ -138,8 +142,9 @@ export const SeriesDetectiveBookLookup: React.FC<Props> = ({ book, libraryBooks 
       {loading && <p role="status" className="mt-3">Checking available catalog evidence…</p>}
       {error && <p role="alert" className="mt-3 text-rose-300">Discovery request failed: {error}</p>}
       {savedSeries && <p className="mt-3 text-sm">Saved series: <strong className="text-[#e5c158]">{savedSeries.name}</strong> · {savedSeries.position === null ? 'Order not recorded' : `Book ${savedSeries.position}`} <span className="text-xs text-stone-400">(from your library)</span></p>}
-      {attempted && !loading && !error && !match && !savedSeries && <div className="mt-3 space-y-1"><p className="font-semibold">No verified series match returned</p><p className="text-xs text-stone-400">This does not mean the book is standalone. The catalog data may be missing, unavailable, or insufficient to verify a match. No book metadata was changed.</p></div>}
+      {attempted && !loading && !error && !match && !savedSeries && !unverifiedLead && <div className="mt-3 space-y-1"><p className="font-semibold">No verified series match returned</p><p className="text-xs text-stone-400">This does not mean the book is standalone. The catalog data may be missing, unavailable, or insufficient to verify a match. No book metadata was changed.</p></div>}
       {attempted && !loading && !error && !match && savedSeries && <p className="mt-2 text-xs text-stone-400">External catalogs did not independently verify the series. Your saved series information remains available.</p>}
+      {unverifiedLead && !savedSeries && !match && <p className="mt-3 text-xs text-stone-300">Unverified title lead: <strong className="text-[#e5c158]">{unverifiedLead.name}</strong>. Investigating catalog candidates for review only; the title label does not establish series membership or order.</p>}
       {match && !savedSeries && <div className="mt-3 space-y-2">
         <p>Catalog match: <strong className="text-[#e5c158]">{match.name}</strong> · {match.position === null ? 'Order unverified' : `Book ${match.position}`}</p>
         <p className="text-xs text-stone-400">Catalog suggestion only. This match has not passed Series Detective's independent verification gate and cannot be saved automatically.</p>
