@@ -653,7 +653,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     } catch (error) {
       setResults([]);
       setActiveTab('search');
-      setSearchError(error instanceof Error ? error.message : 'Catalog search unavailable. Your scanned ISBN is retained.');
+      setSearchError('Search could not be completed right now. Your scanned ISBN is retained.');
     } finally {
       setIsSearching(false);
     }
@@ -1834,7 +1834,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             .then((page) => page.groups, () => [] as BookSearchWorkGroup[])
         : null;
       const response = await searchGoogleBooks(trimmedQuery);
-      if (response.partial) setSearchError(response.warning ?? 'Some catalog providers are unavailable. Results may be incomplete.');
+      if (response.partial) setSearchError('Some results may be missing right now. You can try again later.');
       if (authorLookup) {
         let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
@@ -1858,7 +1858,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       }
     } catch (error) {
       setResults([]);
-      setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
+      setSearchError('Search could not be completed right now. Please try again.');
     } finally {
       setIsSearching(false);
     }
@@ -1906,7 +1906,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setAuthorCatalogWarning('Author catalog could not be verified. Retry when your connection is available.');
       setAuthorHasMore(false);
       if (knownAuthorBooks.length === 0) {
-        setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
+        setSearchError('Author search could not be completed right now. Please try again.');
       }
       // Retain matching books already returned by the main search.
     } finally {
@@ -1930,7 +1930,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setAuthorHasMore(response.hasMore && response.nextStartIndex > authorNextStartIndex);
     } catch (error) {
       if (requestGeneration !== authorRequestGeneration.current) return;
-      setSearchError(error instanceof Error ? error.message : 'Could not load more books. Please try again.');
+      setSearchError('Could not load more books. Please try again.');
     } finally {
       if (requestGeneration === authorRequestGeneration.current) setIsLoadingAuthorMore(false);
     }
