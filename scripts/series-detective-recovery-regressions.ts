@@ -36,12 +36,24 @@ import {
   detectiveSeriesNamesCompatible,
   inferDetectiveSeriesFromDescription,
   inferDetectiveSeriesFromTitle,
+  inferDetectiveSeriesLeadFromTitle,
   inferKnownDetectiveSeriesFromDescription,
   inferKnownDetectiveSeriesFromText,
   plausibleDetectiveSeriesSubtitle,
   scoreDetectiveEvidence,
   selectVerifiedDetectiveEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
+
+// Unverified title leads must initiate discovery without becoming verified membership.
+assert.deepEqual(inferDetectiveSeriesLeadFromTitle('Lethal (Wellard Asylum)'),
+  { name: 'Wellard Asylum', position: null });
+assert.deepEqual(inferDetectiveSeriesLeadFromTitle('Atrocity (Wellard Asylum)'),
+  { name: 'Wellard Asylum', position: null });
+assert.equal(inferDetectiveSeriesLeadFromTitle('Lethal (Paperback)'), null);
+assert.equal(inferDetectiveSeriesLeadFromTitle('Lethal (Special Edition)'), null);
+assert.equal(inferDetectiveSeriesLeadFromTitle('Lethal (Wellard Asylum'), null);
+assert.equal(inferDetectiveSeriesLeadFromTitle('Dune: Messiah'), null);
+assert.equal(inferDetectiveSeriesLeadFromTitle('Lethal'), null);
 
 const divergent = {
   work: { title: 'Divergent', author: 'Veronica Roth' },
