@@ -90,4 +90,10 @@ assert.equal(detectiveCandidatesAreSameWork(brandedLethal, bareLethal), true,
   'Branded and bare versions of one work must merge under the same series');
 assert.equal(detectiveCandidatesAreSameWork(brandedLethal, { ...bareLethal, seriesName: 'Other Series' }), false,
   'Conflicting series identities must not merge');
+// Shared titles must not override a conflicting explicit series claim.
+const sameNamedDifferentSeries = { ...candidate('Lethal', 'hardcover'), seriesName: 'Another Series' };
+assert.equal(detectiveCandidatesAreSameWork(bareLethal, sameNamedDifferentSeries), false,
+  'A matching title and author must not collapse different series memberships');
+assert.equal(mergeDetectiveCandidates([bareLethal, sameNamedDifferentSeries]).length, 2,
+  'Conflicting series memberships must remain separate in the merged roster');
 console.log('Series Detective merge identity regressions passed.');
