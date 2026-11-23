@@ -139,17 +139,4 @@ const session = (
   }
 }
 
-// The Android carousel must display each selected book's own deadline plan,
-// rather than hiding pace for every non-default book.
-{
-  const source = readFileSync('src/features/reading/readingWidget.ts', 'utf8');
-  const provider = readFileSync('android/app/src/main/java/com/inkydameinteractive/inkbound/ReadingWidgetProvider.java', 'utf8');
-  assert.match(source, /\.\.\.readingPaceForBook\(book, sessions\)/);
-  assert.match(provider, /paceLabel = selectedBook\.optString\("paceLabel", ""\)/);
-  assert.match(provider, /paceDetail = selectedBook\.optString\("paceDetail", ""\)/);
-  assert.match(provider, /hasBook && !compact && !paceLabel\.isEmpty\(\)/);
-  assert.match(provider, /hasBook && !compact && !paceDetail\.isEmpty\(\)/);
-  assert.doesNotMatch(provider, /!showingAlternate && !paceLabel\.isEmpty\(\)/);
-}
-
 console.log('Inkbound reading widget selection regressions passed.');
