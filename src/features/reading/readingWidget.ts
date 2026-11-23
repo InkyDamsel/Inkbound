@@ -31,7 +31,7 @@ export interface ActiveReadingDraft {
 type ReadingWidgetAction = 'open' | 'start' | 'resume' | 'pause' | 'stop';
 
 interface ReadingWidgetSnapshot {
-  readingBooks?: Array<{ id: string; title: string; author: string; progressLabel: string }>;
+  readingBooks?: Array<{ id: string; title: string; author: string; progressLabel: string; paceLabel?: string; paceDetail?: string }>;
   sessionMode: 'none' | 'active' | 'paused' | 'finished';
   bookId?: string;
   title?: string;
@@ -162,48 +162,12 @@ function formatMinutes(minutes: number) {
   return remainder ? `${hours} hr ${remainder} min/day` : `${hours} hr/day`;
 }
 
-export function buildReadingWidgetSnapshot(
-  books: UserBookRecord[],
-  sessions: ReadingSession[] = [],
-): ReadingWidgetSnapshot {
-  const draft = readRuntimeJson<ActiveReadingDraft | null>(ACTIVE_READING_DRAFT_KEY, null);
-  const currentBook = selectReadingWidgetBook(books, sessions, draft);
-  const edition = currentBook?.editions.find((item) => item.id === currentBook.activeEditionId) ?? currentBook?.editions[0];
-  const currentBookLoan = currentBook?.ownership === 'borrowed-library' && currentBook.libraryLoan?.dueDate
-    ? currentBook
-    : undefined;
-  const loan = currentBookLoan ?? nextLibraryLoan(books);
-  const deadlinePlan = currentBook
-    ? buildReadingDeadlinePlan(currentBook, edition, sessions)
-    : null;
-
-  let progressLabel: string | undefined;
-  if (currentBook) {
-    if (edition?.format === 'audiobook' && edition.audiobookDurationMins) {
-      progressLabel = `${currentBook.progressMinutes.toLocaleString()} / ${edition.audiobookDurationMins.toLocaleString()} min`;
-    } else if (edition?.pageCount) {
-      progressLabel = `Page ${currentBook.progressPages.toLocaleString()} of ${edition.pageCount.toLocaleString()}`;
-    } else if (currentBook.progressPercentage > 0) {
-      progressLabel = `${Math.round(currentBook.progressPercentage)}% complete`;
-    }
-  }
-
-  let paceLabel: string | undefined;
-  let paceDetail: string | undefined;
-  if (deadlinePlan && !deadlinePlan.isComplete) {
-    if (deadlinePlan.overdueDays > 0) {
-      paceLabel = `Deadline passed ${deadlinePlan.overdueDays} day${deadlinePlan.overdueDays === 1 ? '' : 's'} ago`;
-    } else if (deadlinePlan.missingTotal) {
-      paceLabel = deadlinePlan.isAudiobook
-        ? 'Add audiobook duration to calculate pace'
-        : 'Add page count to calculate pace';
-    } else if (deadlinePlan.unitsPerDay !== null) {
-      paceLabel = deadlinePlan.isAudiobook
-        ? `${formatMinutes(deadlinePlan.unitsPerDay)} to finish on time`
-        : `${deadlinePlan.unitsPerDay} pages/day to finish on time`;
-      paceDetail = `${deadlinePlan.isDueToday ? 'Due today' : `${deadlinePlan.daysRemaining} day${deadlinePlan.daysRemaining === 1 ? '' : 's'} left`}${deadlinePlan.remainingUnits !== null ? ` · ${deadlinePlan.remainingUnits} ${deadlinePlan.isAudiobook ? 'minutes' : 'pages'} remaining` : ''}`;
-    }
-  }
+function readingPaceForBook(book: UserBookRecord, sessions: ReadingSession[]) {
+  const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+  const deadlinePlan = buildReadingDeadlinePlan(book, edition, sessions);
+  const { paceLabel, paceDetail } = currentBook
+    ? readingPaceForBook(currentBook, sessions)
+    : { paceLabel: undefined, paceDetail: undefined };
 
   const timerSeconds = draft?.timerSeconds ?? 0;
   const running = Boolean(draft?.isActive && draft.lastActiveAt);
@@ -214,7 +178,8 @@ export function buildReadingWidgetSnapshot(
       : activeEdition?.pageCount
         ? `Page ${book.progressPages} of ${activeEdition.pageCount}`
         : `${Math.round(book.progressPercentage)}% complete`;
-    return { id: book.id, title: book.work.title, author: book.work.author, progressLabel: progress };
+    return { id: book.id, title: book.work.title, author: book.work.author, progressLabel: progress,
+      ...readingPaceForBook(book, sessions) };
   });
   return {
     sessionMode: draft?.selectedBookId && (timerSeconds > 0 || draft.isActive || draft.isFinished)
