@@ -31,7 +31,7 @@ export interface ActiveReadingDraft {
 type ReadingWidgetAction = 'open' | 'start' | 'resume' | 'pause' | 'stop';
 
 interface ReadingWidgetSnapshot {
-  readingBooks?: Array<{ id: string; title: string; author: string; progressLabel: string }>;
+  readingBooks?: Array<{ id: string; title: string; author: string; progressLabel: string; paceLabel?: string; paceDetail?: string }>;
   sessionMode: 'none' | 'active' | 'paused' | 'finished';
   bookId?: string;
   title?: string;
@@ -162,6 +162,29 @@ function formatMinutes(minutes: number) {
   return remainder ? `${hours} hr ${remainder} min/day` : `${hours} hr/day`;
 }
 
+const readingWidgetPace = (book: UserBookRecord, sessions: ReadingSession[]) => {
+  const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+  const plan = buildReadingDeadlinePlan(book, edition, sessions);
+  let paceLabel: string | undefined;
+  let paceDetail: string | undefined;
+  if (plan && !plan.isComplete) {
+    if (plan.overdueDays > 0) {
+      paceLabel = `Deadline passed ${plan.overdueDays} day${plan.overdueDays === 1 ? '' : 's'} ago`;
+    } else if (plan.missingTotal) {
+      paceLabel = plan.isAudiobook
+        ? 'Add audiobook duration to calculate pace'
+        : 'Add page count to calculate pace';
+    } else if (plan.unitsPerDay !== null) {
+      paceLabel = plan.isAudiobook
+        ? `${formatMinutes(plan.unitsPerDay)} to finish on time`
+        : `${plan.unitsPerDay} pages/day to finish on time`;
+      paceDetail = `${plan.isDueToday ? 'Due today' : `${plan.daysRemaining} day${plan.daysRemaining === 1 ? '' : 's'} left`}${plan.remainingUnits !== null ? ` · ${plan.remainingUnits} ${plan.isAudiobook ? 'minutes' : 'pages'} remaining` : ''}`;
+    }
+  }
+
+  return { paceLabel, paceDetail };
+};
+
 export function buildReadingWidgetSnapshot(
   books: UserBookRecord[],
   sessions: ReadingSession[] = [],
@@ -173,9 +196,6 @@ export function buildReadingWidgetSnapshot(
     ? currentBook
     : undefined;
   const loan = currentBookLoan ?? nextLibraryLoan(books);
-  const deadlinePlan = currentBook
-    ? buildReadingDeadlinePlan(currentBook, edition, sessions)
-    : null;
 
   let progressLabel: string | undefined;
   if (currentBook) {
@@ -188,22 +208,9 @@ export function buildReadingWidgetSnapshot(
     }
   }
 
-  let paceLabel: string | undefined;
-  let paceDetail: string | undefined;
-  if (deadlinePlan && !deadlinePlan.isComplete) {
-    if (deadlinePlan.overdueDays > 0) {
-      paceLabel = `Deadline passed ${deadlinePlan.overdueDays} day${deadlinePlan.overdueDays === 1 ? '' : 's'} ago`;
-    } else if (deadlinePlan.missingTotal) {
-      paceLabel = deadlinePlan.isAudiobook
-        ? 'Add audiobook duration to calculate pace'
-        : 'Add page count to calculate pace';
-    } else if (deadlinePlan.unitsPerDay !== null) {
-      paceLabel = deadlinePlan.isAudiobook
-        ? `${formatMinutes(deadlinePlan.unitsPerDay)} to finish on time`
-        : `${deadlinePlan.unitsPerDay} pages/day to finish on time`;
-      paceDetail = `${deadlinePlan.isDueToday ? 'Due today' : `${deadlinePlan.daysRemaining} day${deadlinePlan.daysRemaining === 1 ? '' : 's'} left`}${deadlinePlan.remainingUnits !== null ? ` · ${deadlinePlan.remainingUnits} ${deadlinePlan.isAudiobook ? 'minutes' : 'pages'} remaining` : ''}`;
-    }
-  }
+  const { paceLabel, paceDetail } = currentBook
+    ? readingWidgetPace(currentBook, sessions)
+    : { paceLabel: undefined, paceDetail: undefined };
 
   const timerSeconds = draft?.timerSeconds ?? 0;
   const running = Boolean(draft?.isActive && draft.lastActiveAt);
@@ -214,7 +221,8 @@ export function buildReadingWidgetSnapshot(
       : activeEdition?.pageCount
         ? `Page ${book.progressPages} of ${activeEdition.pageCount}`
         : `${Math.round(book.progressPercentage)}% complete`;
-    return { id: book.id, title: book.work.title, author: book.work.author, progressLabel: progress };
+    return { id: book.id, title: book.work.title, author: book.work.author, progressLabel: progress,
+      ...readingWidgetPace(book, sessions) };
   });
   return {
     sessionMode: draft?.selectedBookId && (timerSeconds > 0 || draft.isActive || draft.isFinished)
