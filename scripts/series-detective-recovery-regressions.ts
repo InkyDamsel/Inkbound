@@ -24,6 +24,7 @@ assert.ok(!distantPlan.targetPositions.includes(1000000000));
 
 import { planSeriesDiscoveryQueries, MAX_GAP_QUERY_TARGETS, FORWARD_QUERY_TARGETS } from '../src/features/series/seriesDetectiveQueryPlan';
 import { hasExplicitDetectiveSeriesBrand, hasExplicitCrossAuthorSeriesBrand } from '../src/features/series/seriesDetectiveBranding';
+import { evaluateCrossAuthorMembership } from '../src/features/series/seriesDetectiveMembershipGate';
 import { confirmedGoogleMembershipIds } from '../src/features/series/seriesDetectiveGoogleSeriesIds';
 import { parseDetectiveOpenLibrarySeries, plausibleOpenLibrarySeriesName } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
@@ -77,6 +78,45 @@ assert.equal(hasExplicitCrossAuthorSeriesBrand(
   crossAuthorBrandFixture('Lethal', 'Wellard Asylum Series'), 'Wellard Asylum'), true);
 assert.equal(hasExplicitCrossAuthorSeriesBrand(
   crossAuthorBrandFixture('A Touch of Darkness: A Hades and Persephone Romance'), 'Hades x Persephone'), false);
+
+// Behavioral admission matrix: preserve legitimate shared-world leads while
+// excluding topical retellings and unrelated geographical title suffixes.
+// Admission is not verification and must not mutate library records.
+const crossAuthorCandidate = (title: string, subtitle = '', structured = false) => ({
+  work: { title, subtitle, authors: ['Another Author'] },
+  edition: { title, subtitle },
+  provider: 'google-books' as const,
+  seriesName: structured ? 'Wellard Asylum' : undefined,
+  position: null,
+  seriesStructured: structured,
+}) as Parameters<typeof evaluateCrossAuthorMembership>[0];
+const crossAuthorCases = [
+  { title: 'Lethal (Wellard Asylum)', subtitle: '', series: 'Wellard Asylum', structured: false, family: false, admitted: true, reviewOnly: true },
+  { title: 'Atrocity (Wellard Asylum)', subtitle: '', series: 'Wellard Asylum', structured: false, family: true, admitted: true, reviewOnly: true },
+  { title: 'Postmarks Washington: Grant County', subtitle: '', series: 'Grant County', structured: false, family: true, admitted: false, reviewOnly: false },
+  { title: 'Did I Lie?', subtitle: 'A Dark Romance / PNR Retelling (Hades x Persephone)', series: 'Hades x Persephone Saga', structured: false, family: true, admitted: false, reviewOnly: false },
+  { title: 'Would I Lie to You?', subtitle: 'A Dark Romance / PNR Retelling (Hades x Persephone)', series: 'Hades x Persephone Saga', structured: false, family: false, admitted: false, reviewOnly: false },
+  { title: 'Unrelated Work', subtitle: '', series: 'Wellard Asylum', structured: true, family: false, admitted: true, reviewOnly: true },
+  { title: 'Unrelated Work', subtitle: '', series: 'Wellard Asylum', structured: true, family: true, admitted: true, reviewOnly: false },
+] as const;
+for (const scenario of crossAuthorCases) {
+  const candidate = crossAuthorCandidate(scenario.title, scenario.subtitle, scenario.structured);
+  assert.deepEqual(
+    evaluateCrossAuthorMembership(candidate, scenario.series, scenario.series, false, scenario.family),
+    { admitted: scenario.admitted, reviewOnly: scenario.reviewOnly },
+    scenario.title,
+  );
+}
+assert.deepEqual(
+  evaluateCrossAuthorMembership(crossAuthorCandidate('Lethal (Wellard Asylum)'), 'Wellard Asylum',
+    'Wellard Asylum', true, false),
+  { admitted: true, reviewOnly: false },
+);
+assert.deepEqual(
+  evaluateCrossAuthorMembership(crossAuthorCandidate('Lethal (Wellard Asylum)'), 'Wellard Asylum',
+    'Hades x Persephone Saga', false, true),
+  { admitted: false, reviewOnly: false },
+);
 
 const divergent = {
   work: { title: 'Divergent', author: 'Veronica Roth' },
