@@ -130,6 +130,24 @@ const looksLikeAuthorNameQuery = (value: string) => {
   return words.length >= 2 && words.length <= 6 && !/\d/.test(normalized);
 };
 
+// Prefer title evidence over provider keyword rank; never apply to ISBN or author-only results.
+const titleEvidence = (group: BookSearchWorkGroup, titleQuery: string): number => {
+  const wanted = normalizeCatalogText(titleQuery);
+  const actual = normalizeCatalogText([group.title, group.subtitle].filter(Boolean).join(' '));
+  if (!wanted || !actual) return 0;
+  if (actual === wanted || actual.startsWith(wanted + ' ')) return 3;
+  const wantedWords = wanted.split(' ').filter(Boolean);
+  const actualWords = new Set(actual.split(' '));
+  const matched = wantedWords.filter((word) => actualWords.has(word)).length;
+  return wantedWords.length >= 3 && matched / wantedWords.length >= 0.75 ? 1 : 0;
+};
+
+const sortTitleEvidence = (groups: BookSearchWorkGroup[], titleQuery: string) =>
+  groups.map((group, index) => ({ group, index, score: titleEvidence(group, titleQuery) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((item) => item.group);
+
 const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
   const normalizedAuthor = normalizeAuthorName(authorName);
   return groups.filter((work) =>
@@ -1834,8 +1852,32 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             .then((page) => page.groups, () => [] as BookSearchWorkGroup[])
         : null;
       const response = await searchGoogleBooks(trimmedQuery);
+      // A title followed by a two-word author can be recovered from the
+      // author's verified bibliography. Do not assume the trailing words are
+      // an author unless the catalog actually confirms that author.
+      const tokens = trimmedQuery.split(/\\s+/);
+      const potentialAuthor = tokens.length >= 4 ? tokens.slice(-2).join(' ') : '';
+      const potentialTitle = tokens.length >= 4 ? tokens.slice(0, -2).join(' ') : '';
+      const titleRecovery = tokens.length >= 3 && !/^(?:isbn:)?[0-9Xx-]{10,17}$/.test(trimmedQuery)
+        ? searchGoogleBooks(`intitle:"${trimmedQuery.replace(/"/g, '')}"`).catch(() => ({ groups: [] as BookSearchWorkGroup[], totalItems: 0 }))
+        : null;
+      const combinedAuthorRecovery = potentialAuthor && potentialTitle
+        ? searchGoogleBooksAuthorPage(potentialAuthor, 0).catch(() => null)
+        : null;
       if (response.partial) setSearchError(response.warning ?? 'Some catalog providers are unavailable. Results may be incomplete.');
-      if (authorLookup) {
+      const [titleRecovered, combinedRecovered] = await Promise.all([
+        titleRecovery ?? Promise.resolve(null),
+        combinedAuthorRecovery ?? Promise.resolve(null),
+      ]);
+      const confirmedAuthor = combinedRecovered
+        ? filterExactAuthorResults(combinedRecovered.groups, potentialAuthor) : [];
+      const confirmedCombined = confirmedAuthor.length > 0
+        ? sortTitleEvidence(confirmedAuthor, potentialTitle) : [];
+      if (confirmedCombined.length > 0) {
+        setResults(mergeCatalogResultGroups(confirmedCombined,
+          sortTitleEvidence(mergeCatalogResultGroups(titleRecovered?.groups ?? [], response.groups), potentialTitle)
+            .filter((work) => work.authors.some((name) => normalizeAuthorName(name) === normalizeAuthorName(potentialAuthor)))));
+      } else if (authorLookup) {
         let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
           const authorGroups = await Promise.race([
@@ -1854,7 +1896,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           if (deadline !== undefined) clearTimeout(deadline);
         }
       } else {
-        setResults(response.groups);
+        const ranked = sortTitleEvidence(mergeCatalogResultGroups(titleRecovered?.groups ?? [], response.groups), trimmedQuery);
+        setResults(ranked.length > 0 ? ranked : response.groups);
       }
     } catch (error) {
       setResults([]);
