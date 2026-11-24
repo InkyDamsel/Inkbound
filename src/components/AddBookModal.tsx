@@ -1854,37 +1854,34 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
-      const combined = splitTitleAndAuthorQuery(trimmedQuery);
-      // General catalog lookup, exact-title lookup, and author recovery are
-      // independent discovery routes. Never interpret a title as an author.
-      const primary = searchGoogleBooks(trimmedQuery);
-      const titleQuery = combined?.title ?? trimmedQuery;
-      const titleLookup = titleQuery.split(/\\s+/).length >= 3
-        ? searchGoogleBooks(`intitle:"${titleQuery.replace(/"/g, '')}"`).catch(() => ({ groups: [], totalItems: 0 }))
+      // Start both discovery paths together. An optional author page must not
+      // prevent already available general catalog results from rendering.
+      const authorLookup = looksLikeAuthorNameQuery(trimmedQuery)
+        ? searchGoogleBooksAuthorPage(trimmedQuery, 0)
+            .then((page) => page.groups, () => [] as BookSearchWorkGroup[])
         : null;
-      const authorName = combined?.author ?? (looksLikeAuthorNameQuery(trimmedQuery) ? trimmedQuery : null);
-      const authorLookup = authorName
-        ? searchGoogleBooksAuthorPage(authorName, 0).then((page) => page.groups, () => [] as BookSearchWorkGroup[])
-        : null;
-      const response = await primary;
+      const response = await searchGoogleBooks(trimmedQuery);
       if (response.partial) setSearchError(response.warning ?? 'Some catalog providers are unavailable. Results may be incomplete.');
-      const [titleResponse, authorGroups] = await Promise.all([
-        titleLookup ?? Promise.resolve({ groups: [] as BookSearchWorkGroup[] }),
-        authorLookup ?? Promise.resolve([] as BookSearchWorkGroup[]),
-      ]);
-      if (combined && filterExactAuthorResults(authorGroups, combined.author).length > 0) {
-        const authorMatches = filterExactAuthorResults(authorGroups, combined.author);
-        const all = mergeCatalogResultGroups(authorMatches, mergeCatalogResultGroups(titleResponse.groups, response.groups));
-        const verified = rankTitleSearchResults(all, combined.title)
-          .filter((work) => work.authors.some((name) => normalizeAuthorName(name) === normalizeAuthorName(combined.author)));
-        setResults(verified);
+      if (authorLookup) {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const authorGroups = await Promise.race([
+            authorLookup,
+            new Promise<BookSearchWorkGroup[]>((resolve) => {
+              deadline = setTimeout(() => resolve([]), 4000);
+            }),
+          ]);
+          const exactAuthorResults = filterExactAuthorResults(authorGroups, trimmedQuery);
+          // Keep verified author results first; generic keyword matches must
+          // not replace them. If no author supplement arrives, keep primary.
+          setResults(exactAuthorResults.length > 0
+            ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
+            : response.groups);
+        } finally {
+          if (deadline !== undefined) clearTimeout(deadline);
+        }
       } else {
-        const exactAuthorResults = authorName ? filterExactAuthorResults(authorGroups, authorName) : [];
-        const titleResults = rankTitleSearchResults(
-          mergeCatalogResultGroups(combined ? [] : titleResponse.groups, response.groups), trimmedQuery);
-        setResults(exactAuthorResults.length > 0
-          ? mergeCatalogResultGroups(exactAuthorResults, titleResults)
-          : titleResults);
+        setResults(response.groups);
       }
     } catch (error) {
       setResults([]);
