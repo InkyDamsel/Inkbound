@@ -130,6 +130,24 @@ const looksLikeAuthorNameQuery = (value: string) => {
   return words.length >= 2 && words.length <= 6 && !/\d/.test(normalized);
 };
 
+// Catalog providers rank broad keyword hits differently. Require title evidence
+// for multi-word title searches, without changing ISBN or author bibliography paths.
+const rankTitleSearchResults = (groups: BookSearchWorkGroup[], query: string) => {
+  const words = normalizeCatalogText(query).split(' ').filter(Boolean);
+  if (words.length < 3) return groups;
+  const scored = groups.map((group, index) => {
+    const title = normalizeCatalogText([group.title, group.subtitle].filter(Boolean).join(' '));
+    const titleWords = title.split(' ').filter(Boolean);
+    const matches = words.filter((word) => titleWords.includes(word)).length;
+    const coverage = matches / words.length;
+    const exact = title === words.join(' ') || title.startsWith(words.join(' ') + ' ');
+    return { group, index, score: exact ? 3 : coverage >= 0.8 ? 2 : coverage >= 0.6 ? 1 : 0 };
+  });
+  const relevant = scored.filter((entry) => entry.score > 0);
+  // A provider's weak keyword hits are not evidence that the requested title exists.
+  return relevant.sort((a, b) => b.score - a.score || a.index - b.index).map((entry) => entry.group);
+};
+
 const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
   const normalizedAuthor = normalizeAuthorName(authorName);
   return groups.filter((work) =>
@@ -1849,12 +1867,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           // not replace them. If no author supplement arrives, keep primary.
           setResults(exactAuthorResults.length > 0
             ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
-            : response.groups);
+            : rankTitleSearchResults(response.groups, trimmedQuery));
         } finally {
           if (deadline !== undefined) clearTimeout(deadline);
         }
       } else {
-        setResults(response.groups);
+        setResults(rankTitleSearchResults(response.groups, trimmedQuery));
       }
     } catch (error) {
       setResults([]);
