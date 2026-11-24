@@ -1889,9 +1889,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           const exactAuthorResults = filterExactAuthorResults(authorGroups, trimmedQuery);
           // Keep verified author results first; generic keyword matches must
           // not replace them. If no author supplement arrives, keep primary.
+          const titleCandidates = mergeCatalogResultGroups(titleRecovered?.groups ?? [], response.groups);
+          const rankedTitle = sortTitleEvidence(titleCandidates, trimmedQuery);
           setResults(exactAuthorResults.length > 0
             ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
-            : response.groups);
+            : rankedTitle.length > 0 ? rankedTitle : response.groups);
         } finally {
           if (deadline !== undefined) clearTimeout(deadline);
         }
