@@ -130,33 +130,6 @@ const looksLikeAuthorNameQuery = (value: string) => {
   return words.length >= 2 && words.length <= 6 && !/\d/.test(normalized);
 };
 
-// A combined title + author query is not an author name. Recover candidates
-// through the author's catalog, then verify the requested title locally.
-const splitTitleAndAuthorQuery = (query: string): { title: string; author: string } | null => {
-  const words = query.trim().split(/\\s+/);
-  if (words.length < 4 || /^(?:isbn:)?(?:97[89])?\\d{9}[\\dX]$/i.test(query.trim())) return null;
-  const title = words.slice(0, -2).join(' ');
-  const author = words.slice(-2).join(' ');
-  if (title.split(' ').length < 2 || !/^[\\p{L}.'-]+ [\\p{L}.'-]+$/u.test(author)) return null;
-  return { title, author };
-};
-
-const rankTitleSearchResults = (groups: BookSearchWorkGroup[], query: string) => {
-  const wanted = normalizeCatalogText(query);
-  const words = wanted.split(' ').filter(Boolean);
-  if (words.length < 3) return groups;
-  const scored = groups.map((group, index) => {
-    const title = normalizeCatalogText([group.title, group.subtitle].filter(Boolean).join(' '));
-    const titleWords = new Set(title.split(' ').filter(Boolean));
-    const coverage = words.filter((word) => titleWords.has(word)).length / words.length;
-    const exact = title === wanted || title.startsWith(wanted + ' ');
-    return { group, index, score: exact ? 3 : coverage >= 0.8 ? 2 : coverage >= 0.6 ? 1 : 0 };
-  });
-  return scored.filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .map((entry) => entry.group);
-};
-
 const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
   const normalizedAuthor = normalizeAuthorName(authorName);
   return groups.filter((work) =>
