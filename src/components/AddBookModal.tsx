@@ -1872,7 +1872,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         titleLookup ?? Promise.resolve({ groups: [] as BookSearchWorkGroup[] }),
         authorLookup ?? Promise.resolve([] as BookSearchWorkGroup[]),
       ]);
-      if (combined) {
+      if (combined && filterExactAuthorResults(authorGroups, combined.author).length > 0) {
         const authorMatches = filterExactAuthorResults(authorGroups, combined.author);
         const all = mergeCatalogResultGroups(authorMatches, mergeCatalogResultGroups(titleResponse.groups, response.groups));
         const verified = rankTitleSearchResults(all, combined.title)
@@ -1881,7 +1881,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       } else {
         const exactAuthorResults = authorName ? filterExactAuthorResults(authorGroups, authorName) : [];
         const titleResults = rankTitleSearchResults(
-          mergeCatalogResultGroups(titleResponse.groups, response.groups), trimmedQuery);
+          mergeCatalogResultGroups(combined ? [] : titleResponse.groups, response.groups), trimmedQuery);
         setResults(exactAuthorResults.length > 0
           ? mergeCatalogResultGroups(exactAuthorResults, titleResults)
           : titleResults);
