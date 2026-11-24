@@ -130,22 +130,31 @@ const looksLikeAuthorNameQuery = (value: string) => {
   return words.length >= 2 && words.length <= 6 && !/\d/.test(normalized);
 };
 
-// Catalog providers rank broad keyword hits differently. Require title evidence
-// for multi-word title searches, without changing ISBN or author bibliography paths.
+// A combined title + author query is not an author name. Recover candidates
+// through the author's catalog, then verify the requested title locally.
+const splitTitleAndAuthorQuery = (query: string): { title: string; author: string } | null => {
+  const words = query.trim().split(/\\s+/);
+  if (words.length < 4 || /^(?:isbn:)?(?:97[89])?\\d{9}[\\dX]$/i.test(query.trim())) return null;
+  const title = words.slice(0, -2).join(' ');
+  const author = words.slice(-2).join(' ');
+  if (title.split(' ').length < 2 || !/^[\\p{L}.'-]+ [\\p{L}.'-]+$/u.test(author)) return null;
+  return { title, author };
+};
+
 const rankTitleSearchResults = (groups: BookSearchWorkGroup[], query: string) => {
-  const words = normalizeCatalogText(query).split(' ').filter(Boolean);
+  const wanted = normalizeCatalogText(query);
+  const words = wanted.split(' ').filter(Boolean);
   if (words.length < 3) return groups;
   const scored = groups.map((group, index) => {
     const title = normalizeCatalogText([group.title, group.subtitle].filter(Boolean).join(' '));
-    const titleWords = title.split(' ').filter(Boolean);
-    const matches = words.filter((word) => titleWords.includes(word)).length;
-    const coverage = matches / words.length;
-    const exact = title === words.join(' ') || title.startsWith(words.join(' ') + ' ');
+    const titleWords = new Set(title.split(' ').filter(Boolean));
+    const coverage = words.filter((word) => titleWords.has(word)).length / words.length;
+    const exact = title === wanted || title.startsWith(wanted + ' ');
     return { group, index, score: exact ? 3 : coverage >= 0.8 ? 2 : coverage >= 0.6 ? 1 : 0 };
   });
-  const relevant = scored.filter((entry) => entry.score > 0);
-  // A provider's weak keyword hits are not evidence that the requested title exists.
-  return relevant.sort((a, b) => b.score - a.score || a.index - b.index).map((entry) => entry.group);
+  return scored.filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.group);
 };
 
 const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
@@ -1845,34 +1854,37 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
-      // Start both discovery paths together. An optional author page must not
-      // prevent already available general catalog results from rendering.
-      const authorLookup = looksLikeAuthorNameQuery(trimmedQuery)
-        ? searchGoogleBooksAuthorPage(trimmedQuery, 0)
-            .then((page) => page.groups, () => [] as BookSearchWorkGroup[])
+      const combined = splitTitleAndAuthorQuery(trimmedQuery);
+      // General catalog lookup, exact-title lookup, and author recovery are
+      // independent discovery routes. Never interpret a title as an author.
+      const primary = searchGoogleBooks(trimmedQuery);
+      const titleQuery = combined?.title ?? trimmedQuery;
+      const titleLookup = titleQuery.split(/\\s+/).length >= 3
+        ? searchGoogleBooks(`intitle:"${titleQuery.replace(/"/g, '')}"`).catch(() => ({ groups: [], totalItems: 0 }))
         : null;
-      const response = await searchGoogleBooks(trimmedQuery);
+      const authorName = combined?.author ?? (looksLikeAuthorNameQuery(trimmedQuery) ? trimmedQuery : null);
+      const authorLookup = authorName
+        ? searchGoogleBooksAuthorPage(authorName, 0).then((page) => page.groups, () => [] as BookSearchWorkGroup[])
+        : null;
+      const response = await primary;
       if (response.partial) setSearchError(response.warning ?? 'Some catalog providers are unavailable. Results may be incomplete.');
-      if (authorLookup) {
-        let deadline: ReturnType<typeof setTimeout> | undefined;
-        try {
-          const authorGroups = await Promise.race([
-            authorLookup,
-            new Promise<BookSearchWorkGroup[]>((resolve) => {
-              deadline = setTimeout(() => resolve([]), 4000);
-            }),
-          ]);
-          const exactAuthorResults = filterExactAuthorResults(authorGroups, trimmedQuery);
-          // Keep verified author results first; generic keyword matches must
-          // not replace them. If no author supplement arrives, keep primary.
-          setResults(exactAuthorResults.length > 0
-            ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
-            : rankTitleSearchResults(response.groups, trimmedQuery));
-        } finally {
-          if (deadline !== undefined) clearTimeout(deadline);
-        }
+      const [titleResponse, authorGroups] = await Promise.all([
+        titleLookup ?? Promise.resolve({ groups: [] as BookSearchWorkGroup[] }),
+        authorLookup ?? Promise.resolve([] as BookSearchWorkGroup[]),
+      ]);
+      if (combined) {
+        const authorMatches = filterExactAuthorResults(authorGroups, combined.author);
+        const all = mergeCatalogResultGroups(authorMatches, mergeCatalogResultGroups(titleResponse.groups, response.groups));
+        const verified = rankTitleSearchResults(all, combined.title)
+          .filter((work) => work.authors.some((name) => normalizeAuthorName(name) === normalizeAuthorName(combined.author)));
+        setResults(verified);
       } else {
-        setResults(rankTitleSearchResults(response.groups, trimmedQuery));
+        const exactAuthorResults = authorName ? filterExactAuthorResults(authorGroups, authorName) : [];
+        const titleResults = rankTitleSearchResults(
+          mergeCatalogResultGroups(titleResponse.groups, response.groups), trimmedQuery);
+        setResults(exactAuthorResults.length > 0
+          ? mergeCatalogResultGroups(exactAuthorResults, titleResults)
+          : titleResults);
       }
     } catch (error) {
       setResults([]);
