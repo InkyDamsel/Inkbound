@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
+import { getToken as getFirebaseAppCheckToken } from 'firebase/app-check';
 import { Format } from '../../../types';
-import { auth, functions } from '../../../lib/firebase';
+import { appCheck, auth, functions } from '../../../lib/firebase';
 import { isNativeRuntime } from '../../../platform/runtimePlatform';
 import { getNativeAppCheckToken } from '../../../platform/runtimeNativeAppCheck';
 import { requireCatalogResponse } from './catalogRequestDeadline';
@@ -317,9 +318,26 @@ async function requestProtectedGoogleBooks(
     { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
     GoogleVolumesResponse
   >(functions, 'searchHardcoverBooks', { timeout: PRIMARY_SEARCH_DEADLINE_MS });
-  const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
-  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-  return response.data;
+  try {
+    const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    return response.data;
+  } catch (error) {
+    // A stale native/JS App Check token can produce an immediate HTTP 401.
+    // Refresh both token layers once, then retry the same protected callable.
+    // Never fall back to an unprotected endpoint or retry other failures.
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      ? String(error.code) : '';
+    if (!isNativeRuntime() || !appCheck || !['functions/unauthenticated', 'functions/permission-denied'].includes(code) || signal?.aborted) {
+      throw error;
+    }
+    console.warn('[Inkbound search] Native protected catalog rejected credentials; refreshing App Check once.', { code });
+    await requireCatalogResponse('Native App Check refresh', getNativeAppCheckToken(true), 8000);
+    await requireCatalogResponse('Firebase App Check refresh', getFirebaseAppCheckToken(appCheck, true), 8000);
+    const retry = await callable({ query, provider: 'google-books', startIndex, maxResults });
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    return retry.data;
+  }
 }
 
 async function requestDirectGoogleBooks(
