@@ -147,7 +147,9 @@ const session = (
   assert.match(snapshotSource, /\.\.\.readingWidgetPace\(book, sessions\)/);
   assert.match(provider, /paceLabel = selectedBook\.optString\("paceLabel", ""\)/);
   assert.match(provider, /paceDetail = selectedBook\.optString\("paceDetail", ""\)/);
-  assert.match(provider, /hasBook && !compact && !paceLabel\.isEmpty\(\)/);
+  assert.match(provider, /hasBook && !paceLabel\.isEmpty\(\)/);
+  assert.doesNotMatch(provider, /R\.id\.widget_pace, hasBook && !compact/,
+    'Compact widgets must retain the pages-per-day target.');
   assert.doesNotMatch(provider, /!showingAlternate && !paceLabel\.isEmpty\(\)/);
 }
 
