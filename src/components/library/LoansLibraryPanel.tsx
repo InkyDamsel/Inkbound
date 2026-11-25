@@ -32,7 +32,7 @@ const formatDueDate = (value?: string) => {
 };
 
 export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onSelectBook }) => {
-  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.loansSort, 'az');
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode | 'due-soonest'>(DEVICE_STORAGE_KEYS.loansSort, 'az');
   const loans = useMemo(() => books
     .filter((book) => book.ownership === 'borrowed-library')
     .map((book) => {
@@ -53,6 +53,11 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
       return { book, edition, rawDays, isAudiobook, remainingUnits, unitsPerDay };
     })
     .sort((a, b) => {
+      if (sortMode === 'due-soonest') {
+        const aDue = localDateAtNoon(a.book.libraryLoan?.dueDate)?.getTime() ?? Number.POSITIVE_INFINITY;
+        const bDue = localDateAtNoon(b.book.libraryLoan?.dueDate)?.getTime() ?? Number.POSITIVE_INFINITY;
+        return aDue - bDue || compareLibraryLabels(a.book.work.title, b.book.work.title);
+      }
       if (sortMode === 'za') return compareLibraryLabels(b.book.work.title, a.book.work.title);
       if (sortMode === 'newest') {
         return compareLibraryDates(b.book.dateAdded, a.book.dateAdded) || compareLibraryLabels(a.book.work.title, b.book.work.title);
@@ -92,10 +97,11 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
               Sort
               <select
                 value={sortMode}
-                onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)}
+                onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode | 'due-soonest')}
                 className="inkbound-select min-h-11 min-w-[150px]"
                 aria-label="Sort library loans"
               >
+                <option value="due-soonest">Due Date (Soonest First)</option>
                 {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
