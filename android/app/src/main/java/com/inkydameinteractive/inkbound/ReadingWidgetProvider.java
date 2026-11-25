@@ -80,6 +80,8 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
                 title = selectedBook.optString("title", title);
                 author = selectedBook.optString("author", author);
                 progress = selectedBook.optString("progressLabel", progress);
+                paceLabel = selectedBook.optString("paceLabel", "");
+                paceDetail = selectedBook.optString("paceDetail", "");
             }
 
             views.setTextViewText(R.id.widget_title, title.isEmpty() ? "Inkbound" : title);
@@ -120,8 +122,8 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             views.setOnClickPendingIntent(R.id.widget_next_book, navigationIntent(context, appWidgetId, 1));
             views.setViewVisibility(R.id.widget_timer, (active || paused || finished) && !compact && !showingAlternate ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_progress, hasBook && !progress.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_pace, hasBook && !compact && !showingAlternate && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_pace_detail, hasBook && !compact && !showingAlternate && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace, hasBook && !compact && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace_detail, hasBook && !compact && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_due, !compact && !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
             // Session mode belongs to the timer's book, not every book in the roster.
             // An alternate currently-reading book must retain its own Start button.
