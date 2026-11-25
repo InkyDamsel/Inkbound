@@ -522,4 +522,23 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.match(collectionsSource, /updatedAt: now/);
 }
 
+// Progress edits must never infer completion or rewrite a manually chosen status.
+// Guard the actual App handler so partial pages, 100%, and custom statuses
+// all preserve the canonical status and historical finish date.
+{
+  const appSource = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const handlerStart = appSource.indexOf('const handleCorrectBookProgress =');
+  const handlerEnd = appSource.indexOf('const handle', handlerStart + 10);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart, 'Progress correction handler must exist');
+  const handler = appSource.slice(handlerStart, handlerEnd);
+  assert.match(handler, /progressPages: nextPages/);
+  assert.match(handler, /progressMinutes: nextMinutes/);
+  assert.match(handler, /progressPercentage,/);
+  assert.doesNotMatch(handler, /status\\s*[:,]/, 'Progress edits must preserve all reading statuses, including custom');
+  assert.doesNotMatch(handler, /dateFinished\\s*:/, 'Progress edits must preserve historical finish dates');
+  assert.doesNotMatch(handler, /reachedEnd|withReadingStatus\\(/, 'Reaching 100% must not automatically finish a book');
+  assert.match(appSource, /const handleUpdateStatus = [^\\n]*withReadingStatus\\(/,
+    'Explicit status changes must remain available');
+}
+
 console.log('Inkbound critical reading regressions passed.');
