@@ -620,8 +620,6 @@ export default function App() {
       const progressPercentage = nextTotal && nextTotal > 0
         ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100))
         : book.progressPercentage;
-      const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal);
-      const status = reachedEnd ? 'finished' : book.status;
       const progressChanged = nextPages !== book.progressPages || nextMinutes !== book.progressMinutes;
       const updatedBook: UserBookRecord = {
         ...book,
@@ -629,8 +627,6 @@ export default function App() {
         progressPages: nextPages,
         progressMinutes: nextMinutes,
         progressPercentage,
-        status,
-        dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished,
         lastProgressUpdatedAt: progressChanged ? new Date().toISOString() : book.lastProgressUpdatedAt,
       };
       setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected);
