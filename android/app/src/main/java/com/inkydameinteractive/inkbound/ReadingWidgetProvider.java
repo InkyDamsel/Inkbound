@@ -110,8 +110,8 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             boolean paused = "paused".equals(sessionMode);
             boolean finished = "finished".equals(sessionMode);
 
-            // Compact launcher sizes prioritize the book and progress; expanded
-            // widgets can show supplemental pace and loan details.
+            // Keep the daily reading target visible at every widget height.
+            // Compact widgets hide only supplemental details and loan metadata.
             Bundle size = manager.getAppWidgetOptions(appWidgetId);
             int minHeight = size.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
             boolean compact = minHeight > 0 && minHeight < 160;
@@ -122,7 +122,7 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             views.setOnClickPendingIntent(R.id.widget_next_book, navigationIntent(context, appWidgetId, 1));
             views.setViewVisibility(R.id.widget_timer, (active || paused || finished) && !compact && !showingAlternate ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_progress, hasBook && !progress.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_pace, hasBook && !compact && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace, hasBook && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_pace_detail, hasBook && !compact && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_due, !compact && !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
             // Session mode belongs to the timer's book, not every book in the roster.
