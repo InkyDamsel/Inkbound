@@ -144,6 +144,18 @@ export function getEffectiveRereadCount(book: UserBookRecord): number {
   return Math.max(Math.max(0, book.rereadCount ?? 0), getRereadCompletions(book).length);
 }
 
+/** Completed reading events in a dated period, including recorded rereads.
+ * Legacy undated reread counts cannot be assigned to a month or year.
+ * Completion history supersedes the legacy dateFinished mirror to avoid duplicates.
+ */
+export function countCompletedReadsInPeriod(book: UserBookRecord, start: string, end: string): number {
+  const completions = getReadingCompletions(book);
+  if (completions.length > 0) {
+    return completions.filter((entry) => entry.date >= start && entry.date <= end).length;
+  }
+  return 0;
+}
+
 export function appendReadingCompletion(book: UserBookRecord, date = localDateKey(), source: ReadingCompletion['source'] = 'tracked'): UserBookRecord {
   const existing = getReadingCompletions(book);
   const latest = existing.at(-1);
