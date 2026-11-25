@@ -11,7 +11,7 @@ import {
   isRecordedReadingActivity,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
-import { getActiveEdition, getEffectiveRereadCount, getRereadCompletions } from '../features/reading/bookReadingState';
+import { getActiveEdition, getEffectiveRereadCount, getRereadCompletions, countCompletedReadsInPeriod } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
@@ -58,6 +58,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     && book.dateFinished! >= reportStart
     && book.dateFinished! <= reportEnd
   ));
+  const reportCompletedReads = filteredBooks.reduce((sum, book) => sum + countCompletedReadsInPeriod(book, reportStart, reportEnd), 0);
   const reportRereads = filteredBooks.flatMap((book) => getRereadCompletions(book).filter((completion) => completion.date >= reportStart && completion.date <= reportEnd));
   const rereadBooks = filteredBooks.filter((book) => getEffectiveRereadCount(book) > 0);
   const totalRereads = filteredBooks.reduce((sum, book) => sum + getEffectiveRereadCount(book), 0);
@@ -71,6 +72,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
   const totalReadingMinutes = filteredSessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0);
   const annualGoal = getAnnualReadingGoal();
   const currentYear = new Date().getFullYear();
+  const completedReadsThisYear = filteredBooks.reduce((sum, book) => sum + countCompletedReadsInPeriod(book, `${currentYear}-01-01`, `${currentYear}-12-31`), 0);
   const completedThisYear = finishedBooks.filter((book) => book.dateFinished?.startsWith(`${currentYear}-`));
   const annualGoalPercent = Math.min(
     100,
@@ -101,7 +103,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
       const prefix = `${currentYear}-${month}-`;
       return {
         month: formatter.format(new Date(currentYear, monthIndex, 1)),
-        count: completedThisYear.filter((book) => book.dateFinished?.startsWith(prefix)).length,
+        count: filteredBooks.reduce((sum, book) => sum + countCompletedReadsInPeriod(book, `${prefix}01`, `${prefix}31`), 0),
       };
     });
   }, [completedThisYear, currentYear]);
@@ -182,7 +184,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
                   <span className="rounded-full border border-[#3d2448] bg-[#120817]/70 px-3 py-1.5 text-stone-300">
-                    {completedThisYear.length} finished this year
+                    {completedReadsThisYear} finished this year
                   </span>
                   <span className="rounded-full border border-[#3d2448] bg-[#120817]/70 px-3 py-1.5 text-stone-300">
                     {fullyTrackedCompletedThisYear.length} with tracked Inkbound activity
@@ -284,7 +286,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                 <Flame className="h-4 w-4 text-amber-500" /> Library Movement
               </h3>
               <dl className="space-y-2 text-xs">
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Finished in period</dt><dd className="font-bold text-emerald-400">{reportFinishedBooks.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Finished in period</dt><dd className="font-bold text-emerald-400">{reportCompletedReads}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Dated rereads in period</dt><dd className="font-bold text-[#e5c158]">{reportRereads.length}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Books reread</dt><dd className="font-bold text-[#f4efe6]">{rereadBooks.length}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Lifetime rereads</dt><dd className="font-bold text-[#f4efe6]">{totalRereads}</dd></div>
