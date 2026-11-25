@@ -139,4 +139,16 @@ const session = (
   }
 }
 
+// A carousel book must receive its own canonical progress/deadline target.
+// The widget must not reuse the primary book's pace or hide alternate targets.
+{
+  const snapshotSource = readFileSync('src/features/reading/readingWidget.ts', 'utf8');
+  const provider = readFileSync('android/app/src/main/java/com/inkydameinteractive/inkbound/ReadingWidgetProvider.java', 'utf8');
+  assert.match(snapshotSource, /\.\.\.readingWidgetPace\(book, sessions\)/);
+  assert.match(provider, /paceLabel = selectedBook\.optString\("paceLabel", ""\)/);
+  assert.match(provider, /paceDetail = selectedBook\.optString\("paceDetail", ""\)/);
+  assert.match(provider, /hasBook && !compact && !paceLabel\.isEmpty\(\)/);
+  assert.doesNotMatch(provider, /!showingAlternate && !paceLabel\.isEmpty\(\)/);
+}
+
 console.log('Inkbound reading widget selection regressions passed.');
