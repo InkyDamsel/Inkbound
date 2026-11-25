@@ -12,7 +12,7 @@ import {
   Target,
 } from 'lucide-react';
 import { ReadingSession, ReadingStatus, UserBookRecord } from '../types';
-import { getBookReadingState } from '../features/reading/bookReadingState';
+import { getBookReadingState, getReadingCompletions } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { getAnnualReadingGoal, setAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
@@ -78,6 +78,17 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const currentBook = selectPrimaryCurrentlyReadingBook(books, sessions) ?? null;
   const finishedBooks = books.filter(hasTrustworthyFinishedHistory);
   const finishedThisYear = finishedBooks.filter((book) => book.dateFinished?.startsWith(yearPrefix));
+  // Count completed reading events, not just unique titles. Legacy rereadCount
+  // may exceed the recorded completion list; never add both representations.
+  const completedReadsInPeriod = (prefix: string) => books.reduce((total, book) => {
+    const dated = getReadingCompletions(book).filter((entry) => entry.date.startsWith(prefix));
+    if (dated.length > 0) return total + dated.length;
+    // Legacy records without individual reread dates cannot be attributed to
+    // a particular month/year. Count only their dated original completion.
+    return total + (book.dateFinished?.startsWith(prefix) && hasTrustworthyFinishedHistory(book) ? 1 : 0);
+  }, 0);
+  const annualCompletedReads = completedReadsInPeriod(yearPrefix);
+  const monthlyCompletedReads = completedReadsInPeriod(monthPrefix);
   const recentlyFinished = [...finishedBooks]
     .filter((book) => Boolean(book.dateFinished))
     .sort((a, b) => (b.dateFinished ?? '').localeCompare(a.dateFinished ?? ''))
@@ -87,7 +98,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const monthFinished = finishedBooks.filter((book) => book.dateFinished?.startsWith(monthPrefix));
   const monthMinutes = monthSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
   const monthPages = getEffectivePagesReadForPeriod(books, sessions, monthStart, monthEnd);
-  const goalPercent = annualGoal > 0 ? Math.min(100, Math.round((finishedThisYear.length / annualGoal) * 100)) : 0;
+  const goalPercent = annualGoal > 0 ? Math.min(100, Math.round((annualCompletedReads / annualGoal) * 100)) : 0;
 
   const saveAnnualGoal = () => {
     const nextGoal = setAnnualReadingGoal(annualGoalDraft);
@@ -148,12 +159,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </button>
       </div>
 
-      <section><SectionHeading icon={<CalendarDays className="h-5 w-5" />} eyebrow="This month" title="Your reading at a glance" /><div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard value={monthFinished.length.toString()} label="books finished" /><MetricCard value={formatHours(monthMinutes)} label="hours read" /><MetricCard value={monthPages.toLocaleString()} label="pages read" /><MetricCard value={monthSessions.length.toString()} label="reading sessions" /></div></section>
+      <section><SectionHeading icon={<CalendarDays className="h-5 w-5" />} eyebrow="This month" title="Your reading at a glance" /><div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard value={monthlyCompletedReads.toString()} label="books finished" /><MetricCard value={formatHours(monthMinutes)} label="hours read" /><MetricCard value={monthPages.toLocaleString()} label="pages read" /><MetricCard value={monthSessions.length.toString()} label="reading sessions" /></div></section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
         <section className="inkbound-panel rounded-3xl p-5 sm:p-7"><div className="flex items-center justify-between gap-4"><SectionHeading icon={<Quote className="h-5 w-5" />} eyebrow="Recent memory" title="Something worth keeping" /><button type="button" onClick={() => onNavigateToTab('memories')} className="quiet-shelf-secondary-action hidden sm:inline-flex">View memories</button></div>{recentMemory ? <button type="button" onClick={() => onSelectBook(recentMemory.book)} className="mt-5 w-full rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5 text-left transition hover:border-[var(--ink-border-strong)]"><p className="line-clamp-4 font-serif text-xl italic leading-8 text-[var(--ink-ivory)]">“{recentMemory.text}”</p><p className="mt-4 text-xs text-[var(--ink-muted)]">{recentMemory.type === 'quote' ? 'Favorite quote' : 'Your review'} · {recentMemory.book.work.title}</p></button> : <div className="mt-5 rounded-2xl border border-dashed border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-6"><BookHeart className="h-6 w-6 text-[var(--ink-mauve)]" /><p className="mt-3 font-serif text-xl text-[var(--ink-ivory)]">Your first memory is waiting.</p><p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Save a quote or review and it will quietly return here.</p></div>}</section>
         <section className="inkbound-panel rounded-3xl p-5 sm:p-7">
-          <SectionHeading icon={<Target className="h-5 w-5" />} eyebrow="Reading goal" title={`${finishedThisYear.length} of ${annualGoal} books`} />
+          <SectionHeading icon={<Target className="h-5 w-5" />} eyebrow="Reading goal" title={`${annualCompletedReads} of ${annualGoal} books`} />
           <div className="mt-6 flex flex-col gap-5 min-[380px]:flex-row min-[380px]:items-center">
             <div className="relative grid h-24 w-24 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(var(--ink-mauve) ${goalPercent * 3.6}deg, var(--ink-surface-soft) 0deg)` }}><div className="grid h-[74px] w-[74px] place-items-center rounded-full bg-[var(--ink-surface-raised)]"><strong className="font-serif text-2xl text-[var(--ink-ivory)]">{goalPercent}%</strong></div></div>
             <div className="min-w-0 flex-1">
