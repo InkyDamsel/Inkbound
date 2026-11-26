@@ -18,7 +18,7 @@ export function selectReadingWidgetBook(
 
   if (draftHasLiveContext) {
     const draftBook = books.find((book) => book.id === draft?.selectedBookId);
-    if (draftBook?.status === 'currently-reading') return draftBook;
+    if (draftBook) return draftBook;
   }
 
   return selectPrimaryCurrentlyReadingBook(books, sessions);
