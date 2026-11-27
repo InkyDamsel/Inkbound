@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { ReadingSession, UserBookRecord } from '../src/types';
+import { buildReadingDeadlinePlan } from '../src/features/reading/readingDeadline';
+import { localDateKey } from '../src/features/reading/sessionAnalytics';
 import { selectReadingWidgetBook } from '../src/features/reading/readingWidgetSelection';
 
 const book = (
@@ -151,6 +153,24 @@ const session = (
   assert.doesNotMatch(provider, /R\.id\.widget_pace, hasBook && !compact/,
     'Compact widgets must retain the pages-per-day target.');
   assert.doesNotMatch(provider, /!showingAlternate && !paceLabel\.isEmpty\(\)/);
+}
+
+// Junei's daily goal: the denominator stays stable as today's pages accumulate.
+{
+  const today = new Date();
+  const deadline = new Date(today);
+  deadline.setDate(deadline.getDate() + 20);
+  const current = book('daily', 'Daily target');
+  current.editions[0].pageCount = 260;
+  current.finishByDate = localDateKey(deadline);
+  const other = session('other', 'other-book', localDateKey(today), '10:00', '10:20');
+  for (const pages of [0, 10, 13, 20]) {
+    const activity = { ...session('daily-session', current.id, localDateKey(today), '11:00', '11:20'), endPage: pages, pagesRead: pages };
+    const plan = buildReadingDeadlinePlan({ ...current, progressPages: pages }, current.editions[0], [activity, other]);
+    assert.equal(plan?.unitsPerDay, 13);
+    assert.equal(plan?.pagesToday, pages);
+    assert.equal(plan?.dailyPageLabel, `${pages >= 13 ? '✓ ' : ''}${pages}/13 pages read today`);
+  }
 }
 
 console.log('Inkbound reading widget selection regressions passed.');
