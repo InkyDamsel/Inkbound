@@ -75,8 +75,8 @@ struct ReadingProvider: TimelineProvider {
             timerSeconds: defaults?.integer(forKey: "timerSeconds") ?? 0,
             timerRunning: defaults?.bool(forKey: "timerRunning") ?? false,
             timerAnchorMillis: defaults?.double(forKey: "timerAnchorMillis") ?? 0,
-            paceLabel: defaults?.string(forKey: "paceLabel") ?? "",
-            paceDetail: defaults?.string(forKey: "paceDetail") ?? "",
+            paceLabel: selected != nil ? (selected?["paceLabel"] ?? "") : (defaults?.string(forKey: "paceLabel") ?? ""),
+            paceDetail: selected != nil ? (selected?["paceDetail"] ?? "") : (defaults?.string(forKey: "paceDetail") ?? ""),
             dueTitle: defaults?.string(forKey: "dueTitle") ?? "",
             dueDate: defaults?.string(forKey: "dueDate") ?? "",
             dueLabel: defaults?.string(forKey: "dueLabel") ?? ""
