@@ -222,7 +222,7 @@ struct ReadingWidgetView: View {
                     if !entry.paceLabel.isEmpty {
                         Text(entry.paceLabel)
                             .font(.caption2)
-                            .foregroundColor(.white.opacity(0.72))
+                            .foregroundColor(entry.paceLabel.hasPrefix("✓ ") ? .green : .white.opacity(0.72))
                             .lineLimit(1)
                     }
 
