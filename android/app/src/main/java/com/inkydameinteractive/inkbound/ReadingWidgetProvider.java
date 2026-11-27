@@ -88,9 +88,8 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             views.setTextViewText(R.id.widget_author, author);
             views.setTextViewText(R.id.widget_progress, progress);
             views.setTextViewText(R.id.widget_pace, paceLabel);
-            if (paceLabel.startsWith("✓ ")) {
-                views.setTextColor(R.id.widget_pace, android.graphics.Color.rgb(129, 199, 132));
-            }
+            views.setTextColor(R.id.widget_pace, paceLabel.startsWith("✓ ")
+                ? android.graphics.Color.rgb(129, 199, 132) : android.graphics.Color.parseColor("#F4EFE6"));
             views.setTextViewText(R.id.widget_pace_detail, paceDetail);
             String dueText = "";
             if (!dueTitle.isEmpty()) {
