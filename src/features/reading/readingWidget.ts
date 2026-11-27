@@ -259,6 +259,9 @@ export async function syncReadingWidget(
       && (stored.title ?? '') === (snapshot.title ?? '')
       && (stored.author ?? '') === (snapshot.author ?? '')
       && (stored.progressLabel ?? '') === (snapshot.progressLabel ?? '')
+      && stored.sessionMode === snapshot.sessionMode
+      && Boolean(stored.timerRunning) === Boolean(snapshot.timerRunning)
+      && (stored.paceLabel ?? '') === (snapshot.paceLabel ?? '')
     );
 
     if (!matchesCanonical) {
