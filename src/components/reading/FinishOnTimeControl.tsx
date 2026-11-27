@@ -76,7 +76,7 @@ export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, 
     if (plan.unitsPerDay === null) return `Finish by ${formatDate(plan.deadline)}`;
     return plan.isAudiobook
       ? `${formatMinutes(plan.unitsPerDay)} to finish on time`
-      : `${plan.unitsPerDay} pages/day to finish on time`;
+      : plan.dailyPageLabel ?? `Finish by ${formatDate(plan.deadline)}`;
   })();
 
   const secondaryText = plan && !plan.isComplete && plan.overdueDays === 0
@@ -95,7 +95,7 @@ export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, 
           <Clock3 className="h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
           <span className="min-w-0 text-center">
             <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink-gold)]">Finish on time</span>
-            <span className="block truncate">{primaryText}</span>
+            <span className={`block truncate ${plan?.dailyPageLabel?.startsWith("✓ ") ? "text-green-400" : ""}`}>{primaryText}</span>
             {secondaryText && <span className="mt-0.5 block truncate text-[11px] font-normal text-[var(--ink-muted)]">{secondaryText}</span>}
           </span>
         </button>
@@ -108,7 +108,7 @@ export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, 
               <div>
                 <p className="inkbound-kicker">Reading plan</p>
                 <h2 className="mt-1 font-serif text-2xl text-[var(--ink-ivory)]">Finish on time</h2>
-                <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Inkbound recalculates from what you still have left, so your daily target gets easier when you read ahead.</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Your page target is based on the start of today. Reading ahead reduces the pace needed on later days.</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="quiet-shelf-icon-button shrink-0" aria-label="Close finish-on-time planner"><X className="h-4 w-4" /></button>
             </div>
