@@ -54,6 +54,7 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
         timerRunning: snapshot.timerRunning,
         timerSeconds: snapshot.timerRunning ? undefined : snapshot.timerSeconds,
         timerBaseMillis,
+        readingBooks: snapshot.readingBooks,
         paceLabel: snapshot.paceLabel,
         paceDetail: snapshot.paceDetail,
         dueTitle: snapshot.dueTitle,
@@ -112,8 +113,10 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
       refresh();
     }, 500);
 
+    const periodicRefresh = window.setInterval(refresh, 30000);
     return () => {
       stopped = true;
+      window.clearInterval(periodicRefresh);
       window.clearTimeout(startupRetry);
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onCanonicalDataChanged);
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, onCanonicalDataChanged);
