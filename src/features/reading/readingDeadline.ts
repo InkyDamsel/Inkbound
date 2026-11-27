@@ -1,5 +1,5 @@
 import type { Edition, ReadingSession, UserBookRecord } from '../../types';
-import { getSessionDurationMinutes, getSessionPagesRead } from './sessionAnalytics';
+import { getDailyPagesRead, getSessionDurationMinutes, getSessionPagesRead } from './sessionAnalytics';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -29,6 +29,8 @@ export interface ReadingDeadlinePlan {
   completedUnits: number;
   remainingUnits: number | null;
   unitsPerDay: number | null;
+  pagesToday: number;
+  dailyPageLabel: string | null;
   estimatedMinutesPerDay: number | null;
   missingTotal: boolean;
 }
@@ -60,8 +62,11 @@ export const buildReadingDeadlinePlan = (
   const completedUnits = Math.max(0, isAudiobook ? book.progressMinutes : book.progressPages);
   const remainingUnits = totalUnits === null ? null : Math.max(0, totalUnits - completedUnits);
   const isComplete = book.status === 'finished' || remainingUnits === 0;
+  const pagesToday = isAudiobook ? 0 : getDailyPagesRead(sessions.filter((session) =>
+    session.bookId === book.id && (!session.editionId || session.editionId === edition?.id),
+  ));
   const unitsPerDay = !isComplete && remainingUnits !== null && daysRemaining > 0
-    ? Math.ceil(remainingUnits / daysRemaining)
+    ? Math.ceil(Math.min(totalUnits ?? Infinity, remainingUnits + pagesToday) / daysRemaining)
     : isComplete ? 0 : null;
 
   let estimatedMinutesPerDay: number | null = null;
@@ -96,6 +101,9 @@ export const buildReadingDeadlinePlan = (
     completedUnits,
     remainingUnits,
     unitsPerDay,
+    pagesToday,
+    dailyPageLabel: !isAudiobook && unitsPerDay !== null && unitsPerDay > 0
+      ? `${pagesToday >= unitsPerDay ? '✓ ' : ''}${pagesToday}/${unitsPerDay} pages read today` : null,
     estimatedMinutesPerDay,
     missingTotal: totalUnits === null,
   };
