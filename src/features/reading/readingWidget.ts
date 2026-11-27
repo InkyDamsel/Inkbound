@@ -1,6 +1,7 @@
 import { registerPlugin } from '@capacitor/core';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { buildReadingDeadlinePlan } from './readingDeadline';
+import { getDailyPagesRead } from './sessionAnalytics';
 import { selectReadingWidgetBook } from './readingWidgetSelection';
 import { sortCurrentlyReadingByRecency } from './readingRecency';
 import { isNativeRuntime } from '../../platform/runtimePlatform';
@@ -175,9 +176,15 @@ const readingWidgetPace = (book: UserBookRecord, sessions: ReadingSession[]) => 
         ? 'Add audiobook duration to calculate pace'
         : 'Add page count to calculate pace';
     } else if (plan.unitsPerDay !== null) {
-      paceLabel = plan.isAudiobook
-        ? `${formatMinutes(plan.unitsPerDay)} to finish on time`
-        : `${plan.unitsPerDay} pages/day to finish on time`;
+      if (plan.isAudiobook) {
+        paceLabel = `${formatMinutes(plan.unitsPerDay)} to finish on time`;
+      } else {
+        const pagesToday = getDailyPagesRead(sessions.filter((session) =>
+          session.bookId === book.id && (!session.editionId || session.editionId === edition?.id),
+        ));
+        const dailyTarget = Math.ceil(Math.min(plan.totalUnits ?? Infinity, (plan.remainingUnits ?? 0) + pagesToday) / plan.daysRemaining);
+        paceLabel = `${pagesToday >= dailyTarget ? '✓ ' : ''}${pagesToday}/${dailyTarget} pages read today`;
+      }
       paceDetail = `${plan.isDueToday ? 'Due today' : `${plan.daysRemaining} day${plan.daysRemaining === 1 ? '' : 's'} left`}${plan.remainingUnits !== null ? ` · ${plan.remainingUnits} ${plan.isAudiobook ? 'minutes' : 'pages'} remaining` : ''}`;
     }
   }
