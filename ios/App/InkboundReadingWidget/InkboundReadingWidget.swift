@@ -121,12 +121,12 @@ struct ReadingWidgetView: View {
         return components.url ?? URL(string: "inkbound://reading-widget?action=open")!
     }
 
-    private var startURL: URL {
+    private func actionURL(_ action: String) -> URL {
         var components = URLComponents()
         components.scheme = "inkbound"
         components.host = "reading-widget"
         components.queryItems = [
-            URLQueryItem(name: "action", value: "start"),
+            URLQueryItem(name: "action", value: action),
             URLQueryItem(name: "bookId", value: entry.bookId),
         ]
         return components.url ?? openURL
@@ -147,6 +147,16 @@ struct ReadingWidgetView: View {
             : String(format: "%02d:%02d", minutes, seconds)
     }
 
+    private func headerControl(_ symbol: String, _ label: String, _ action: String) -> some View {
+        Link(destination: actionURL(action)) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(Color(red: 0.87, green: 0.74, blue: 0.52))
+                .frame(minWidth: 28, minHeight: 28)
+                .accessibilityLabel(label)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -155,10 +165,19 @@ struct ReadingWidgetView: View {
                         .tracking(1.3)
                         .foregroundColor(Color(red: 0.82, green: 0.66, blue: 0.39))
                     Spacer()
-                    if entry.sessionMode == "active" {
-                        Text("READING")
-                            .font(.caption2.weight(.bold))
-                            .foregroundColor(.green)
+                    if !entry.title.isEmpty {
+                        if entry.sessionMode == "none" {
+                            headerControl("play.fill", "Start reading", "start")
+                        } else if entry.sessionMode == "finished" {
+                            headerControl("checkmark", "Save reading session", "open")
+                        } else {
+                            if entry.sessionMode == "active" {
+                                headerControl("pause.fill", "Pause reading", "pause")
+                            } else {
+                                headerControl("play.fill", "Resume reading", "resume")
+                            }
+                            headerControl("stop.fill", "Finish reading session", "stop")
+                        }
                     }
                 }
 
@@ -228,17 +247,7 @@ struct ReadingWidgetView: View {
 
                     Spacer(minLength: 2)
 
-                    if entry.sessionMode == "none" {
-                        Link(destination: startURL) {
-                            Text("Start Reading")
-                                .font(.caption.weight(.bold))
-                                .foregroundColor(Color(red: 0.071, green: 0.031, blue: 0.09))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color(red: 0.82, green: 0.66, blue: 0.39))
-                                .cornerRadius(8)
-                        }
-                    } else if !entry.dueLabel.isEmpty {
+                    if !entry.dueLabel.isEmpty {
                         Text(entry.dueLabel)
                             .font(.caption2.weight(.semibold))
                             .foregroundColor(.orange)
