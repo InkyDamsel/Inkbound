@@ -132,18 +132,18 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             // Only the book owning an active/paused/finished timer hides Start.
             views.setViewVisibility(R.id.widget_start,
                 hasBook && (showingAlternate || "none".equals(sessionMode)) ? View.VISIBLE : View.GONE);
-            // Active-session controls stay inside Inkbound. The widget remains a
-            // glanceable mirror; tapping it opens the canonical timer UI.
-            views.setViewVisibility(R.id.widget_resume, View.GONE);
-            views.setViewVisibility(R.id.widget_pause, View.GONE);
-            views.setViewVisibility(R.id.widget_stop, View.GONE);
+            views.setViewVisibility(R.id.widget_resume, hasBook && !showingAlternate && paused ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pause, hasBook && !showingAlternate && active ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_stop, hasBook && !showingAlternate && (active || paused || finished) ? View.VISIBLE : View.GONE);
+            views.setTextViewText(R.id.widget_stop, finished ? "✓" : "■");
+            views.setContentDescription(R.id.widget_stop, finished ? "Save reading session" : "Finish reading session");
             views.setViewVisibility(R.id.widget_empty, hasBook ? View.GONE : View.VISIBLE);
 
             views.setOnClickPendingIntent(R.id.widget_root, launchIntent(context, "open", 4000 + appWidgetId));
             views.setOnClickPendingIntent(R.id.widget_start, launchIntent(context, "start", 5000 + appWidgetId));
             views.setOnClickPendingIntent(R.id.widget_resume, launchIntent(context, "resume", 6000 + appWidgetId));
             views.setOnClickPendingIntent(R.id.widget_pause, launchIntent(context, "pause", 7000 + appWidgetId));
-            views.setOnClickPendingIntent(R.id.widget_stop, launchIntent(context, "stop", 8000 + appWidgetId));
+            views.setOnClickPendingIntent(R.id.widget_stop, launchIntent(context, finished ? "open" : "stop", 8000 + appWidgetId));
 
             manager.updateAppWidget(appWidgetId, views);
         }
